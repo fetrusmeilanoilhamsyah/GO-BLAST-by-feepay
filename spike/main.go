@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/joho/godotenv"
@@ -100,7 +101,9 @@ func main() {
 		if err != nil {
 			log.Fatalf("Gagal connect: %v", err)
 		}
-		code, err := client.PairPhone(context.Background(), number, true, whatsmeow.PairClientChrome, "GO BLAST Spike")
+		// Tunggu sebentar agar websocket benar-benar siap (syarat dari whatsmeow)
+		time.Sleep(2 * time.Second)
+		code, err := client.PairPhone(context.Background(), number, true, whatsmeow.PairClientChrome, "Chrome (Windows)")
 		if err != nil {
 			log.Fatalf("Gagal pair: %v", err)
 		}
