@@ -25,7 +25,7 @@ func main() {
 	godotenv.Load()
 	
 	if len(os.Args) < 2 {
-		fmt.Println("Gunakan sub-perintah: pair-code, pair-qr, send-text, send-image, check, send-buttons, send-card, status, logout")
+		fmt.Println("Gunakan sub-perintah: pair-code, send-text, send-image, send-card, send-buttons, status, logout")
 		return
 	}
 
@@ -128,7 +128,85 @@ func main() {
 		waitForInterrupt()
 
 	case "send-image":
-		fmt.Println("Fungsi send-image tidak diimplementasikan secara penuh di spike.")
+		requireLogin(client)
+		if len(os.Args) < 3 {
+			log.Fatal("Format: send-image <nomor_tujuan>")
+		}
+		target := parseJID(os.Args[2])
+		
+		imgBytes, err := os.ReadFile("full.jpg")
+		if err != nil {
+			log.Fatalf("Gagal membaca full.jpg: pastikan file gambar ada di folder spike. %v", err)
+		}
+
+		fmt.Println("Mengunggah gambar ke server WhatsApp...")
+		respUp, err := client.Upload(context.Background(), imgBytes, whatsmeow.MediaImage)
+		if err != nil {
+			log.Fatalf("Gagal upload gambar: %v", err)
+		}
+
+		msg := &waProto.Message{
+			ImageMessage: &waProto.ImageMessage{
+				Caption:       proto.String("Ini adalah gambar penuh (full image). Cocok untuk poster promo vertikal dengan link di teks: https://feepay.web.id"),
+				Mimetype:      proto.String("image/jpeg"),
+				URL:           &respUp.URL,
+				DirectPath:    &respUp.DirectPath,
+				MediaKey:      respUp.MediaKey,
+				FileEncSHA256: respUp.FileEncSHA256,
+				FileSHA256:    respUp.FileSHA256,
+				FileLength:    &respUp.FileLength,
+			},
+		}
+
+		resp, err := client.SendMessage(context.Background(), target, msg)
+		if err != nil {
+			log.Fatalf("Gagal kirim gambar: %v", err)
+		}
+		fmt.Printf("Gambar terkirim. ID: %s\n", resp.ID)
+		waitForInterrupt()
+
+	case "send-buttons":
+		requireLogin(client)
+		if len(os.Args) < 3 {
+			log.Fatal("Format: send-buttons <nomor_tujuan>")
+		}
+		target := parseJID(os.Args[2])
+		
+		msg := &waProto.Message{
+			InteractiveMessage: &waProto.InteractiveMessage{
+				Header: &waProto.InteractiveMessage_Header{
+					Title: proto.String("GO BLAST by FEEPAY"),
+					HasMediaAttachment: proto.Bool(false),
+				},
+				Body: &waProto.InteractiveMessage_Body{
+					Text: proto.String("Ini adalah tes pesan tombol langsung tanpa wrapper ViewOnce. Apakah tombolnya muncul?"),
+				},
+				Footer: &waProto.InteractiveMessage_Footer{
+					Text: proto.String("Hubungi CS untuk bantuan"),
+				},
+				InteractiveMessage: &waProto.InteractiveMessage_NativeFlowMessage_{
+					NativeFlowMessage: &waProto.InteractiveMessage_NativeFlowMessage{
+						Buttons: []*waProto.InteractiveMessage_NativeFlowMessage_NativeFlowButton{
+							{
+								Name: proto.String("cta_url"),
+								ButtonParamsJSON: proto.String(`{"display_text":"Buka feepay.web.id","url":"https://feepay.web.id","merchant_url":"https://feepay.web.id"}`),
+							},
+							{
+								Name: proto.String("quick_reply"),
+								ButtonParamsJSON: proto.String(`{"display_text":"Hubungi CS","id":"cs_btn"}`),
+							},
+						},
+					},
+				},
+			},
+		}
+		
+		resp, err := client.SendMessage(context.Background(), target, msg)
+		if err != nil {
+			log.Fatalf("Gagal kirim tombol: %v", err)
+		}
+		fmt.Printf("Tombol terkirim. ID: %s\n", resp.ID)
+		waitForInterrupt()
 
 	case "check":
 		requireLogin(client)
@@ -144,48 +222,6 @@ func main() {
 			fmt.Printf("Nomor %v -> Terdaftar: %v, JID: %v\n", info.Query, info.IsIn, info.JID)
 		}
 
-	case "send-buttons":
-		requireLogin(client)
-		if len(os.Args) < 3 {
-			log.Fatal("Format: send-buttons <nomor_tujuan>")
-		}
-		target := parseJID(os.Args[2])
-		
-		msg := &waProto.Message{
-			ViewOnceMessage: &waProto.FutureProofMessage{
-				Message: &waProto.Message{
-					InteractiveMessage: &waProto.InteractiveMessage{
-						Header: &waProto.InteractiveMessage_Header{
-							Title: proto.String("GO BLAST by FEEPAY"),
-							HasMediaAttachment: proto.Bool(false),
-						},
-						Body: &waProto.InteractiveMessage_Body{
-							Text: proto.String("Pesan ini berisi tombol interaktif (NativeFlowMessage)."),
-						},
-						Footer: &waProto.InteractiveMessage_Footer{
-							Text: proto.String("Hubungi CS untuk bantuan"),
-						},
-						InteractiveMessage: &waProto.InteractiveMessage_NativeFlowMessage_{
-							NativeFlowMessage: &waProto.InteractiveMessage_NativeFlowMessage{
-								Buttons: []*waProto.InteractiveMessage_NativeFlowMessage_NativeFlowButton{
-									{
-										Name: proto.String("cta_url"),
-										ButtonParamsJSON: proto.String(`{"display_text":"Buka feepay.web.id","url":"https://feepay.web.id","merchant_url":"https://feepay.web.id"}`),
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-		}
-		
-		resp, err := client.SendMessage(context.Background(), target, msg)
-		if err != nil {
-			log.Fatalf("Gagal kirim tombol: %v", err)
-		}
-		fmt.Printf("Tombol terkirim. ID: %s\n", resp.ID)
-		waitForInterrupt()
 
 	case "send-card":
 		requireLogin(client)
@@ -202,7 +238,13 @@ func main() {
 		}
 
 		linkURL := "https://feepay.web.id"
-		textMsg := fmt.Sprintf("Halo Kak, promo hari ini sedang berlangsung. Untuk info lebih lengkap, silakan klik tautan di bawah ini ya:\n%s", linkURL)
+		textMsg := fmt.Sprintf(`Halo Kak! Promo spesial akhir tahun sedang berlangsung. Dapatkan diskon menarik hingga 50%% untuk setiap transaksi yang Anda lakukan minggu ini. Jangan sampai kehabisan kuota promonya ya!
+
+Untuk melihat katalog lengkap dan melakukan pemesanan, silakan klik tautan di bawah ini:
+%s
+
+Jika butuh bantuan lebih lanjut, segera hubungi CS kami dengan klik link WA di bawah ini:
+wa.me/6281234567890`, linkURL)
 
 		msg := &waProto.Message{
 			ExtendedTextMessage: &waProto.ExtendedTextMessage{
