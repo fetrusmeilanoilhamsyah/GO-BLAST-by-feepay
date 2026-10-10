@@ -1,100 +1,113 @@
 {{define "content"}}
-<div class="container mt-4 pb-5">
+<div style="max-width: 1200px; margin: 0 auto; padding: 20px;">
     <h2>{{if .Campaign.ID}}Edit Campaign{{else}}Buat Campaign Baru{{end}}</h2>
     
-    <div class="row mt-4">
-        <div class="col-md-7">
-            <div class="card p-4 shadow-sm bg-card">
-                <form id="campaignForm" method="POST" enctype="multipart/form-data">
-                    <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-                    
-                    <div class="mb-3">
-                        <label class="form-label">Nama Campaign</label>
-                        <input type="text" name="name" class="form-control" value="{{.Campaign.Name}}" required>
-                    </div>
+    <div style="display: flex; gap: 30px; flex-wrap: wrap; margin-top: 20px;">
+        <!-- FORM SECTION -->
+        <div style="flex: 1; min-width: 300px; background-color: var(--color-card); padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+            <form id="campaignForm" method="POST" enctype="multipart/form-data">
+                <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+                
+                <div style="margin-bottom: 15px;">
+                    <label style="display: block; margin-bottom: 5px;">Nama Campaign</label>
+                    <input type="text" name="name" style="width: 100%; padding: 10px; border-radius: 4px; border: 1px solid #555; background-color: var(--color-bg); color: var(--color-text); box-sizing: border-box;" value="{{.Campaign.Name}}" required>
+                </div>
 
-                    <div class="mb-3">
-                        <label class="form-label">Mode Pesan</label>
-                        <select name="button_mode" class="form-select" id="modeSelect">
-                            <option value="kartu_link" {{if eq .Campaign.ButtonMode "kartu_link"}}selected{{end}}>Kartu Link (Aman)</option>
-                            <option value="tombol_asli" {{if eq .Campaign.ButtonMode "tombol_asli"}}selected{{end}}>Tombol Asli (Bisa tidak tampil)</option>
-                        </select>
-                    </div>
+                <div style="margin-bottom: 15px;">
+                    <label style="display: block; margin-bottom: 5px;">Mode Pesan</label>
+                    <select name="button_mode" id="modeSelect" style="width: 100%; padding: 10px; border-radius: 4px; border: 1px solid #555; background-color: var(--color-bg); color: var(--color-text); box-sizing: border-box;">
+                        <option value="kartu_link" {{if eq .Campaign.ButtonMode "kartu_link"}}selected{{end}}>Kartu Link (Aman & Tampil di Semua HP)</option>
+                        <option value="tombol_asli" {{if eq .Campaign.ButtonMode "tombol_asli"}}selected{{end}}>Tombol Asli (Bisa disembunyikan WhatsApp)</option>
+                    </select>
+                </div>
 
-                    <div class="mb-3">
-                        <label class="form-label">Teks Pesan (Wajib memuat kata FEEPAY, max 1000 karakter)</label>
-                        <textarea name="body" class="form-control" rows="5" maxlength="1000" required>{{.Campaign.Body}}</textarea>
-                    </div>
+                <div style="margin-bottom: 15px;">
+                    <label style="display: block; margin-bottom: 5px;">Teks Pesan (max 1000 karakter)</label>
+                    <textarea name="body" rows="5" maxlength="1000" style="width: 100%; padding: 10px; border-radius: 4px; border: 1px solid #555; background-color: var(--color-bg); color: var(--color-text); box-sizing: border-box; resize: vertical;" required>{{.Campaign.Body}}</textarea>
+                </div>
 
-                    <div class="mb-3">
-                        <label class="form-label">Foto (Opsional, max 1MB, JPEG/PNG)</label>
-                        {{if .Campaign.ImagePath}}
-                        <div class="mb-2">
-                            <span class="badge bg-secondary">Foto sudah diunggah</span>
-                            <div class="form-check form-check-inline ms-2">
-                                <input class="form-check-input" type="checkbox" name="remove_image" id="remove_image">
-                                <label class="form-check-label" for="remove_image">Hapus foto</label>
-                            </div>
-                        </div>
-                        {{end}}
-                        <input type="file" name="image" class="form-control" accept="image/jpeg,image/png">
+                <div style="margin-bottom: 15px;">
+                    <label style="display: block; margin-bottom: 5px;">Foto (Opsional, max 1MB, JPEG/PNG)</label>
+                    {{if .Campaign.ImagePath}}
+                    <div style="margin-bottom: 10px; font-size: 14px;">
+                        <span style="background-color: var(--color-primary); padding: 3px 8px; border-radius: 4px;">Foto terlampir</span>
+                        <label style="margin-left: 10px; cursor: pointer;">
+                            <input type="checkbox" name="remove_image" id="remove_image"> Hapus foto saat ini
+                        </label>
                     </div>
+                    {{end}}
+                    <input type="file" name="image" accept="image/jpeg,image/png" style="width: 100%; padding: 8px; border-radius: 4px; background-color: var(--color-bg); color: var(--color-text); box-sizing: border-box;">
+                </div>
 
-                    <hr class="border-secondary my-4">
-                    <h5>Elemen Pesan</h5>
+                <hr style="border: 0; border-top: 1px solid #555; margin: 25px 0;">
+                <h3 style="margin-bottom: 15px;">Elemen Pesan</h3>
 
-                    <div class="mb-3 p-3 border border-secondary rounded">
-                        <div class="form-check form-switch mb-2">
-                            <input class="form-check-input" type="checkbox" checked disabled>
-                            <label class="form-check-label fw-bold">Customer Service (Wajib)</label>
-                        </div>
-                        <input type="text" name="cs_number" class="form-control" placeholder="Nomor E.164 atau link URL (cth: 62812...)" value="{{.Campaign.Elements.CSNumber}}" required>
+                <div style="margin-bottom: 15px; padding: 15px; border: 1px solid #555; border-radius: 6px; background-color: rgba(0,0,0,0.1);">
+                    <div style="margin-bottom: 10px;">
+                        <label style="font-weight: bold; cursor: pointer;">
+                            <input type="checkbox" name="cs_active" id="csCheck" {{if .Campaign.Elements.CSActive}}checked{{end}}> Customer Service
+                        </label>
                     </div>
+                    <input type="text" name="cs_number" id="csNum" placeholder="Nomor E.164 atau link URL (cth: 62812...)" style="width: 100%; padding: 10px; border-radius: 4px; border: 1px solid #555; background-color: var(--color-bg); color: var(--color-text); box-sizing: border-box;" value="{{.Campaign.Elements.CSNumber}}">
+                </div>
 
-                    <div class="mb-3 p-3 border border-secondary rounded">
-                        <div class="form-check form-switch mb-2">
-                            <input class="form-check-input" type="checkbox" name="link_web_active" id="linkWebCheck" {{if .Campaign.Elements.LinkWebActive}}checked{{end}}>
-                            <label class="form-check-label fw-bold">Link Web</label>
-                        </div>
-                        <input type="url" name="link_web_url" id="linkWebUrl" class="form-control" placeholder="https://..." value="{{.Campaign.Elements.LinkWebURL}}">
+                <div style="margin-bottom: 15px; padding: 15px; border: 1px solid #555; border-radius: 6px; background-color: rgba(0,0,0,0.1);">
+                    <div style="margin-bottom: 10px;">
+                        <label style="font-weight: bold; cursor: pointer;">
+                            <input type="checkbox" name="link_web_active" id="linkWebCheck" {{if .Campaign.Elements.LinkWebActive}}checked{{end}}> Link Web
+                        </label>
                     </div>
+                    <input type="url" name="link_web_url" id="linkWebUrl" placeholder="https://..." style="width: 100%; padding: 10px; border-radius: 4px; border: 1px solid #555; background-color: var(--color-bg); color: var(--color-text); box-sizing: border-box;" value="{{.Campaign.Elements.LinkWebURL}}">
+                </div>
 
-                    <div class="mb-3 p-3 border border-secondary rounded">
-                        <div class="form-check form-switch mb-2">
-                            <input class="form-check-input" type="checkbox" name="phone_active" id="phoneCheck" {{if .Campaign.Elements.PhoneActive}}checked{{end}}>
-                            <label class="form-check-label fw-bold">Nomor Telepon</label>
-                        </div>
-                        <input type="text" name="phone_number" id="phoneNum" class="form-control" placeholder="62812..." value="{{.Campaign.Elements.PhoneNumber}}">
+                <div style="margin-bottom: 15px; padding: 15px; border: 1px solid #555; border-radius: 6px; background-color: rgba(0,0,0,0.1);">
+                    <div style="margin-bottom: 10px;">
+                        <label style="font-weight: bold; cursor: pointer;">
+                            <input type="checkbox" name="phone_active" id="phoneCheck" {{if .Campaign.Elements.PhoneActive}}checked{{end}}> Nomor Telepon
+                        </label>
                     </div>
+                    <input type="text" name="phone_number" id="phoneNum" placeholder="62812..." style="width: 100%; padding: 10px; border-radius: 4px; border: 1px solid #555; background-color: var(--color-bg); color: var(--color-text); box-sizing: border-box;" value="{{.Campaign.Elements.PhoneNumber}}">
+                </div>
 
-                    <div class="mb-3 p-3 border border-secondary rounded">
-                        <div class="form-check form-switch mb-2">
-                            <input class="form-check-input" type="checkbox" name="promo_active" id="promoCheck" {{if .Campaign.Elements.PromoActive}}checked{{end}}>
-                            <label class="form-check-label fw-bold">Klaim Promo</label>
-                        </div>
-                        <input type="text" name="promo_code" id="promoCode" class="form-control mb-2" placeholder="Kode Promo" value="{{.Campaign.Elements.PromoCode}}">
-                        <input type="url" name="promo_url" id="promoUrl" class="form-control" placeholder="https://... (URL Tujuan)" value="{{.Campaign.Elements.PromoURL}}">
+                <div style="margin-bottom: 15px; padding: 15px; border: 1px solid #555; border-radius: 6px; background-color: rgba(0,0,0,0.1);">
+                    <div style="margin-bottom: 10px;">
+                        <label style="font-weight: bold; cursor: pointer;">
+                            <input type="checkbox" name="promo_active" id="promoCheck" {{if .Campaign.Elements.PromoActive}}checked{{end}}> Klaim Promo
+                        </label>
                     </div>
+                    <input type="text" name="promo_code" id="promoCode" placeholder="Kode Promo (cth: DISKON50)" style="width: 100%; padding: 10px; margin-bottom: 10px; border-radius: 4px; border: 1px solid #555; background-color: var(--color-bg); color: var(--color-text); box-sizing: border-box;" value="{{.Campaign.Elements.PromoCode}}">
+                    <input type="url" name="promo_url" id="promoUrl" placeholder="https://... (URL Tujuan)" style="width: 100%; padding: 10px; border-radius: 4px; border: 1px solid #555; background-color: var(--color-bg); color: var(--color-text); box-sizing: border-box;" value="{{.Campaign.Elements.PromoURL}}">
+                </div>
 
-                    <div class="mt-4">
-                        <button type="submit" class="btn btn-primary w-100 mb-2">Simpan Campaign</button>
-                        <button type="button" id="btnPreview" class="btn btn-outline-info w-100">Pratinjau (Preview)</button>
-                    </div>
-                </form>
-            </div>
+                <div style="display: flex; gap: 10px; margin-top: 25px;">
+                    <button type="submit" style="flex: 1; padding: 12px; background-color: var(--color-primary); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; font-weight: bold;">Simpan Campaign</button>
+                    <button type="button" id="btnPreview" style="padding: 12px 20px; background-color: #555; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px;">Refresh Preview</button>
+                </div>
+            </form>
         </div>
         
-        <div class="col-md-5 mt-4 mt-md-0">
-            <div class="card shadow-sm bg-card sticky-top" style="top: 20px;">
-                <div class="card-header bg-dark border-bottom border-secondary">
-                    <h5 class="mb-0">Preview</h5>
+        <!-- PREVIEW SECTION -->
+        <div style="flex: 0 0 350px;">
+            <div style="background-color: #d8c3ad; border-radius: 12px; overflow: hidden; position: sticky; top: 20px; box-shadow: 0 10px 20px rgba(0,0,0,0.3); border: 8px solid #222;">
+                <!-- Phone Header -->
+                <div style="background-color: #075e54; color: white; padding: 15px; font-weight: bold; display: flex; align-items: center;">
+                    <div style="width: 32px; height: 32px; background-color: #fff; border-radius: 50%; margin-right: 12px; display: flex; align-items: center; justify-content: center; color: #075e54;">GB</div>
+                    <div>GO BLAST</div>
                 </div>
-                <div class="card-body p-0">
-                    <iframe id="previewFrame" style="width: 100%; height: 600px; border: none; border-radius: 0 0 8px 8px; background: #e5ddd5;"></iframe>
+                
+                <!-- Chat Area -->
+                <div style="background-image: url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png'); height: 500px; padding: 15px; overflow-y: auto;">
+                    <iframe id="previewFrame" style="width: 100%; height: 100%; border: none; background: transparent;"></iframe>
                 </div>
-                <div class="card-footer text-center text-muted small border-top border-secondary bg-dark">
-                    Simulasi, bukan jaminan tampilan di HP penerima.
+                
+                <!-- Chat Input Dummy -->
+                <div style="background-color: #f0f0f0; padding: 10px; display: flex; gap: 10px;">
+                    <div style="flex: 1; background-color: white; border-radius: 20px; padding: 10px 15px; color: #999;">Ketik pesan</div>
+                    <div style="width: 40px; height: 40px; background-color: #00a884; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white;">➤</div>
                 </div>
+            </div>
+            <div style="text-align: center; margin-top: 10px; font-size: 12px; color: #999;">
+                Simulasi tampilan (bukan jaminan hasil asli)
             </div>
         </div>
     </div>
@@ -102,7 +115,6 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    // Toggle inputs based on switches
     function toggleInputs(checkId, ...inputIds) {
         const check = document.getElementById(checkId);
         const inputs = inputIds.map(id => document.getElementById(id));
@@ -111,6 +123,7 @@ document.addEventListener('DOMContentLoaded', function() {
             inputs.forEach(input => {
                 input.disabled = !check.checked;
                 if(!check.checked) input.value = '';
+                input.style.opacity = check.checked ? '1' : '0.4';
             });
         }
         
@@ -118,12 +131,12 @@ document.addEventListener('DOMContentLoaded', function() {
         update();
     }
 
+    toggleInputs('csCheck', 'csNum');
     toggleInputs('linkWebCheck', 'linkWebUrl');
     toggleInputs('phoneCheck', 'phoneNum');
     toggleInputs('promoCheck', 'promoCode', 'promoUrl');
 
-    // Preview
-    document.getElementById('btnPreview').addEventListener('click', function() {
+    function loadPreview() {
         const form = document.getElementById('campaignForm');
         const formData = new FormData(form);
         
@@ -136,11 +149,29 @@ document.addEventListener('DOMContentLoaded', function() {
             const frame = document.getElementById('previewFrame');
             const doc = frame.contentWindow.document;
             doc.open();
+            // Reset background color of preview to transparent to blend with phone wallpaper
+            html = html.replace('background-color: #e5ddd5;', 'background-color: transparent;');
+            html = html.replace('padding: 20px;', 'padding: 0; padding-bottom: 20px;');
             doc.write(html);
             doc.close();
         })
-        .catch(err => alert("Gagal memuat preview: " + err));
+        .catch(err => console.error("Gagal memuat preview: " + err));
+    }
+
+    document.getElementById('btnPreview').addEventListener('click', loadPreview);
+    
+    // Auto load preview on form changes (with debounce)
+    let timeout = null;
+    const inputs = document.querySelectorAll('#campaignForm input, #campaignForm textarea, #campaignForm select');
+    inputs.forEach(input => {
+        input.addEventListener('input', () => {
+            clearTimeout(timeout);
+            timeout = setTimeout(loadPreview, 800);
+        });
     });
+
+    // Initial load
+    loadPreview();
 });
 </script>
 {{end}}

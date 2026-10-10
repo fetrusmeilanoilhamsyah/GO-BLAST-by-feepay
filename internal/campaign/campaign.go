@@ -64,19 +64,14 @@ func ValidateTemplate(body string, mode string, elements Elements) error {
 	if len(body) > 1000 {
 		return errors.New("body pesan tidak boleh lebih dari 1000 karakter")
 	}
-	if !strings.Contains(body, "FEEPAY") {
-		return errors.New("body pesan harus memuat kata FEEPAY")
-	}
-
-	if !elements.CSActive {
-		return errors.New("elemen CS wajib aktif")
-	}
-	if elements.CSNumber == "" {
-		return errors.New("nomor/link CS wajib diisi")
-	}
-	if strings.HasPrefix(elements.CSNumber, "http") {
-		if err := checkURL(elements.CSNumber); err != nil {
-			return fmt.Errorf("link CS tidak valid: %w", err)
+	if elements.CSActive {
+		if elements.CSNumber == "" {
+			return errors.New("nomor/link CS wajib diisi")
+		}
+		if strings.HasPrefix(elements.CSNumber, "http") {
+			if err := checkURL(elements.CSNumber); err != nil {
+				return fmt.Errorf("link CS tidak valid: %w", err)
+			}
 		}
 	}
 

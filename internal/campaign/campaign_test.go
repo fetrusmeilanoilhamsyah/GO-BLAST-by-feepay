@@ -34,23 +34,23 @@ func TestValidateTemplate(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "Missing FEEPAY",
+			name: "Missing FEEPAY (now valid)",
 			body: "Halo ini pesan biasa",
 			mode: ModeKartuLink,
 			elements: Elements{
 				CSActive: true,
 				CSNumber: "62812",
 			},
-			wantErr: true,
+			wantErr: false,
 		},
 		{
-			name: "CS inactive",
+			name: "CS inactive (now valid)",
 			body: "FEEPAY promo",
 			mode: ModeKartuLink,
 			elements: Elements{
 				CSActive: false,
 			},
-			wantErr: true,
+			wantErr: false,
 		},
 		{
 			name: "Body too long",

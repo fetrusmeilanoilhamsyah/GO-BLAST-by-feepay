@@ -36,9 +36,19 @@ func (s *Server) HandleAdminCampaigns(w http.ResponseWriter, r *http.Request) {
 		campaigns = append(campaigns, c)
 	}
 
+	user, _ := r.Context().Value(userContextKey).(UserSession)
+	lang := user.Language
+	if lang == "" {
+		lang = "id"
+	}
+	
 	data := struct {
-		Campaigns []campaign.Campaign
+		Lang           string
+		Title          string
+		Campaigns      []campaign.Campaign
 	}{
+		Lang:      lang,
+		Title:     "Campaigns - GO BLAST",
 		Campaigns: campaigns,
 	}
 
@@ -58,10 +68,28 @@ func (s *Server) HandleAdminCampaignNewGET(w http.ResponseWriter, r *http.Reques
 		}
 	}
 
+	user, _ := r.Context().Value(userContextKey).(UserSession)
+	lang := user.Language
+	if lang == "" {
+		lang = "id"
+	}
+	
+	csrfCookie, _ := r.Cookie("gb_csrf")
+	csrfToken := ""
+	if csrfCookie != nil {
+		csrfToken = csrfCookie.Value
+	}
+	
 	data := struct {
-		Campaign campaign.Campaign
+		Lang        string
+		Title       string
+		CSRFToken   string
+		Campaign    campaign.Campaign
 		DefaultMode string
 	}{
+		Lang:      lang,
+		Title:     "Buat Campaign Baru - GO BLAST",
+		CSRFToken: csrfToken,
 		Campaign: campaign.Campaign{
 			Elements: campaign.Elements{
 				CSActive: true,
@@ -91,7 +119,7 @@ func (s *Server) HandleAdminCampaignNewPOST(w http.ResponseWriter, r *http.Reque
 	body := r.FormValue("body")
 	
 	elements := campaign.Elements{
-		CSActive:      true,
+		CSActive:      r.FormValue("cs_active") == "on",
 		CSNumber:      r.FormValue("cs_number"),
 		LinkWebActive: r.FormValue("link_web_active") == "on",
 		LinkWebURL:    r.FormValue("link_web_url"),
@@ -145,7 +173,7 @@ func (s *Server) HandleAdminCampaignNewPOST(w http.ResponseWriter, r *http.Reque
 	}
 
 	elementsJSON, _ := json.Marshal(elements)
-	user, _ := r.Context().Value(userContextKey).(*UserSession)
+	user, _ := r.Context().Value(userContextKey).(UserSession)
 	userID := user.ID
 
 	_, err = s.DB.Pool.Exec(r.Context(), `
@@ -187,10 +215,28 @@ func (s *Server) HandleAdminCampaignEditGET(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	user, _ := r.Context().Value(userContextKey).(UserSession)
+	lang := user.Language
+	if lang == "" {
+		lang = "id"
+	}
+	
+	csrfCookie, _ := r.Cookie("gb_csrf")
+	csrfToken := ""
+	if csrfCookie != nil {
+		csrfToken = csrfCookie.Value
+	}
+	
 	data := struct {
-		Campaign campaign.Campaign
+		Lang      string
+		Title     string
+		CSRFToken string
+		Campaign  campaign.Campaign
 	}{
-		Campaign: c,
+		Lang:      lang,
+		Title:     "Edit Campaign - GO BLAST",
+		CSRFToken: csrfToken,
+		Campaign:  c,
 	}
 
 	s.Tmpl["admin_campaign_form.html"].ExecuteTemplate(w, "base.html", data)
@@ -229,7 +275,7 @@ func (s *Server) HandleAdminCampaignEditPOST(w http.ResponseWriter, r *http.Requ
 	body := r.FormValue("body")
 	
 	elements := campaign.Elements{
-		CSActive:      true,
+		CSActive:      r.FormValue("cs_active") == "on",
 		CSNumber:      r.FormValue("cs_number"),
 		LinkWebActive: r.FormValue("link_web_active") == "on",
 		LinkWebURL:    r.FormValue("link_web_url"),
@@ -315,7 +361,7 @@ func (s *Server) HandleAdminCampaignPreview(w http.ResponseWriter, r *http.Reque
 	body := r.FormValue("body")
 	
 	elements := campaign.Elements{
-		CSActive:      true,
+		CSActive:      r.FormValue("cs_active") == "on",
 		CSNumber:      r.FormValue("cs_number"),
 		LinkWebActive: r.FormValue("link_web_active") == "on",
 		LinkWebURL:    r.FormValue("link_web_url"),

@@ -1,52 +1,50 @@
 {{define "content"}}
-<div class="container mt-4">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h2>Campaigns</h2>
-        <a href="/admin/campaigns/new" class="btn btn-primary">Buat Campaign</a>
+<div style="max-width: 1200px; margin: 0 auto; padding: 20px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <h2>Daftar Campaign</h2>
+        <a href="/admin/campaigns/new" style="background-color: var(--color-primary); color: white; padding: 10px 15px; border-radius: 4px; font-weight: bold; text-decoration: none;">+ Buat Campaign</a>
     </div>
 
-    <div class="card p-3 shadow-sm bg-card">
-        <div class="table-responsive">
-            <table class="table table-dark table-hover mb-0">
-                <thead>
-                    <tr>
-                        <th>ID</th>
-                        <th>Nama</th>
-                        <th>Status</th>
-                        <th>Mode</th>
-                        <th>Dibuat</th>
-                        <th>Aksi</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {{range .Campaigns}}
-                    <tr>
-                        <td>{{.ID}}</td>
-                        <td>{{.Name}}</td>
-                        <td>
-                            <span class="badge {{if eq .Status "draf"}}bg-secondary{{else if eq .Status "berjalan"}}bg-primary{{else}}bg-success{{end}}">
-                                {{.Status}}
-                            </span>
-                        </td>
-                        <td>{{.ButtonMode}}</td>
-                        <td>{{.CreatedAt.Format "2006-01-02 15:04"}}</td>
-                        <td>
-                            {{if eq .Status "draf"}}
-                            <a href="/admin/campaigns/{{.ID}}/edit" class="btn btn-sm btn-outline-info">Edit</a>
-                            <a href="/admin/campaigns/{{.ID}}/numbers" class="btn btn-sm btn-outline-warning">Nomor</a>
-                            {{else}}
-                            <a href="/admin/campaigns/{{.ID}}/numbers" class="btn btn-sm btn-outline-secondary">Laporan</a>
-                            {{end}}
-                        </td>
-                    </tr>
-                    {{else}}
-                    <tr>
-                        <td colspan="6" class="text-center text-muted">Belum ada campaign</td>
-                    </tr>
-                    {{end}}
-                </tbody>
-            </table>
-        </div>
+    <div style="background-color: var(--color-card); border-radius: 8px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+        <table style="width: 100%; border-collapse: collapse; text-align: left;">
+            <thead style="background-color: rgba(0,0,0,0.2);">
+                <tr>
+                    <th style="padding: 15px; border-bottom: 1px solid #555;">ID</th>
+                    <th style="padding: 15px; border-bottom: 1px solid #555;">Nama</th>
+                    <th style="padding: 15px; border-bottom: 1px solid #555;">Status</th>
+                    <th style="padding: 15px; border-bottom: 1px solid #555;">Mode</th>
+                    <th style="padding: 15px; border-bottom: 1px solid #555;">Dibuat</th>
+                    <th style="padding: 15px; border-bottom: 1px solid #555;">Aksi</th>
+                </tr>
+            </thead>
+            <tbody>
+                {{range .Campaigns}}
+                <tr style="border-bottom: 1px solid #444;">
+                    <td style="padding: 15px;">#{{.ID}}</td>
+                    <td style="padding: 15px; font-weight: bold;">{{.Name}}</td>
+                    <td style="padding: 15px;">
+                        <span style="padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: bold; color: white; background-color: {{if eq .Status "draf"}}#757575{{else if eq .Status "berjalan"}}#1976d2{{else}}#388e3c{{end}};">
+                            {{.Status}}
+                        </span>
+                    </td>
+                    <td style="padding: 15px;">{{if eq .ButtonMode "kartu_link"}}Kartu Link{{else}}Tombol Asli{{end}}</td>
+                    <td style="padding: 15px;">{{.CreatedAt.Format "02 Jan 06 15:04"}}</td>
+                    <td style="padding: 15px;">
+                        {{if eq .Status "draf"}}
+                        <a href="/admin/campaigns/{{.ID}}/edit" style="color: var(--color-accent); margin-right: 10px; text-decoration: none;">✏️ Edit</a>
+                        <a href="/admin/campaigns/{{.ID}}/numbers" style="color: #ff9800; text-decoration: none;">📝 Nomor</a>
+                        {{else}}
+                        <a href="/admin/campaigns/{{.ID}}/numbers" style="color: #aaa; text-decoration: none;">📊 Laporan</a>
+                        {{end}}
+                    </td>
+                </tr>
+                {{else}}
+                <tr>
+                    <td colspan="6" style="padding: 30px; text-align: center; color: #888;">Belum ada campaign. Silakan buat baru.</td>
+                </tr>
+                {{end}}
+            </tbody>
+        </table>
     </div>
 </div>
 {{end}}
