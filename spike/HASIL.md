@@ -14,12 +14,13 @@ Isi bagian yang kosong ("diisi pemilik") sesuai hasil pengamatan langsung pada H
 | Kirim teks biasa | Jalankan `go run . send-text <nomor> <pesan>` | Teks berhasil tampil di HP penerima | pemilik |
 | Pesan NativeFlow (Tombol) di Android | Jalankan `go run . send-buttons <nomor>` | Tombol/pesan tidak muncul sama sekali di layar chat | pemilik |
 | Pesan NativeFlow (Tombol) di iPhone | Jalankan `go run . send-buttons <nomor>` | Tombol/pesan tidak muncul sama sekali di layar chat | pemilik |
-| Pesan Kartu (Link) di Android | Jalankan `go run . send-card <nomor>` | Muncul kotak abu-abu dengan judul, link, dan preview. Rapi. | pemilik |
-| Pesan Kartu (Link) di iPhone | Jalankan `go run . send-card <nomor>` | Muncul kotak abu-abu dengan judul, link, dan preview. Rapi. | pemilik |
-| Receipt Server (Centang 1) | Observasi log console | Muncul di log sebagai `events.Receipt` bertipe `Sender` | AI (berdasar log/dokumentasi) |
-| Receipt HP (Centang 2) | Observasi log console | Muncul di log sebagai `events.Receipt` bertipe `Delivered` | AI (berdasar log/dokumentasi) |
+| Pesan Kartu (Link) di Android | Jalankan `go run . send-card <nomor>` | Judul + deskripsi + domain tampil, tanpa gambar. Perlu JPEGThumbnail. | pemilik |
+| Pesan Kartu (Link) di iPhone | Jalankan `go run . send-card <nomor>` | Judul + deskripsi + domain tampil, tanpa gambar. Perlu JPEGThumbnail. | pemilik |
+| Pesan Template Lama | Jalankan `go run . send-template <nomor>` | Dugaan: TemplateMessage lama memicu pencabutan perangkat (LoggedOut) | pemilik |
+| Receipt Server (Centang 1) & Baca | Observasi log console | Muncul receipt Sender dan Read | pemilik |
+| Receipt HP (Centang 2) | Observasi log console | (sudah tercover di atas) | pemilik |
 | Putus koneksi manual (Restart) | Tekan Ctrl+C saat program jalan | | diisi pemilik |
-| Dikeluarkan dari HP pekerja | Logout via HP Linked Devices | | diisi pemilik |
+| Dikeluarkan dari HP pekerja | Logout via HP Linked Devices | Terjadi (event LoggedOut muncul, sesi terhapus, harus pair ulang) | pemilik |
 | Hapus sesi (Logout) | Jalankan `go run . logout` | | diisi pemilik |
 
 ## 2. Penyelidikan whatsmeow berdasarkan Dokumentasi & Kode

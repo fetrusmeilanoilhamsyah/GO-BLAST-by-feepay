@@ -25,7 +25,7 @@ func main() {
 	godotenv.Load()
 	
 	if len(os.Args) < 2 {
-		fmt.Println("Gunakan sub-perintah: pair-code, pair-qr, send-text, send-image, check, send-buttons, send-card, status, logout")
+		fmt.Println("Gunakan sub-perintah: pair-code, pair-qr, send-text, send-image, check, send-buttons, send-template, send-card, status, logout")
 		return
 	}
 
@@ -58,6 +58,7 @@ func main() {
 			fmt.Printf("Status receipt untuk %v ke %v: %v\n", v.MessageIDs, v.Chat, v.Type)
 		case *events.LoggedOut:
 			fmt.Println("Sesi dikeluarkan dari WhatsApp.")
+			os.Exit(1)
 		case *events.Disconnected:
 			fmt.Println("Koneksi terputus.")
 		case *events.Connected:
@@ -227,13 +228,24 @@ func main() {
 		}
 		target := parseJID(os.Args[2])
 		
+		var thumbBytes []byte
+		if b, err := os.ReadFile("thumb.jpg"); err == nil {
+			thumbBytes = b
+		} else {
+			fmt.Println("Peringatan: thumb.jpg tidak ditemukan, gambar preview mungkin tidak tampil maksimal.")
+		}
+
+		linkURL := "https://feepay.web.id"
+		textMsg := fmt.Sprintf("Halo Kak, promo hari ini sedang berlangsung. Untuk info lebih lengkap, silakan klik tautan di bawah ini ya:\n%s", linkURL)
+
 		msg := &waProto.Message{
 			ExtendedTextMessage: &waProto.ExtendedTextMessage{
-				Text: proto.String("Pesan berformat kartu dengan link: https://feepay.web.id"),
+				Text: proto.String(textMsg),
 				Title: proto.String("GO BLAST by FEEPAY"),
 				Description: proto.String("Klik link untuk mengunjungi website kami."),
-				MatchedText: proto.String("https://feepay.web.id"),
+				MatchedText: proto.String(linkURL),
 				PreviewType: waProto.ExtendedTextMessage_NONE.Enum(),
+				JPEGThumbnail: thumbBytes,
 			},
 		}
 		resp, err := client.SendMessage(context.Background(), target, msg)

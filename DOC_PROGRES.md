@@ -10,8 +10,8 @@ Nomor tahap mengacu ke tabel "Daftar Tahap" di bawah.
 ## Posisi sekarang
 
 - **Fase**: 0 (persiapan dokumen)
-- **Terakhir dikerjakan**: Tahap 3 selesai (Program spike whatsmeow dibuat dan HASIL.md disiapkan. Uji langsung diserahkan ke pemilik).
-- **Lanjut dari sini**: Tahap 4 (Kerangka proyek Go, konfigurasi, i18n, tema).
+- **Terakhir dikerjakan**: Tahap 3 (Revisi implementasi send-card dengan JPEGThumbnail).
+- **Lanjut dari sini**: Lakukan uji ulang send-card oleh pemilik, konfirmasi hasil, lalu lanjut Tahap 4.
 - **Blocker**: tidak ada. Keputusan terbuka belum menghalangi Tahap 4.
 
 ---
@@ -39,7 +39,7 @@ Daftar resmi. Agen hanya boleh mengubah kolom Status, dan hanya untuk tahap yang
 | 0 | Orientasi dan cek lingkungan | Selesai |
 | 1 | Rapikan DOC_KONSEP (dikerjakan di sesi rapat, hasilnya DOC_KONSEP versi 2) | Selesai |
 | 2 | Repo git dan DOC_SECURITY_DEPLOY | Selesai |
-| 3 | Uji kelayakan whatsmeow (spike) | Selesai |
+| 3 | Uji kelayakan whatsmeow (spike) | Belum selesai |
 | 4 | Kerangka proyek Go, konfigurasi, i18n, tema | Belum |
 | 5 | Skema database dan migrasi | Belum |
 | 6 | Autentikasi admin dan pekerja | Belum |
