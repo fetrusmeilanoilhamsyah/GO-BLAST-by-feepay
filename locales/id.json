@@ -4,5 +4,15 @@
   "common.login": "Masuk",
   "common.logout": "Keluar",
   "common.save": "Simpan",
-  "common.select_language": "Pilih bahasa:"
+  "common.select_language": "Pilih bahasa:",
+  "auth.login_title": "Masuk ke Akun Anda",
+  "auth.register_title": "Daftar sebagai Pekerja",
+  "auth.email": "Alamat Email",
+  "auth.password": "Kata Sandi",
+  "auth.password_hint": "Minimal 10 karakter",
+  "auth.login_btn": "Masuk",
+  "auth.register_btn": "Daftar",
+  "auth.to_register": "Belum punya akun? Daftar di sini",
+  "auth.to_login": "Sudah punya akun? Masuk di sini",
+  "auth.referral_code": "Kode Referral (Opsional)"
 }

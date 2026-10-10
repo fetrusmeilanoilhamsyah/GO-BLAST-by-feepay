@@ -1,4 +1,4 @@
-# DOC_PROGRES
+﻿# DOC_PROGRES
 
 Catatan posisi kerja. Diperbarui di akhir setiap tugas, oleh manusia atau AI agent.
 
@@ -10,11 +10,14 @@ Nomor tahap mengacu ke tabel "Daftar Tahap" di bawah.
 ## Posisi sekarang
 
 - **Fase**: 1 (MVP)
-- **Terakhir dikerjakan**: Tahap 5 selesai (Skema database, migrasi, seed, DOC_SKEMA, dan test).
-- **Lanjut dari sini**: Tahap 6 (Autentikasi admin dan pekerja).
+- **Terakhir dikerjakan**: Tahap 6 selesai (Autentikasi admin dan pekerja).
+- **Lanjut dari sini**: Tahap 7 (Upload nomor, normalisasi, duplikat per campaign).
 - **Blocker**: tidak ada.
 
 ---
+
+## TODO / Perlu Keputusan
+- Terkait keputusan terbuka #4: Saat ini form pendaftaran pekerja tidak memuat pilihan mata uang. Kolom currency pada tabel `users` dibuat konstan `IDR` saat pendaftaran. Menunggu keputusan final pemilik proyek apakah mata uang dipilih saat pendaftaran.
 
 ## Persiapan
 
@@ -42,7 +45,7 @@ Daftar resmi. Agen hanya boleh mengubah kolom Status, dan hanya untuk tahap yang
 | 3 | Uji kelayakan whatsmeow (spike) | Selesai |
 | 4 | Kerangka proyek Go, konfigurasi, i18n, tema | Selesai |
 | 5 | Skema database dan migrasi | Selesai |
-| 6 | Autentikasi admin dan pekerja | Belum |
+| 6 | Autentikasi admin dan pekerja | Selesai |
 | 7 | Upload nomor, normalisasi, duplikat per campaign | Belum |
 | 8 | Template dan campaign | Belum |
 | 9 | Pengelola sesi WhatsApp | Belum |
@@ -109,6 +112,7 @@ Hasil uji dan hal yang ditemukan saat bekerja. Terbaru di atas.
 
 Terbaru di atas. Format: `tanggal: ringkasan satu baris`.
 
+- 2026-10-11: Tahap 6 selesai (Autentikasi admin dan pekerja, form daftar, middleware rate limit & CSRF, tes auth, dan command createadmin).
 - 2026-10-11: Tahap 5 selesai (Skema database, migrasi, seed, DOC_SKEMA, dan test validasi skema constraint selesai).
 - 2026-10-11: Koreksi Tahap 4 dan 2: gofmt, perbaikan validasi lang+cookie Lax, teks i18n di index.html, dan pembaruan DOC_SECURITY_DEPLOY sesuai hasil rapat.
 

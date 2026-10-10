@@ -147,7 +147,7 @@ func TestSchemaConstraints(t *testing.T) {
 
 	t.Run("d) penarikan melebihi saldo gagal", func(t *testing.T) {
 		// worker1 has 100 + 50 = 150 IDR currently.
-		
+
 		// Withdraw 100 should succeed
 		_, err := pool.Exec(ctx, "INSERT INTO ledger_entries (user_id, kind, currency, amount) VALUES ($1, 'penarikan', 'IDR', -100)", worker1ID)
 		if err != nil {

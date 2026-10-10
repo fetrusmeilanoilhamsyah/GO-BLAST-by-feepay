@@ -5,5 +5,15 @@
   "common.login": "Login",
   "common.logout": "Logout",
   "common.save": "Save",
-  "common.select_language": "Select language:"
+  "common.select_language": "Select language:",
+  "auth.login_title": "Log in to your account",
+  "auth.register_title": "Register as a Worker",
+  "auth.email": "Email Address",
+  "auth.password": "Password",
+  "auth.password_hint": "Minimum 10 characters",
+  "auth.login_btn": "Log in",
+  "auth.register_btn": "Register",
+  "auth.to_register": "Don't have an account? Register here",
+  "auth.to_login": "Already have an account? Log in here",
+  "auth.referral_code": "Referral Code (Optional)"
 }

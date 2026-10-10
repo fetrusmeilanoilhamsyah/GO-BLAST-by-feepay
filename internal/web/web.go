@@ -14,12 +14,15 @@ import (
 type Server struct {
 	DB   *db.DB
 	Tmpl *template.Template
+	Env  string
 }
 
-func NewServer(database *db.DB) (*Server, error) {
+func NewServer(database *db.DB, env string) (*Server, error) {
 	tmpl, err := template.ParseFiles(
 		filepath.Join("web", "templates", "base.html"),
 		filepath.Join("web", "templates", "index.html"),
+		filepath.Join("web", "templates", "login.html"),
+		filepath.Join("web", "templates", "register.html"),
 	)
 	if err != nil {
 		return nil, err
@@ -28,6 +31,7 @@ func NewServer(database *db.DB) (*Server, error) {
 	return &Server{
 		DB:   database,
 		Tmpl: tmpl,
+		Env:  env,
 	}, nil
 }
 
@@ -37,7 +41,14 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.Handle("/static/", http.StripPrefix("/static/", staticHandler))
 
 	mux.HandleFunc("/healthz", s.handleHealthz)
-	mux.HandleFunc("/", s.handleIndex)
+
+	mux.Handle("/", s.CSRFMiddleware(http.HandlerFunc(s.handleIndex)))
+	mux.Handle("/login", s.CSRFMiddleware(RateLimitLogin(s.handleLogin)))
+	mux.Handle("/register", s.CSRFMiddleware(RateLimitRegister(s.handleRegister)))
+
+	mux.Handle("/logout", s.CSRFMiddleware(s.RequireRole(s.handleLogout, "admin", "worker")))
+	mux.Handle("/admin", s.CSRFMiddleware(s.RequireRole(s.handleAdminHome, "admin")))
+	mux.Handle("/worker", s.CSRFMiddleware(s.RequireRole(s.handleWorkerHome, "worker")))
 }
 
 func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
