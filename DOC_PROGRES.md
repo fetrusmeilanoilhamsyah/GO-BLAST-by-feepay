@@ -10,8 +10,8 @@ Nomor tahap mengacu ke tabel "Daftar Tahap" di bawah.
 ## Posisi sekarang
 
 - **Fase**: 1 (MVP)
-- **Terakhir dikerjakan**: Tahap 7 selesai (Upload nomor, normalisasi, duplikat per campaign).
-- **Lanjut dari sini**: Tahap 8 (Template dan campaign).
+- **Terakhir dikerjakan**: Tahap 8 selesai (Template dan campaign).
+- **Lanjut dari sini**: Tahap 9 (Pengelola sesi WhatsApp).
 - **Blocker**: tidak ada.
 
 ---
@@ -48,7 +48,7 @@ Daftar resmi. Agen hanya boleh mengubah kolom Status, dan hanya untuk tahap yang
 | 5 | Skema database dan migrasi | Selesai |
 | 6 | Autentikasi admin dan pekerja | Selesai |
 | 7 | Upload nomor, normalisasi, duplikat per campaign | Selesai |
-| 8 | Template dan campaign | Belum |
+| 8 | Template dan campaign | Selesai |
 | 9 | Pengelola sesi WhatsApp | Belum |
 | 10 | Mesin kirim: klaim nomor, kecepatan, buku besar | Belum |
 | 11 | Panel pekerja | Belum |
@@ -87,6 +87,7 @@ Terbaru di atas. Agen menambah baris di sini setiap ada keputusan baru, dari pem
 | Tanggal | Keputusan | Alasan | Oleh |
 |---|---|---|---|
 | 2026-10-11 | Nilai i18n Select Language disisipkan lewat data struct saat render template | Lebih aman dan simpel tanpa menyuntikkan template.FuncMap secara dinamis | agen |
+| 2026-10-11 | Mode bawaan `kartu_link` untuk form campaign diambil dari pengaturan DB, tapi tidak memaksakan DB query error jika key tidak ada | Menjamin UI fallback lancar walau settings kosong awal | agen |
 | 2026-10-10 | Mode bawaan template adalah `kartu_link` | Uji Tahap 3 membuktikan pesan tombol (`tombol_asli`) tidak tampil di aplikasi penerima karena pembatasan dari WhatsApp | agen dan pemilik |
 | 2026-10-10 | Nama produk GO BLAST, teks kecil "by feepay", tema gelap tosca ala go.dev | Identitas dan referensi tampilan yang disukai pemilik | pemilik |
 | 2026-10-10 | Upload nomor mendukung CSV, TXT, XLSX | Nomor dibersihkan dulu lewat botcv yang mengeluarkan format itu | pemilik |
@@ -113,6 +114,7 @@ Hasil uji dan hal yang ditemukan saat bekerja. Terbaru di atas.
 
 Terbaru di atas. Format: `tanggal: ringkasan satu baris`.
 
+- 2026-10-11: Tahap 8 selesai (Template dan campaign: list, form create/edit, preview, validation mode/url/image, logic Render format pesan).
 - 2026-10-11: Revisi aturan Tahap 7: Nomor tanpa awalan tidak lagi dianggap ambigu. Sistem langsung mem-parse (mendukung `49...` untuk Jerman, `1...` untuk US, dll) sesuai permintaan pemilik.
 - 2026-10-11: Tahap 7 selesai (Upload nomor, normalisasi E.164, filter duplikat per campaign, preview CSV, handler).
 - 2026-10-11: Menambahkan TODO untuk dompet di DOC_PROGRES.

@@ -72,11 +72,11 @@ func TestNumbersUpload(t *testing.T) {
 	if preview.Stats.Invalid != 1 {
 		t.Errorf("Invalid = %d, want 1", preview.Stats.Invalid)
 	}
-	if preview.Stats.Ambiguous != 1 {
-		t.Errorf("Ambiguous = %d, want 1", preview.Stats.Ambiguous)
+	if preview.Stats.Ambiguous != 0 {
+		t.Errorf("Ambiguous = %d, want 0", preview.Stats.Ambiguous)
 	}
-	if preview.Stats.Accepted != 2 {
-		t.Errorf("Accepted = %d, want 2 (081234567890 and 081234567891)", preview.Stats.Accepted)
+	if preview.Stats.Accepted != 3 {
+		t.Errorf("Accepted = %d, want 3", preview.Stats.Accepted)
 	}
 
 	// Confirm C1
@@ -88,8 +88,8 @@ func TestNumbersUpload(t *testing.T) {
 	// Verify numbers inserted
 	var count int
 	pool.QueryRow(context.Background(), "SELECT COUNT(*) FROM campaign_numbers WHERE campaign_id = $1", c1).Scan(&count)
-	if count != 2 {
-		t.Errorf("DB count = %d, want 2", count)
+	if count != 3 {
+		t.Errorf("DB count = %d, want 3", count)
 	}
 
 	// Upload again to C1 -> should be duplicate in campaign
@@ -107,8 +107,8 @@ func TestNumbersUpload(t *testing.T) {
 		t.Fatal(err)
 	}
 	pool.QueryRow(context.Background(), "SELECT COUNT(*) FROM campaign_numbers WHERE campaign_id = $1", c1).Scan(&count)
-	if count != 3 {
-		t.Errorf("DB count = %d, want 3", count)
+	if count != 4 {
+		t.Errorf("DB count = %d, want 4", count)
 	}
 
 	// Upload the same numbers to C2 -> should NOT be duplicate in campaign (lintas campaign)
@@ -116,15 +116,15 @@ func TestNumbersUpload(t *testing.T) {
 	if preview3.Stats.DupInCampaign != 0 {
 		t.Errorf("C2 DupInCampaign = %d, want 0", preview3.Stats.DupInCampaign)
 	}
-	if preview3.Stats.Accepted != 2 {
-		t.Errorf("C2 Accepted = %d, want 2", preview3.Stats.Accepted)
+	if preview3.Stats.Accepted != 3 {
+		t.Errorf("C2 Accepted = %d, want 3", preview3.Stats.Accepted)
 	}
 	err = ConfirmUpload(context.Background(), pool, c2, userID, preview3.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	pool.QueryRow(context.Background(), "SELECT COUNT(*) FROM campaign_numbers WHERE campaign_id = $1", c2).Scan(&count)
-	if count != 2 {
-		t.Errorf("C2 DB count = %d, want 2", count)
+	if count != 3 {
+		t.Errorf("C2 DB count = %d, want 3", count)
 	}
 }

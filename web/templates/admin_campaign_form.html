@@ -1,0 +1,146 @@
+{{define "content"}}
+<div class="container mt-4 pb-5">
+    <h2>{{if .Campaign.ID}}Edit Campaign{{else}}Buat Campaign Baru{{end}}</h2>
+    
+    <div class="row mt-4">
+        <div class="col-md-7">
+            <div class="card p-4 shadow-sm bg-card">
+                <form id="campaignForm" method="POST" enctype="multipart/form-data">
+                    <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Nama Campaign</label>
+                        <input type="text" name="name" class="form-control" value="{{.Campaign.Name}}" required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Mode Pesan</label>
+                        <select name="button_mode" class="form-select" id="modeSelect">
+                            <option value="kartu_link" {{if eq .Campaign.ButtonMode "kartu_link"}}selected{{end}}>Kartu Link (Aman)</option>
+                            <option value="tombol_asli" {{if eq .Campaign.ButtonMode "tombol_asli"}}selected{{end}}>Tombol Asli (Bisa tidak tampil)</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Teks Pesan (Wajib memuat kata FEEPAY, max 1000 karakter)</label>
+                        <textarea name="body" class="form-control" rows="5" maxlength="1000" required>{{.Campaign.Body}}</textarea>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Foto (Opsional, max 1MB, JPEG/PNG)</label>
+                        {{if .Campaign.ImagePath}}
+                        <div class="mb-2">
+                            <span class="badge bg-secondary">Foto sudah diunggah</span>
+                            <div class="form-check form-check-inline ms-2">
+                                <input class="form-check-input" type="checkbox" name="remove_image" id="remove_image">
+                                <label class="form-check-label" for="remove_image">Hapus foto</label>
+                            </div>
+                        </div>
+                        {{end}}
+                        <input type="file" name="image" class="form-control" accept="image/jpeg,image/png">
+                    </div>
+
+                    <hr class="border-secondary my-4">
+                    <h5>Elemen Pesan</h5>
+
+                    <div class="mb-3 p-3 border border-secondary rounded">
+                        <div class="form-check form-switch mb-2">
+                            <input class="form-check-input" type="checkbox" checked disabled>
+                            <label class="form-check-label fw-bold">Customer Service (Wajib)</label>
+                        </div>
+                        <input type="text" name="cs_number" class="form-control" placeholder="Nomor E.164 atau link URL (cth: 62812...)" value="{{.Campaign.Elements.CSNumber}}" required>
+                    </div>
+
+                    <div class="mb-3 p-3 border border-secondary rounded">
+                        <div class="form-check form-switch mb-2">
+                            <input class="form-check-input" type="checkbox" name="link_web_active" id="linkWebCheck" {{if .Campaign.Elements.LinkWebActive}}checked{{end}}>
+                            <label class="form-check-label fw-bold">Link Web</label>
+                        </div>
+                        <input type="url" name="link_web_url" id="linkWebUrl" class="form-control" placeholder="https://..." value="{{.Campaign.Elements.LinkWebURL}}">
+                    </div>
+
+                    <div class="mb-3 p-3 border border-secondary rounded">
+                        <div class="form-check form-switch mb-2">
+                            <input class="form-check-input" type="checkbox" name="phone_active" id="phoneCheck" {{if .Campaign.Elements.PhoneActive}}checked{{end}}>
+                            <label class="form-check-label fw-bold">Nomor Telepon</label>
+                        </div>
+                        <input type="text" name="phone_number" id="phoneNum" class="form-control" placeholder="62812..." value="{{.Campaign.Elements.PhoneNumber}}">
+                    </div>
+
+                    <div class="mb-3 p-3 border border-secondary rounded">
+                        <div class="form-check form-switch mb-2">
+                            <input class="form-check-input" type="checkbox" name="promo_active" id="promoCheck" {{if .Campaign.Elements.PromoActive}}checked{{end}}>
+                            <label class="form-check-label fw-bold">Klaim Promo</label>
+                        </div>
+                        <input type="text" name="promo_code" id="promoCode" class="form-control mb-2" placeholder="Kode Promo" value="{{.Campaign.Elements.PromoCode}}">
+                        <input type="url" name="promo_url" id="promoUrl" class="form-control" placeholder="https://... (URL Tujuan)" value="{{.Campaign.Elements.PromoURL}}">
+                    </div>
+
+                    <div class="mt-4">
+                        <button type="submit" class="btn btn-primary w-100 mb-2">Simpan Campaign</button>
+                        <button type="button" id="btnPreview" class="btn btn-outline-info w-100">Pratinjau (Preview)</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        
+        <div class="col-md-5 mt-4 mt-md-0">
+            <div class="card shadow-sm bg-card sticky-top" style="top: 20px;">
+                <div class="card-header bg-dark border-bottom border-secondary">
+                    <h5 class="mb-0">Preview</h5>
+                </div>
+                <div class="card-body p-0">
+                    <iframe id="previewFrame" style="width: 100%; height: 600px; border: none; border-radius: 0 0 8px 8px; background: #e5ddd5;"></iframe>
+                </div>
+                <div class="card-footer text-center text-muted small border-top border-secondary bg-dark">
+                    Simulasi, bukan jaminan tampilan di HP penerima.
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Toggle inputs based on switches
+    function toggleInputs(checkId, ...inputIds) {
+        const check = document.getElementById(checkId);
+        const inputs = inputIds.map(id => document.getElementById(id));
+        
+        function update() {
+            inputs.forEach(input => {
+                input.disabled = !check.checked;
+                if(!check.checked) input.value = '';
+            });
+        }
+        
+        check.addEventListener('change', update);
+        update();
+    }
+
+    toggleInputs('linkWebCheck', 'linkWebUrl');
+    toggleInputs('phoneCheck', 'phoneNum');
+    toggleInputs('promoCheck', 'promoCode', 'promoUrl');
+
+    // Preview
+    document.getElementById('btnPreview').addEventListener('click', function() {
+        const form = document.getElementById('campaignForm');
+        const formData = new FormData(form);
+        
+        fetch('/admin/campaigns/preview', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.text())
+        .then(html => {
+            const frame = document.getElementById('previewFrame');
+            const doc = frame.contentWindow.document;
+            doc.open();
+            doc.write(html);
+            doc.close();
+        })
+        .catch(err => alert("Gagal memuat preview: " + err));
+    });
+});
+</script>
+{{end}}

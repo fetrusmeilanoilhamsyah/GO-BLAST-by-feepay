@@ -1,0 +1,351 @@
+package web
+
+import (
+	"crypto/rand"
+	"encoding/hex"
+	"encoding/json"
+	"io"
+	"net/http"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+
+	"goblast/internal/campaign"
+)
+
+func (s *Server) HandleAdminCampaigns(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path != "/admin/campaigns" {
+		http.NotFound(w, r)
+		return
+	}
+
+	rows, err := s.DB.Pool.Query(r.Context(), "SELECT id, name, status, button_mode, created_at FROM campaigns ORDER BY id DESC")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var campaigns []campaign.Campaign
+	for rows.Next() {
+		var c campaign.Campaign
+		if err := rows.Scan(&c.ID, &c.Name, &c.Status, &c.ButtonMode, &c.CreatedAt); err != nil {
+			continue
+		}
+		campaigns = append(campaigns, c)
+	}
+
+	data := struct {
+		Campaigns []campaign.Campaign
+	}{
+		Campaigns: campaigns,
+	}
+
+	s.Tmpl["admin_campaigns.html"].ExecuteTemplate(w, "base.html", data)
+}
+
+func (s *Server) HandleAdminCampaignNewGET(w http.ResponseWriter, r *http.Request) {
+	// Retrieve default mode from settings
+	defaultMode := campaign.ModeKartuLink
+	var settingVal string
+	err := s.DB.Pool.QueryRow(r.Context(), "SELECT value FROM settings WHERE key = 'default_button_mode'").Scan(&settingVal)
+	if err == nil {
+		var val string
+		json.Unmarshal([]byte(settingVal), &val)
+		if val == campaign.ModeTombolAsli || val == campaign.ModeKartuLink {
+			defaultMode = val
+		}
+	}
+
+	data := struct {
+		Campaign campaign.Campaign
+		DefaultMode string
+	}{
+		Campaign: campaign.Campaign{
+			Elements: campaign.Elements{
+				CSActive: true,
+			},
+			ButtonMode: defaultMode,
+		},
+		DefaultMode: defaultMode,
+	}
+
+	s.Tmpl["admin_campaign_form.html"].ExecuteTemplate(w, "base.html", data)
+}
+
+func (s *Server) HandleAdminCampaignNewPOST(w http.ResponseWriter, r *http.Request) {
+	err := r.ParseMultipartForm(5 << 20) // 5 MB max memory
+	if err != nil {
+		http.Error(w, "Failed to parse form", http.StatusBadRequest)
+		return
+	}
+
+	name := r.FormValue("name")
+	if name == "" {
+		http.Error(w, "Nama campaign wajib diisi", http.StatusBadRequest)
+		return
+	}
+
+	mode := r.FormValue("button_mode")
+	body := r.FormValue("body")
+	
+	elements := campaign.Elements{
+		CSActive:      true,
+		CSNumber:      r.FormValue("cs_number"),
+		LinkWebActive: r.FormValue("link_web_active") == "on",
+		LinkWebURL:    r.FormValue("link_web_url"),
+		PhoneActive:   r.FormValue("phone_active") == "on",
+		PhoneNumber:   r.FormValue("phone_number"),
+		PromoActive:   r.FormValue("promo_active") == "on",
+		PromoCode:     r.FormValue("promo_code"),
+		PromoURL:      r.FormValue("promo_url"),
+	}
+
+	if err := campaign.ValidateTemplate(body, mode, elements); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	var imagePath *string
+	file, header, err := r.FormFile("image")
+	if err == nil {
+		defer file.Close()
+		if header.Size > 1<<20 {
+			http.Error(w, "Ukuran file maksimum 1 MB", http.StatusBadRequest)
+			return
+		}
+
+		buff := make([]byte, 512)
+		if _, err = file.Read(buff); err != nil {
+			http.Error(w, "Gagal membaca file", http.StatusInternalServerError)
+			return
+		}
+		fileType := http.DetectContentType(buff)
+		if fileType != "image/jpeg" && fileType != "image/png" {
+			http.Error(w, "Hanya menerima gambar JPEG atau PNG", http.StatusBadRequest)
+			return
+		}
+		file.Seek(0, io.SeekStart)
+
+		b := make([]byte, 16)
+		rand.Read(b)
+		filename := hex.EncodeToString(b) + filepath.Ext(header.Filename)
+		
+		os.MkdirAll("uploads", 0755)
+		fullPath := filepath.Join("uploads", filename)
+		out, err := os.Create(fullPath)
+		if err != nil {
+			http.Error(w, "Gagal menyimpan file", http.StatusInternalServerError)
+			return
+		}
+		defer out.Close()
+		io.Copy(out, file)
+		imagePath = &fullPath
+	}
+
+	elementsJSON, _ := json.Marshal(elements)
+	user, _ := r.Context().Value(userContextKey).(*UserSession)
+	userID := user.ID
+
+	_, err = s.DB.Pool.Exec(r.Context(), `
+		INSERT INTO campaigns (name, status, button_mode, body, image_path, elements, created_by)
+		VALUES ($1, 'draf', $2, $3, $4, $5, $6)
+	`, name, mode, body, imagePath, string(elementsJSON), userID)
+
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	http.Redirect(w, r, "/admin/campaigns", http.StatusSeeOther)
+}
+
+func (s *Server) HandleAdminCampaignEditGET(w http.ResponseWriter, r *http.Request) {
+	idStr := r.PathValue("id")
+	id, _ := strconv.ParseInt(idStr, 10, 64)
+
+	var c campaign.Campaign
+	var elJSON string
+	var imgPath *string
+	err := s.DB.Pool.QueryRow(r.Context(), "SELECT id, name, status, button_mode, body, image_path, elements FROM campaigns WHERE id = $1", id).Scan(
+		&c.ID, &c.Name, &c.Status, &c.ButtonMode, &c.Body, &imgPath, &elJSON)
+	
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	
+	if imgPath != nil {
+		c.ImagePath = *imgPath
+	}
+	
+	json.Unmarshal([]byte(elJSON), &c.Elements)
+
+	if c.Status != campaign.StatusDraf {
+		http.Error(w, "Hanya campaign draf yang bisa diubah", http.StatusForbidden)
+		return
+	}
+
+	data := struct {
+		Campaign campaign.Campaign
+	}{
+		Campaign: c,
+	}
+
+	s.Tmpl["admin_campaign_form.html"].ExecuteTemplate(w, "base.html", data)
+}
+
+func (s *Server) HandleAdminCampaignEditPOST(w http.ResponseWriter, r *http.Request) {
+	idStr := r.PathValue("id")
+	id, _ := strconv.ParseInt(idStr, 10, 64)
+
+	var currentStatus string
+	var currentImagePath *string
+	err := s.DB.Pool.QueryRow(r.Context(), "SELECT status, image_path FROM campaigns WHERE id = $1 FOR UPDATE", id).Scan(&currentStatus, &currentImagePath)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+
+	if currentStatus != campaign.StatusDraf {
+		http.Error(w, "Hanya campaign draf yang bisa diubah", http.StatusForbidden)
+		return
+	}
+
+	err = r.ParseMultipartForm(5 << 20)
+	if err != nil {
+		http.Error(w, "Failed to parse form", http.StatusBadRequest)
+		return
+	}
+
+	name := r.FormValue("name")
+	if name == "" {
+		http.Error(w, "Nama campaign wajib diisi", http.StatusBadRequest)
+		return
+	}
+
+	mode := r.FormValue("button_mode")
+	body := r.FormValue("body")
+	
+	elements := campaign.Elements{
+		CSActive:      true,
+		CSNumber:      r.FormValue("cs_number"),
+		LinkWebActive: r.FormValue("link_web_active") == "on",
+		LinkWebURL:    r.FormValue("link_web_url"),
+		PhoneActive:   r.FormValue("phone_active") == "on",
+		PhoneNumber:   r.FormValue("phone_number"),
+		PromoActive:   r.FormValue("promo_active") == "on",
+		PromoCode:     r.FormValue("promo_code"),
+		PromoURL:      r.FormValue("promo_url"),
+	}
+
+	if err := campaign.ValidateTemplate(body, mode, elements); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	var imagePath *string
+	if currentImagePath != nil {
+		imagePath = currentImagePath
+	}
+	
+	file, header, err := r.FormFile("image")
+	if err == nil {
+		defer file.Close()
+		if header.Size > 1<<20 {
+			http.Error(w, "Ukuran file maksimum 1 MB", http.StatusBadRequest)
+			return
+		}
+
+		buff := make([]byte, 512)
+		if _, err = file.Read(buff); err != nil {
+			http.Error(w, "Gagal membaca file", http.StatusInternalServerError)
+			return
+		}
+		fileType := http.DetectContentType(buff)
+		if fileType != "image/jpeg" && fileType != "image/png" {
+			http.Error(w, "Hanya menerima gambar JPEG atau PNG", http.StatusBadRequest)
+			return
+		}
+		file.Seek(0, io.SeekStart)
+
+		b := make([]byte, 16)
+		rand.Read(b)
+		filename := hex.EncodeToString(b) + filepath.Ext(header.Filename)
+		
+		os.MkdirAll("uploads", 0755)
+		fullPath := filepath.Join("uploads", filename)
+		out, err := os.Create(fullPath)
+		if err != nil {
+			http.Error(w, "Gagal menyimpan file", http.StatusInternalServerError)
+			return
+		}
+		defer out.Close()
+		io.Copy(out, file)
+		imagePath = &fullPath
+	} else if r.FormValue("remove_image") == "on" {
+		imagePath = nil
+	}
+
+	elementsJSON, _ := json.Marshal(elements)
+
+	_, err = s.DB.Pool.Exec(r.Context(), `
+		UPDATE campaigns 
+		SET name = $1, button_mode = $2, body = $3, image_path = $4, elements = $5
+		WHERE id = $6
+	`, name, mode, body, imagePath, string(elementsJSON), id)
+
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	http.Redirect(w, r, "/admin/campaigns", http.StatusSeeOther)
+}
+
+func (s *Server) HandleAdminCampaignPreview(w http.ResponseWriter, r *http.Request) {
+	err := r.ParseMultipartForm(5 << 20)
+	if err != nil {
+		http.Error(w, "Failed to parse form", http.StatusBadRequest)
+		return
+	}
+
+	mode := r.FormValue("button_mode")
+	body := r.FormValue("body")
+	
+	elements := campaign.Elements{
+		CSActive:      true,
+		CSNumber:      r.FormValue("cs_number"),
+		LinkWebActive: r.FormValue("link_web_active") == "on",
+		LinkWebURL:    r.FormValue("link_web_url"),
+		PhoneActive:   r.FormValue("phone_active") == "on",
+		PhoneNumber:   r.FormValue("phone_number"),
+		PromoActive:   r.FormValue("promo_active") == "on",
+		PromoCode:     r.FormValue("promo_code"),
+		PromoURL:      r.FormValue("promo_url"),
+	}
+
+	if err := campaign.ValidateTemplate(body, mode, elements); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// Just use a dummy image path for preview if there is one uploaded previously, or just text.
+	// For actual preview during edit, maybe pass the existing image path.
+	imagePath := r.FormValue("existing_image_path")
+
+	msg := campaign.Render(body, imagePath, elements, mode)
+
+	s.Tmpl["admin_campaign_preview.html"].Execute(w, msg)
+}
+
+func (s *Server) HandleServeUpload(w http.ResponseWriter, r *http.Request) {
+	filename := r.PathValue("filename")
+	// Prevent directory traversal
+	if strings.Contains(filename, "..") || strings.Contains(filename, "/") || strings.Contains(filename, "\\") {
+		http.NotFound(w, r)
+		return
+	}
+	http.ServeFile(w, r, filepath.Join("uploads", filename))
+}
