@@ -8,14 +8,14 @@ Isi bagian yang kosong ("diisi pemilik") sesuai hasil pengamatan langsung pada H
 
 | Uji | Cara | Hasil | Diamati oleh |
 |---|---|---|---|
-| Pair dengan kode | Jalankan `go run . pair-code <nomor>` | | diisi pemilik |
-| Pair dengan QR | Jalankan `go run . pair-qr` | | diisi pemilik |
-| Cek nomor WA | Jalankan `go run . check <nomor>` | | diisi pemilik |
-| Kirim teks biasa | Jalankan `go run . send-text <nomor> <pesan>` | | diisi pemilik |
-| Pesan NativeFlow (Tombol) di Android | Jalankan `go run . send-buttons <nomor>` | (apakah tombol tampil dan bisa diklik?) | diisi pemilik |
-| Pesan NativeFlow (Tombol) di iPhone | Jalankan `go run . send-buttons <nomor>` | (apakah tombol tampil dan bisa diklik?) | diisi pemilik |
-| Pesan Kartu (Link) di Android | Jalankan `go run . send-card <nomor>` | (apakah kartu preview link tampil rapi?) | diisi pemilik |
-| Pesan Kartu (Link) di iPhone | Jalankan `go run . send-card <nomor>` | (apakah kartu preview link tampil rapi?) | diisi pemilik |
+| Pair dengan kode | Jalankan `go run . pair-code <nomor>` | Berhasil masuk (Successfully authenticated) | pemilik |
+| Pair dengan QR | Jalankan `go run . pair-qr` | (tidak diuji) | - |
+| Cek nomor WA | Jalankan `go run . check <nomor>` | (tidak diuji) | - |
+| Kirim teks biasa | Jalankan `go run . send-text <nomor> <pesan>` | Teks berhasil tampil di HP penerima | pemilik |
+| Pesan NativeFlow (Tombol) di Android | Jalankan `go run . send-buttons <nomor>` | Tombol/pesan tidak muncul sama sekali di layar chat | pemilik |
+| Pesan NativeFlow (Tombol) di iPhone | Jalankan `go run . send-buttons <nomor>` | Tombol/pesan tidak muncul sama sekali di layar chat | pemilik |
+| Pesan Kartu (Link) di Android | Jalankan `go run . send-card <nomor>` | Muncul kotak abu-abu dengan judul, link, dan preview. Rapi. | pemilik |
+| Pesan Kartu (Link) di iPhone | Jalankan `go run . send-card <nomor>` | Muncul kotak abu-abu dengan judul, link, dan preview. Rapi. | pemilik |
 | Receipt Server (Centang 1) | Observasi log console | Muncul di log sebagai `events.Receipt` bertipe `Sender` | AI (berdasar log/dokumentasi) |
 | Receipt HP (Centang 2) | Observasi log console | Muncul di log sebagai `events.Receipt` bertipe `Delivered` | AI (berdasar log/dokumentasi) |
 | Putus koneksi manual (Restart) | Tekan Ctrl+C saat program jalan | | diisi pemilik |

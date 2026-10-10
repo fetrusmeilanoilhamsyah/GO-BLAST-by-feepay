@@ -186,6 +186,40 @@ func main() {
 		fmt.Printf("Tombol terkirim. ID: %s\n", resp.ID)
 		waitForInterrupt()
 
+	case "send-template":
+		requireLogin(client)
+		if len(os.Args) < 3 {
+			log.Fatal("Format: send-template <nomor_tujuan>")
+		}
+		target := parseJID(os.Args[2])
+		
+		msg := &waProto.Message{
+			TemplateMessage: &waProto.TemplateMessage{
+				HydratedTemplate: &waProto.TemplateMessage_HydratedFourRowTemplate{
+					TemplateID: proto.String("id_template_123"),
+					HydratedContentText: proto.String("Setiap orang. Selain itu, manfaatkan promosi ini dan dapatkan hingga Rp3.000. 👇\nManfaatkan penawaran ini"),
+					HydratedFooterText: proto.String("10:35 am"),
+					HydratedButtons: []*waProto.HydratedTemplateButton{
+						{
+							Index: proto.Uint32(1),
+							HydratedButton: &waProto.HydratedTemplateButton_UrlButton{
+								UrlButton: &waProto.HydratedTemplateButton_HydratedURLButton{
+									DisplayText: proto.String("COMEÇAR AGORA"),
+									URL:         proto.String("https://feepay.web.id"),
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+		resp, err := client.SendMessage(context.Background(), target, msg)
+		if err != nil {
+			log.Fatalf("Gagal kirim template: %v", err)
+		}
+		fmt.Printf("Template terkirim. ID: %s\n", resp.ID)
+		waitForInterrupt()
+
 	case "send-card":
 		requireLogin(client)
 		if len(os.Args) < 3 {
