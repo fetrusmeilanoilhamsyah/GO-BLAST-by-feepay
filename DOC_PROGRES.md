@@ -10,9 +10,9 @@ Nomor tahap mengacu ke tabel "Daftar Tahap" di bawah.
 ## Posisi sekarang
 
 - **Fase**: 0 (persiapan dokumen)
-- **Terakhir dikerjakan**: Tahap 3 selesai (Mode kartu_link sukses dites dengan thumbnail).
-- **Lanjut dari sini**: Tahap 4 (Kerangka proyek Go, konfigurasi, i18n, tema).
-- **Blocker**: tidak ada. Keputusan terbuka belum menghalangi Tahap 4.
+- **Terakhir dikerjakan**: Tahap 4 selesai (Kerangka proyek Go, konfigurasi, i18n, tema).
+- **Lanjut dari sini**: Tahap 5 (Skema database dan migrasi).
+- **Blocker**: tidak ada.
 
 ---
 
@@ -40,7 +40,7 @@ Daftar resmi. Agen hanya boleh mengubah kolom Status, dan hanya untuk tahap yang
 | 1 | Rapikan DOC_KONSEP (dikerjakan di sesi rapat, hasilnya DOC_KONSEP versi 2) | Selesai |
 | 2 | Repo git dan DOC_SECURITY_DEPLOY | Selesai |
 | 3 | Uji kelayakan whatsmeow (spike) | Selesai |
-| 4 | Kerangka proyek Go, konfigurasi, i18n, tema | Belum |
+| 4 | Kerangka proyek Go, konfigurasi, i18n, tema | Selesai |
 | 5 | Skema database dan migrasi | Belum |
 | 6 | Autentikasi admin dan pekerja | Belum |
 | 7 | Upload nomor, normalisasi, duplikat per campaign | Belum |
@@ -96,6 +96,8 @@ Terbaru di atas. Agen menambah baris di sini setiap ada keputusan baru, dari pem
 
 Hasil uji dan hal yang ditemukan saat bekerja. Terbaru di atas.
 
+- 2026-10-11: Pemilik proyek memperbarui Go menjadi 1.27.2. Tahap 4 dilanjutkan: direktori dibuat, .env dan config diatur, go get sukses, theme.css diimplementasi dengan variabel warna sesuai bagian 17, MaskPhone dengan uji kasus ditulis, dan tes translasi berlalu dengan fallback ke id.
+- 2026-10-11: Proses `go get` untuk `github.com/jackc/pgx/v5` dan `github.com/pressly/goose/v3` terblokir karena pustaka meminta Go versi >= 1.25.0 dan >= 1.26.0, sedangkan versi terpasang adalah 1.22.2. Eksekusi dihentikan sesuai aturan di DOC_AI_SLOP bagian 14.
 - 2026-10-10: Berdasarkan dokumentasi whatsmeow, event receipt dibedakan menjadi TypeSender (centang 1) dan TypeDelivered (centang 2). Memori per sesi diprediksi sangat kecil (5-10MB idle), tapi bisa naik signifikan untuk 100 sesi jika ada antrean pesan. Perintah client.Logout() akan menghapus sesi lokal di database (sqlstore).
 - 2026-10-10: Repo git diinisialisasi dengan struktur .gitignore yang melarang direktori data/unggahan. DOC_SECURITY_DEPLOY siap dengan panduan rate-limiting, proteksi privasi customer, dan arsitektur VPS.
 - 2026-10-10: Cek lingkungan berhasil. Go (go1.22.2 windows/amd64), PostgreSQL (17.11), dan Git (2.53.0.windows.1) terdeteksi. pg_isready menerima koneksi di port 5432.
@@ -105,6 +107,8 @@ Hasil uji dan hal yang ditemukan saat bekerja. Terbaru di atas.
 
 Terbaru di atas. Format: `tanggal: ringkasan satu baris`.
 
+- 2026-10-11: Tahap 4 selesai (Go 1.27.2 berhasil dipasang oleh pemilik proyek, konfigurasi dan dependensi beres).
+- 2026-10-11: Tahap 4 dihentikan (terblokir) karena pustaka pgx/v5 dan goose/v3 meminta Go versi yang lebih tinggi dari yang terpasang.
 - 2026-10-10: Tahap 3 selesai: program spike whatsmeow (pair, send, NativeFlowMessage) ditulis dan disusun laporan analisanya di HASIL.md.
 - 2026-10-10: Tahap 2 selesai: buat repo git lokal, commit awal, dan penulisan dokumen .gitignore serta DOC_SECURITY_DEPLOY.md.
 - 2026-10-10: Tahap 0 selesai: orientasi dokumen dan cek versi lingkungan (Go, PostgreSQL, Git).

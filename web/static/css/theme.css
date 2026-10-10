@@ -1,0 +1,45 @@
+:root {
+  --color-bg: #202224;
+  --color-bg-hero: #2d2d2d;
+  --color-card: #3f4042;
+  --color-primary: #007d9c;
+  --color-accent: #00add8;
+  --color-link: #50b7e0;
+  
+  --color-text: #e0e0e0;
+  --color-success: #4caf50;
+  --color-danger: #f44336;
+
+  --font-body: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+body {
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-body);
+  margin: 0;
+  padding: 0;
+  line-height: 1.5;
+}
+
+a {
+  color: var(--color-link);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+.hero {
+  background-color: var(--color-bg-hero);
+  padding: 2rem 1rem;
+  text-align: center;
+}
+
+.card {
+  background-color: var(--color-card);
+  border-radius: 8px;
+  padding: 1.5rem;
+  margin: 1rem;
+}
