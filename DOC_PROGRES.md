@@ -113,6 +113,7 @@ Hasil uji dan hal yang ditemukan saat bekerja. Terbaru di atas.
 
 Terbaru di atas. Format: `tanggal: ringkasan satu baris`.
 
+- 2026-10-11: Revisi aturan Tahap 7: Nomor tanpa awalan tidak lagi dianggap ambigu. Sistem langsung mem-parse (mendukung `49...` untuk Jerman, `1...` untuk US, dll) sesuai permintaan pemilik.
 - 2026-10-11: Tahap 7 selesai (Upload nomor, normalisasi E.164, filter duplikat per campaign, preview CSV, handler).
 - 2026-10-11: Menambahkan TODO untuk dompet di DOC_PROGRES.
 - 2026-10-11: Tahap 6 selesai (Autentikasi admin dan pekerja, form daftar, middleware rate limit & CSRF, tes auth, dan command createadmin).
