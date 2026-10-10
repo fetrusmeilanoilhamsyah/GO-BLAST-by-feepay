@@ -10,8 +10,8 @@ Nomor tahap mengacu ke tabel "Daftar Tahap" di bawah.
 ## Posisi sekarang
 
 - **Fase**: 1 (MVP)
-- **Terakhir dikerjakan**: Tahap 4 selesai (Kerangka proyek Go, konfigurasi, i18n, tema).
-- **Lanjut dari sini**: Tahap 5 (Skema database dan migrasi).
+- **Terakhir dikerjakan**: Tahap 5 selesai (Skema database, migrasi, seed, DOC_SKEMA, dan test).
+- **Lanjut dari sini**: Tahap 6 (Autentikasi admin dan pekerja).
 - **Blocker**: tidak ada.
 
 ---
@@ -25,7 +25,7 @@ Nomor tahap mengacu ke tabel "Daftar Tahap" di bawah.
 - [x] Go terpasang (versi: go1.27.2 windows/amd64)
 - [x] PostgreSQL terpasang (versi: 17.11)
 - [x] DOC_SECURITY_DEPLOY.md (Tahap 2)
-- [ ] DOC_SKEMA.md (Tahap 5)
+- [x] DOC_SKEMA.md (Tahap 5)
 - [x] Repo git dan `.gitignore` (Tahap 2)
 - [x] `.env.example` (Tahap 4)
 - [x] AGENTS.md (aturan tetap yang dibaca agen)
@@ -41,7 +41,7 @@ Daftar resmi. Agen hanya boleh mengubah kolom Status, dan hanya untuk tahap yang
 | 2 | Repo git dan DOC_SECURITY_DEPLOY | Selesai |
 | 3 | Uji kelayakan whatsmeow (spike) | Selesai |
 | 4 | Kerangka proyek Go, konfigurasi, i18n, tema | Selesai |
-| 5 | Skema database dan migrasi | Belum |
+| 5 | Skema database dan migrasi | Selesai |
 | 6 | Autentikasi admin dan pekerja | Belum |
 | 7 | Upload nomor, normalisasi, duplikat per campaign | Belum |
 | 8 | Template dan campaign | Belum |
@@ -109,6 +109,7 @@ Hasil uji dan hal yang ditemukan saat bekerja. Terbaru di atas.
 
 Terbaru di atas. Format: `tanggal: ringkasan satu baris`.
 
+- 2026-10-11: Tahap 5 selesai (Skema database, migrasi, seed, DOC_SKEMA, dan test validasi skema constraint selesai).
 - 2026-10-11: Koreksi Tahap 4 dan 2: gofmt, perbaikan validasi lang+cookie Lax, teks i18n di index.html, dan pembaruan DOC_SECURITY_DEPLOY sesuai hasil rapat.
 
 - 2026-10-11: Tahap 4 selesai (Go 1.27.2 berhasil dipasang oleh pemilik proyek, konfigurasi dan dependensi beres).
