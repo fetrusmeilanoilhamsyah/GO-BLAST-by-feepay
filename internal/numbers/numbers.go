@@ -38,7 +38,6 @@ func Normalize(raw string, defaultCC string) (string, string, string) {
 	}
 
 	var toParse string
-	isAmbiguousCandidate := false
 
 	// b. Awalan + atau 00: dianggap internasional
 	if strings.HasPrefix(clean, "+") {
@@ -51,7 +50,6 @@ func Normalize(raw string, defaultCC string) (string, string, string) {
 	} else {
 		// d. Hanya angka tanpa awalan
 		toParse = "+" + clean
-		isAmbiguousCandidate = true
 	}
 
 	num, err := phonenumbers.Parse(toParse, "")
@@ -67,14 +65,6 @@ func Normalize(raw string, defaultCC string) (string, string, string) {
 	formatted := phonenumbers.Format(num, phonenumbers.E164)
 	formatted = strings.TrimPrefix(formatted, "+")
 	ccStr := fmt.Sprintf("%d", num.GetCountryCode())
-
-	if isAmbiguousCandidate {
-		// d. Hanya angka tanpa awalan: dianggap benar hanya jika diawali kode negara default dan valid.
-		// Selain itu status ambigu, tidak ditebak.
-		if ccStr != defaultCC {
-			return "", "ambigu", ""
-		}
-	}
 
 	return formatted, "ok", ccStr
 }

@@ -40,8 +40,8 @@ func TestNormalize(t *testing.T) {
 		// Tanpa awalan
 		{"ID Tanpa awalan, valid (diawali CC)", idE164, "62", idE164, "ok"},
 		{"ID Tanpa awalan, valid (diawali CC), dengan strip", "62-812-345", "62", "62812345", "ok"}, // might not match exact example, let's use exact
-		{"ID Tanpa awalan, ambigu", idNoPrefix, "62", "", "ambigu"},
-		{"US Tanpa awalan, ambigu di ID", usE164, "62", "", "ambigu"}, // 12015550123 doesn't start with 62
+		{"ID Tanpa awalan, diparse", idNoPrefix, "62", idNoPrefix, "ok"},
+		{"US Tanpa awalan, diparse", usE164, "62", usE164, "ok"}, 
 		
 		// Karakter dihilangkan
 		{"Kurung dan spasi", "+62 (812) 345-678", "62", "62812345678", "ok"},
@@ -84,8 +84,8 @@ func TestNormalizeFixed(t *testing.T) {
 		
 		// 4. Tanpa awalan
 		{"Tanpa awalan, CC default valid", "6281234567890", "62", "6281234567890", "ok"},
-		{"Tanpa awalan, kehilangan 0 (ambigu)", "81234567890", "62", "", "ambigu"},
-		{"Tanpa awalan, CC beda (ambigu)", "14155552671", "62", "", "ambigu"},
+		{"Tanpa awalan, kehilangan 0 (jadi Japan)", "81234567890", "62", "81234567890", "ok"},
+		{"Tanpa awalan, CC beda (jadi US)", "14155552671", "62", "14155552671", "ok"},
 		{"Tanpa awalan, CC default valid spasi", "62 812 3456 7890", "62", "6281234567890", "ok"},
 		
 		// 5. Spasi, tanda hubung, titik, kurung

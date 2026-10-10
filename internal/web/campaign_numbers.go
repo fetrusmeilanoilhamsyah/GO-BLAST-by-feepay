@@ -36,7 +36,11 @@ func (s *Server) HandleAdminCampaignNumbersGET(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	csrfToken, _ := r.Context().Value(ContextKeyCSRF).(string)
+// Get CSRF from cookie
+	csrfToken := ""
+	if c, err := r.Cookie("gb_csrf"); err == nil {
+		csrfToken = c.Value
+	}
 	
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Write([]byte(fmt.Sprintf(`
@@ -99,7 +103,7 @@ func (s *Server) HandleAdminCampaignNumbersPreview(w http.ResponseWriter, r *htt
 		return
 	}
 
-	csrfToken, _ := r.Context().Value(ContextKeyCSRF).(string)
+	csrfToken := r.FormValue("csrf_token")
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Write([]byte(fmt.Sprintf(`
@@ -132,12 +136,12 @@ func (s *Server) HandleAdminCampaignNumbersConfirm(w http.ResponseWriter, r *htt
 		return
 	}
 	
-	userIDCtx := r.Context().Value(ContextKeyUserID)
-	if userIDCtx == nil {
+	userSessionCtx := r.Context().Value(userContextKey)
+	if userSessionCtx == nil {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
-	userID := userIDCtx.(int64)
+	userID := userSessionCtx.(UserSession).ID
 
 	err := campaign.ConfirmUpload(r.Context(), s.DB.Pool, campaignID, userID, previewID)
 	if err != nil {
