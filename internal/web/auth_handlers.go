@@ -112,7 +112,7 @@ func (s *Server) renderLogin(w http.ResponseWriter, r *http.Request, errMsg stri
 			return i18n.T(lang, key)
 		},
 	}
-	s.Tmpl.ExecuteTemplate(w, "login.html", data)
+	s.Tmpl["login.html"].ExecuteTemplate(w, "base.html", data)
 }
 
 func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
@@ -193,7 +193,7 @@ func (s *Server) renderRegister(w http.ResponseWriter, r *http.Request, errMsg s
 			return i18n.T(lang, key)
 		},
 	}
-	s.Tmpl.ExecuteTemplate(w, "register.html", data)
+	s.Tmpl["register.html"].ExecuteTemplate(w, "base.html", data)
 }
 
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {

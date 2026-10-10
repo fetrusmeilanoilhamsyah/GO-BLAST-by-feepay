@@ -1,10 +1,10 @@
 {{ define "content" }}
-<div class="container" style="max-width: 400px; margin: 40px auto; padding: 20px; background-color: var(--card-bg); border-radius: 8px;">
-    <h2 style="text-align: center; color: var(--primary-color);">GO BLAST <small style="font-size: 0.5em; color: var(--text-muted);">by feepay</small></h2>
+<div class="container" style="max-width: 400px; margin: 40px auto; padding: 20px; background-color: var(--color-card); border-radius: 8px;">
+    <h2 style="text-align: center; color: var(--color-primary);">GO BLAST <small style="font-size: 0.5em; color: #aaa;">by feepay</small></h2>
     <h3 style="text-align: center; margin-bottom: 20px;">{{ .Title }}</h3>
     
     {{ if .Error }}
-    <div style="background-color: var(--error-color); padding: 10px; border-radius: 4px; margin-bottom: 20px; text-align: center;">
+    <div style="background-color: var(--color-danger); padding: 10px; border-radius: 4px; margin-bottom: 20px; text-align: center;">
         {{ .Error }}
     </div>
     {{ end }}
@@ -14,18 +14,18 @@
         
         <div style="margin-bottom: 15px;">
             <label style="display: block; margin-bottom: 5px;">{{ call .T "auth.email" }}</label>
-            <input type="email" name="email" required style="width: 100%; padding: 8px; box-sizing: border-box; background-color: var(--hero-bg); color: #fff; border: 1px solid var(--card-bg); border-radius: 4px;">
+            <input type="email" name="email" required style="width: 100%; padding: 8px; box-sizing: border-box; background-color: var(--color-bg-hero); color: #fff; border: 1px solid var(--color-card); border-radius: 4px;">
         </div>
 
         <div style="margin-bottom: 15px;">
             <label style="display: block; margin-bottom: 5px;">{{ call .T "auth.password" }}</label>
-            <input type="password" name="password" minlength="10" required style="width: 100%; padding: 8px; box-sizing: border-box; background-color: var(--hero-bg); color: #fff; border: 1px solid var(--card-bg); border-radius: 4px;">
-            <small style="color: var(--text-muted); font-size: 0.8em;">{{ call .T "auth.password_hint" }}</small>
+            <input type="password" name="password" minlength="10" required style="width: 100%; padding: 8px; box-sizing: border-box; background-color: var(--color-bg-hero); color: #fff; border: 1px solid var(--color-card); border-radius: 4px;">
+            <small style="color: #aaa; font-size: 0.8em;">{{ call .T "auth.password_hint" }}</small>
         </div>
 
         <div style="margin-bottom: 15px;">
             <label style="display: block; margin-bottom: 5px;">{{ call .T "common.select_language" }}</label>
-            <select name="language" style="width: 100%; padding: 8px; box-sizing: border-box; background-color: var(--hero-bg); color: #fff; border: 1px solid var(--card-bg); border-radius: 4px;">
+            <select name="language" style="width: 100%; padding: 8px; box-sizing: border-box; background-color: var(--color-bg-hero); color: #fff; border: 1px solid var(--color-card); border-radius: 4px;">
                 <option value="id" {{ if eq .Lang "id" }}selected{{ end }}>Indonesia</option>
                 <option value="en" {{ if eq .Lang "en" }}selected{{ end }}>English</option>
                 <option value="zh" {{ if eq .Lang "zh" }}selected{{ end }}>中文</option>
@@ -34,16 +34,16 @@
 
         <div style="margin-bottom: 20px;">
             <label style="display: block; margin-bottom: 5px;">{{ call .T "auth.referral_code" }}</label>
-            <input type="text" name="referral_code" style="width: 100%; padding: 8px; box-sizing: border-box; background-color: var(--hero-bg); color: #fff; border: 1px solid var(--card-bg); border-radius: 4px;">
+            <input type="text" name="referral_code" style="width: 100%; padding: 8px; box-sizing: border-box; background-color: var(--color-bg-hero); color: #fff; border: 1px solid var(--color-card); border-radius: 4px;">
         </div>
 
-        <button type="submit" style="width: 100%; padding: 10px; background-color: var(--primary-color); color: #fff; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">
+        <button type="submit" style="width: 100%; padding: 10px; background-color: var(--color-primary); color: #fff; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">
             {{ call .T "auth.register_btn" }}
         </button>
     </form>
 
     <div style="text-align: center; margin-top: 20px;">
-        <a href="/login" style="color: var(--link-color);">{{ call .T "auth.to_login" }}</a>
+        <a href="/login" style="color: var(--color-link);">{{ call .T "auth.to_login" }}</a>
     </div>
 </div>
 {{ end }}

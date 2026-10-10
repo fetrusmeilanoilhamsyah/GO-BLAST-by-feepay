@@ -13,24 +13,27 @@ import (
 
 type Server struct {
 	DB   *db.DB
-	Tmpl *template.Template
+	Tmpl map[string]*template.Template
 	Env  string
 }
 
 func NewServer(database *db.DB, env string) (*Server, error) {
-	tmpl, err := template.ParseFiles(
-		filepath.Join("web", "templates", "base.html"),
-		filepath.Join("web", "templates", "index.html"),
-		filepath.Join("web", "templates", "login.html"),
-		filepath.Join("web", "templates", "register.html"),
-	)
-	if err != nil {
-		return nil, err
+	base := filepath.Join("web", "templates", "base.html")
+	
+	templates := make(map[string]*template.Template)
+	
+	pages := []string{"index.html", "login.html", "register.html"}
+	for _, page := range pages {
+		tmpl, err := template.ParseFiles(base, filepath.Join("web", "templates", page))
+		if err != nil {
+			return nil, err
+		}
+		templates[page] = tmpl
 	}
 
 	return &Server{
 		DB:   database,
-		Tmpl: tmpl,
+		Tmpl: templates,
 		Env:  env,
 	}, nil
 }
@@ -105,7 +108,7 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	s.Tmpl.ExecuteTemplate(w, "base.html", data)
+	s.Tmpl["index.html"].ExecuteTemplate(w, "base.html", data)
 }
 
 func validateLang(lang string) string {
