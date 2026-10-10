@@ -46,17 +46,17 @@ func compareKeys(t *testing.T, lang1 string, keys1 map[string]bool, lang2 string
 
 func TestT(t *testing.T) {
 	Load("../../locales")
-	
+
 	// Test basic
 	if got := T("id", "app.name"); got != "GO BLAST" {
 		t.Errorf("T(id, app.name) = %v", got)
 	}
-	
+
 	// Test fallback
 	// Add a dummy key to id for test
 	trans := GetTranslations()
 	trans["id"]["test.fallback"] = "Jatuh"
-	
+
 	if got := T("en", "test.fallback"); got != "Jatuh" {
 		t.Errorf("T(en, test.fallback) expected 'Jatuh', got %v", got)
 	}

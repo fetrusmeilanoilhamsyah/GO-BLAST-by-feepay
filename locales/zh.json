@@ -4,5 +4,6 @@
   "app.tagline": "by feepay",
   "common.login": "登录",
   "common.logout": "登出",
-  "common.save": "保存"
+  "common.save": "保存",
+  "common.select_language": "选择语言："
 }

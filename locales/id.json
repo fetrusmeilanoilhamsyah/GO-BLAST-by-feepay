@@ -3,5 +3,6 @@
   "app.tagline": "by feepay",
   "common.login": "Masuk",
   "common.logout": "Keluar",
-  "common.save": "Simpan"
+  "common.save": "Simpan",
+  "common.select_language": "Pilih bahasa:"
 }

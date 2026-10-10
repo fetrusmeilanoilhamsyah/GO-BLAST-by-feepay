@@ -42,7 +42,7 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 
 func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	
+
 	err := s.DB.Pool.Ping(context.Background())
 	if err != nil {
 		w.WriteHeader(http.StatusServiceUnavailable)
@@ -61,34 +61,47 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 
 	lang := r.URL.Query().Get("lang")
 	if lang != "" {
+		lang = validateLang(lang)
 		http.SetCookie(w, &http.Cookie{
 			Name:     "lang",
 			Value:    lang,
 			Path:     "/",
 			Expires:  time.Now().Add(30 * 24 * time.Hour),
 			HttpOnly: true,
+			SameSite: http.SameSiteLaxMode,
 		})
 	} else {
 		cookie, err := r.Cookie("lang")
 		if err == nil {
-			lang = cookie.Value
+			lang = validateLang(cookie.Value)
 		} else {
 			lang = "id" // default
 		}
 	}
 
 	data := struct {
-		Lang       string
-		Title      string
-		AppName    string
-		AppTagline string
+		Lang           string
+		Title          string
+		AppName        string
+		AppTagline     string
+		SelectLanguage string
 	}{
-		Lang:       lang,
-		Title:      i18n.T(lang, "app.name"),
-		AppName:    i18n.T(lang, "app.name"),
-		AppTagline: i18n.T(lang, "app.tagline"),
+		Lang:           lang,
+		Title:          i18n.T(lang, "app.name"),
+		AppName:        i18n.T(lang, "app.name"),
+		AppTagline:     i18n.T(lang, "app.tagline"),
+		SelectLanguage: i18n.T(lang, "common.select_language"),
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	s.Tmpl.ExecuteTemplate(w, "base.html", data)
+}
+
+func validateLang(lang string) string {
+	switch lang {
+	case "id", "en", "zh":
+		return lang
+	default:
+		return "id"
+	}
 }

@@ -4,5 +4,6 @@
   "app.tagline": "by feepay",
   "common.login": "Login",
   "common.logout": "Logout",
-  "common.save": "Save"
+  "common.save": "Save",
+  "common.select_language": "Select language:"
 }

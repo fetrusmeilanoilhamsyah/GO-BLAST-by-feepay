@@ -11,14 +11,14 @@ Panduan dan aturan mengenai keamanan aplikasi dan prosedur deploy sistem GO BLAS
 ### A2. Kata sandi dan sesi
 - Gunakan algoritma argon2id untuk hashing kata sandi (parameter awal: memory=64MB, time=1, threads=4, salt=16 byte, key=32 byte).
 - Set atribut cookie untuk sesi: `HttpOnly`, `Secure`, `SameSite=Lax`.
-- Tentukan masa berlaku sesi admin (misal 24 jam) dan sesi pekerja (misal 7 hari).
+- Masa berlaku sesi admin adalah 24 jam dan sesi pekerja adalah 7 hari.
 - Siapkan rute dan prosedur untuk mencabut sesi dari database secara paksa.
 
 ### A3. CSRF
 - Wajibkan token CSRF atau perlindungan sejenis (seperti pembatasan SameSite) pada semua permintaan yang mengubah data.
 
 ### A4. Pembatasan laju
-- Batasi rute login dan pendaftaran. Angka awal yang diusulkan: 5 percobaan per IP per jam untuk pendaftaran, dan 10 percobaan per IP per 15 menit untuk login.
+- Batasi rute login dan pendaftaran. Batas laju: login 5 percobaan per 15 menit per kombinasi IP dan email, pendaftaran 10 per jam per IP.
 - Batasi rute publik lainnya ke angka yang wajar (misal 100 per IP per menit).
 
 ### A5. Enkripsi data
@@ -33,7 +33,7 @@ Panduan dan aturan mengenai keamanan aplikasi dan prosedur deploy sistem GO BLAS
 
 ### A7. Privasi nomor customer
 - Cegah nomor customer masuk atau dirender ke browser pekerja.
-- Samarkan nomor telepon secara default di log aplikasi (misal `62812****123`).
+- Samarkan nomor telepon secara default di log aplikasi (contoh `6281****678`).
 - Dilarang memasukkan berkas nomor (CSV/TXT/XLSX) ke git.
 - Cegah berkas cadangan dikirim keluar server tanpa dienkripsi terlebih dahulu.
 
@@ -64,7 +64,7 @@ Panduan dan aturan mengenai keamanan aplikasi dan prosedur deploy sistem GO BLAS
 ### B1. Isolasi di VPS bersama
 - Gunakan pengguna sistem `goblast` tanpa akses root untuk menjalankan aplikasi.
 - Sediakan pengguna database terpisah di PostgreSQL (bukan `postgres`).
-- Batasi alokasi memori melalui `MemoryMax=512M` di pengaturan systemd.
+- Batasi alokasi memori melalui `MemoryMax` di pengaturan systemd, nilainya ditentukan setelah pengukuran memori (keputusan terbuka nomor 6).
 - Buka port internal (misal 8080) hanya untuk `127.0.0.1`.
 
 ### B2. Nginx
@@ -88,12 +88,14 @@ Panduan dan aturan mengenai keamanan aplikasi dan prosedur deploy sistem GO BLAS
 ### B4. Variabel lingkungan
 | Nama Variabel | Fungsi | Contoh Nilai | Sifat |
 |---|---|---|---|
-| `PORT` | Port aplikasi | `8080` | Opsional (default 8080) |
+| `APP_ENV` | Lingkungan aplikasi | `production` | Wajib |
+| `APP_ADDR` | Alamat aplikasi | `:8080` | Wajib |
 | `DATABASE_URL` | String koneksi psql | `postgres://<username>:<password>@localhost:5432/goblast` | Wajib |
-| `ENCRYPTION_KEY` | Kunci enkripsi | `32-byte-hex-string` | Wajib |
+| `SESSION_SECRET` | Rahasia cookie sesi | `(base64 dari 32 byte)` | Wajib |
+| `ENCRYPTION_KEY` | Kunci enkripsi | `(base64 dari 32 byte)` | Wajib |
 
 ### B5. Migrasi
-- Jalankan perintah goose (misal `goose -dir migrations postgres "$DATABASE_URL" up`) sebelum memulai versi biner baru.
+- Jalankan migrasi (misal `go run ./cmd/goblast migrate up`) menggunakan folder db/migrations sebelum memulai versi biner baru.
 
 ### B6. Restart
 - Lakukan deploy atau restart hanya di jam sepi, dan persiapkan pemberitahuan ke pekerja.
@@ -111,7 +113,7 @@ Panduan dan aturan mengenai keamanan aplikasi dan prosedur deploy sistem GO BLAS
 - Jangan melakukan rollback aplikasi jika migrasi database pada versi terbaru tidak kompatibel mundur (tidak bisa di-rollback secara aman).
 
 ### B9. Health check
-- Sediakan rute endpoint `/health` tanpa autentikasi yang membalas status 200 OK.
+- Sediakan rute endpoint `/healthz` tanpa autentikasi yang membalas status 200 OK.
 - Gunakan endpoint tersebut untuk pemantauan sederhana atau deteksi crash otomatis.
 
 ### B10. Cloudflare

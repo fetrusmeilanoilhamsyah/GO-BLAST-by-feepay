@@ -9,7 +9,7 @@ Nomor tahap mengacu ke tabel "Daftar Tahap" di bawah.
 
 ## Posisi sekarang
 
-- **Fase**: 0 (persiapan dokumen)
+- **Fase**: 1 (MVP)
 - **Terakhir dikerjakan**: Tahap 4 selesai (Kerangka proyek Go, konfigurasi, i18n, tema).
 - **Lanjut dari sini**: Tahap 5 (Skema database dan migrasi).
 - **Blocker**: tidak ada.
@@ -22,12 +22,12 @@ Nomor tahap mengacu ke tabel "Daftar Tahap" di bawah.
 - [x] DOC_AI_SLOP.md
 - [x] DOC_PROGRES.md
 - [x] DOC_PROMPTS.md (disimpan pemilik di luar folder proyek, dikirim ke agen satu tahap per sesi)
-- [x] Go terpasang (versi: go1.22.2 windows/amd64)
+- [x] Go terpasang (versi: go1.27.2 windows/amd64)
 - [x] PostgreSQL terpasang (versi: 17.11)
 - [x] DOC_SECURITY_DEPLOY.md (Tahap 2)
 - [ ] DOC_SKEMA.md (Tahap 5)
 - [x] Repo git dan `.gitignore` (Tahap 2)
-- [ ] `.env.example` (Tahap 4)
+- [x] `.env.example` (Tahap 4)
 - [x] AGENTS.md (aturan tetap yang dibaca agen)
 
 ## Daftar Tahap
@@ -82,6 +82,7 @@ Terbaru di atas. Agen menambah baris di sini setiap ada keputusan baru, dari pem
 
 | Tanggal | Keputusan | Alasan | Oleh |
 |---|---|---|---|
+| 2026-10-11 | Nilai i18n Select Language disisipkan lewat data struct saat render template | Lebih aman dan simpel tanpa menyuntikkan template.FuncMap secara dinamis | agen |
 | 2026-10-10 | Mode bawaan template adalah `kartu_link` | Uji Tahap 3 membuktikan pesan tombol (`tombol_asli`) tidak tampil di aplikasi penerima karena pembatasan dari WhatsApp | agen dan pemilik |
 | 2026-10-10 | Nama produk GO BLAST, teks kecil "by feepay", tema gelap tosca ala go.dev | Identitas dan referensi tampilan yang disukai pemilik | pemilik |
 | 2026-10-10 | Upload nomor mendukung CSV, TXT, XLSX | Nomor dibersihkan dulu lewat botcv yang mengeluarkan format itu | pemilik |
@@ -96,6 +97,7 @@ Terbaru di atas. Agen menambah baris di sini setiap ada keputusan baru, dari pem
 
 Hasil uji dan hal yang ditemukan saat bekerja. Terbaru di atas.
 
+- 2026-10-11: .env dari pemilik berhasil dibaca. Perintah `migrate status` merespons koneksi sukses tapi tidak ada file migrasi. Endpoint `/healthz` berjalan dan membalas sukses ({"status":"ok","db":"ok"}).
 - 2026-10-11: Pemilik proyek memperbarui Go menjadi 1.27.2. Tahap 4 dilanjutkan: direktori dibuat, .env dan config diatur, go get sukses, theme.css diimplementasi dengan variabel warna sesuai bagian 17, MaskPhone dengan uji kasus ditulis, dan tes translasi berlalu dengan fallback ke id.
 - 2026-10-11: Proses `go get` untuk `github.com/jackc/pgx/v5` dan `github.com/pressly/goose/v3` terblokir karena pustaka meminta Go versi >= 1.25.0 dan >= 1.26.0, sedangkan versi terpasang adalah 1.22.2. Eksekusi dihentikan sesuai aturan di DOC_AI_SLOP bagian 14.
 - 2026-10-10: Berdasarkan dokumentasi whatsmeow, event receipt dibedakan menjadi TypeSender (centang 1) dan TypeDelivered (centang 2). Memori per sesi diprediksi sangat kecil (5-10MB idle), tapi bisa naik signifikan untuk 100 sesi jika ada antrean pesan. Perintah client.Logout() akan menghapus sesi lokal di database (sqlstore).
@@ -106,6 +108,8 @@ Hasil uji dan hal yang ditemukan saat bekerja. Terbaru di atas.
 ## Log kerja
 
 Terbaru di atas. Format: `tanggal: ringkasan satu baris`.
+
+- 2026-10-11: Koreksi Tahap 4 dan 2: gofmt, perbaikan validasi lang+cookie Lax, teks i18n di index.html, dan pembaruan DOC_SECURITY_DEPLOY sesuai hasil rapat.
 
 - 2026-10-11: Tahap 4 selesai (Go 1.27.2 berhasil dipasang oleh pemilik proyek, konfigurasi dan dependensi beres).
 - 2026-10-11: Tahap 4 dihentikan (terblokir) karena pustaka pgx/v5 dan goose/v3 meminta Go versi yang lebih tinggi dari yang terpasang.

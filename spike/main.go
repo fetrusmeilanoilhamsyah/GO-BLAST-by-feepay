@@ -13,17 +13,17 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/joho/godotenv"
 	"go.mau.fi/whatsmeow"
-	waLog "go.mau.fi/whatsmeow/util/log"
+	waProto "go.mau.fi/whatsmeow/binary/proto"
 	"go.mau.fi/whatsmeow/store/sqlstore"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
-	waProto "go.mau.fi/whatsmeow/binary/proto"
+	waLog "go.mau.fi/whatsmeow/util/log"
 	"google.golang.org/protobuf/proto"
 )
 
 func main() {
 	godotenv.Load()
-	
+
 	if len(os.Args) < 2 {
 		fmt.Println("Gunakan sub-perintah: pair-code, send-text, send-image, send-card, send-buttons, status, logout")
 		return
@@ -82,7 +82,7 @@ func main() {
 		for evt := range qrChan {
 			if evt.Event == "code" {
 				fmt.Println("Scan QR code ini (atau gunakan API eksternal untuk konversi string ini ke QR):")
-				fmt.Println(evt.Code) 
+				fmt.Println(evt.Code)
 			} else {
 				fmt.Println("Event QR:", evt.Event)
 			}
@@ -133,7 +133,7 @@ func main() {
 			log.Fatal("Format: send-image <nomor_tujuan>")
 		}
 		target := parseJID(os.Args[2])
-		
+
 		imgBytes, err := os.ReadFile("full.jpg")
 		if err != nil {
 			log.Fatalf("Gagal membaca full.jpg: pastikan file gambar ada di folder spike. %v", err)
@@ -171,11 +171,11 @@ func main() {
 			log.Fatal("Format: send-buttons <nomor_tujuan>")
 		}
 		target := parseJID(os.Args[2])
-		
+
 		msg := &waProto.Message{
 			InteractiveMessage: &waProto.InteractiveMessage{
 				Header: &waProto.InteractiveMessage_Header{
-					Title: proto.String("GO BLAST by FEEPAY"),
+					Title:              proto.String("GO BLAST by FEEPAY"),
 					HasMediaAttachment: proto.Bool(false),
 				},
 				Body: &waProto.InteractiveMessage_Body{
@@ -188,11 +188,11 @@ func main() {
 					NativeFlowMessage: &waProto.InteractiveMessage_NativeFlowMessage{
 						Buttons: []*waProto.InteractiveMessage_NativeFlowMessage_NativeFlowButton{
 							{
-								Name: proto.String("cta_url"),
+								Name:             proto.String("cta_url"),
 								ButtonParamsJSON: proto.String(`{"display_text":"Buka feepay.web.id","url":"https://feepay.web.id","merchant_url":"https://feepay.web.id"}`),
 							},
 							{
-								Name: proto.String("quick_reply"),
+								Name:             proto.String("quick_reply"),
 								ButtonParamsJSON: proto.String(`{"display_text":"Hubungi CS","id":"cs_btn"}`),
 							},
 						},
@@ -200,7 +200,7 @@ func main() {
 				},
 			},
 		}
-		
+
 		resp, err := client.SendMessage(context.Background(), target, msg)
 		if err != nil {
 			log.Fatalf("Gagal kirim tombol: %v", err)
@@ -222,14 +222,13 @@ func main() {
 			fmt.Printf("Nomor %v -> Terdaftar: %v, JID: %v\n", info.Query, info.IsIn, info.JID)
 		}
 
-
 	case "send-card":
 		requireLogin(client)
 		if len(os.Args) < 3 {
 			log.Fatal("Format: send-card <nomor_tujuan>")
 		}
 		target := parseJID(os.Args[2])
-		
+
 		var thumbBytes []byte
 		if b, err := os.ReadFile("thumb.jpg"); err == nil {
 			thumbBytes = b
@@ -248,11 +247,11 @@ wa.me/6281234567890`, linkURL)
 
 		msg := &waProto.Message{
 			ExtendedTextMessage: &waProto.ExtendedTextMessage{
-				Text: proto.String(textMsg),
-				Title: proto.String("GO BLAST by FEEPAY"),
-				Description: proto.String("Klik link untuk mengunjungi website kami."),
-				MatchedText: proto.String(linkURL),
-				PreviewType: waProto.ExtendedTextMessage_NONE.Enum(),
+				Text:          proto.String(textMsg),
+				Title:         proto.String("GO BLAST by FEEPAY"),
+				Description:   proto.String("Klik link untuk mengunjungi website kami."),
+				MatchedText:   proto.String(linkURL),
+				PreviewType:   waProto.ExtendedTextMessage_NONE.Enum(),
 				JPEGThumbnail: thumbBytes,
 			},
 		}
@@ -275,7 +274,7 @@ wa.me/6281234567890`, linkURL)
 			log.Fatalf("Gagal logout: %v", err)
 		}
 		fmt.Println("Berhasil logout.")
-		
+
 	default:
 		fmt.Println("Perintah tidak dikenal.")
 	}
