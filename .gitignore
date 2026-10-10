@@ -1,0 +1,25 @@
+# Lingkungan & Kunci
+.env
+*.pem
+*.key
+
+# Data & Unggahan (Tidak boleh masuk git)
+/uploads/
+/data/
+/import/
+
+# Database Lokal
+*.db
+*.sqlite
+
+# Cadangan
+/backups/
+
+# Biner & Temporer
+/tmp/
+/bin/
+*.exe
+
+# Sistem & IDE
+.DS_Store
+.idea/
