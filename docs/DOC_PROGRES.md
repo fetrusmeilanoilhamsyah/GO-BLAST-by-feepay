@@ -36,6 +36,8 @@ Nomor tahap mengacu ke tabel "Daftar Tahap" di bawah.
 
 ## Daftar Tahap
 
+> Catatan log dan temuan historis Tahap 0 sampai 5 telah diarsipkan di [ARSIP_PROGRES.md](ARSIP_PROGRES.md).
+
 Daftar resmi. Agen hanya boleh mengubah kolom Status, dan hanya untuk tahap yang sedang dikerjakan. Jangan mengubah nama, urutan, atau menambah baris. Tahap dikirim ke agen satu per satu oleh pemilik proyek.
 
 | # | Nama Tahap | Status |
@@ -78,7 +80,7 @@ Salinan dari DOC_KONSEP bagian 15. Agen tidak boleh memutuskan sendiri.
 - [ ] 10. Batas waktu atau jumlah bonus referral
 - [ ] 11. Font: pemilik memeriksa di DevTools browser (tab Computed, bagian Rendered Fonts) apakah font di go.dev font web atau font sistem
 
-Sudah diputuskan di rapat: multi-nomor per pekerja diizinkan (batas lewat pengaturan), tombol tidak boleh tampil sebagai link polos, rate IDR dan USDT diatur di panel, nomor internasional didukung, kode negara default untuk nomor berawalan 0 adalah Indonesia (bisa diubah di panel), dan aturan nomor hanya berlaku per campaign (tidak lintas campaign) supaya nomor tes bisa dipakai berulang. Nama produk GO BLAST (teks kecil "by feepay"), tema gelap tosca ala go.dev dengan nilai warna di DOC_KONSEP bagian 17, maskot gopher di panel.
+Sudah diputuskan di rapat: multi-nomor per pekerja diizinkan (batas lewat pengaturan), tombol tidak boleh tampil sebagai link polos, rate IDR dan USDT diatur di panel, nomor internasional didukung, kode negara default untuk nomor berawalan 0 adalah Indonesia (bisa diubah di panel), dan aturan nomor hanya berlaku per campaign (tidak lintas campaign) supaya nomor tes bisa dipakai berulang. Nama produk GO BLAST (teks kecil "by feepay"), tema adaptif terang/gelap mengikuti perangkat dengan warna tosca, maskot gopher di panel.
 
 ## Keputusan yang sudah diambil
 
@@ -86,6 +88,9 @@ Terbaru di atas. Agen menambah baris di sini setiap ada keputusan baru, dari pem
 
 | Tanggal | Keputusan | Alasan | Oleh |
 |---|---|---|---|
+| 2026-10-11 | Restrukturisasi dokumen ke `docs/` dan arsip log Tahap 0-5 ke `docs/ARSIP_PROGRES.md` | Menjaga kebersihan root repo dan mempercepat pembacaan progres harian | agen dan pemilik |
+| 2026-10-11 | Opsi `tombol_asli` dinonaktifkan (`disabled`) dengan label jujur; `kartu_link` jadi mode utama | Temuan spike Baileys: native buttons tidak didukung WhatsApp untuk akun biasa/non-Cloud API | agen dan pemilik |
+| 2026-10-11 | Tema GO BLAST mengikuti pengaturan sistem (`prefers-color-scheme`) dan menyediakan pemilih manual via cookie Lax | Memenuhi kenyamanan pengguna mengikuti referensi go.dev tanpa pustaka eksternal | pemilik |
 | 2026-10-11 | Kata 'FEEPAY' dan elemen CS tidak lagi wajib | Atas permintaan pemilik proyek | pemilik |
 | 2026-10-11 | Nilai i18n Select Language disisipkan lewat data struct saat render template | Lebih aman dan simpel tanpa menyuntikkan template.FuncMap secara dinamis | agen |
 | 2026-10-11 | Mode bawaan `kartu_link` untuk form campaign diambil dari pengaturan DB, tapi tidak memaksakan DB query error jika key tidak ada | Menjamin UI fallback lancar walau settings kosong awal | agen |
@@ -101,39 +106,20 @@ Terbaru di atas. Agen menambah baris di sini setiap ada keputusan baru, dari pem
 
 ## Catatan temuan
 
-Hasil uji dan hal yang ditemukan saat bekerja. Terbaru di atas.
+Hasil uji dan hal yang ditemukan saat bekerja (Tahap 0 - 5 diarsipkan di [ARSIP_PROGRES.md](ARSIP_PROGRES.md)). Terbaru di atas.
 
-- 2026-10-11: .env dari pemilik berhasil dibaca. Perintah `migrate status` merespons koneksi sukses tapi tidak ada file migrasi. Endpoint `/healthz` berjalan dan membalas sukses ({"status":"ok","db":"ok"}).
-- 2026-10-11: Pemilik proyek memperbarui Go menjadi 1.27.2. Tahap 4 dilanjutkan: direktori dibuat, .env dan config diatur, go get sukses, theme.css diimplementasi dengan variabel warna sesuai bagian 17, MaskPhone dengan uji kasus ditulis, dan tes translasi berlalu dengan fallback ke id.
-- 2026-10-11: Proses `go get` untuk `github.com/jackc/pgx/v5` dan `github.com/pressly/goose/v3` terblokir karena pustaka meminta Go versi >= 1.25.0 dan >= 1.26.0, sedangkan versi terpasang adalah 1.22.2. Eksekusi dihentikan sesuai aturan di DOC_AI_SLOP bagian 14.
-- 2026-10-10: Berdasarkan dokumentasi whatsmeow, event receipt dibedakan menjadi TypeSender (centang 1) dan TypeDelivered (centang 2). Memori per sesi diprediksi sangat kecil (5-10MB idle), tapi bisa naik signifikan untuk 100 sesi jika ada antrean pesan. Perintah client.Logout() akan menghapus sesi lokal di database (sqlstore).
-- 2026-10-10: Repo git diinisialisasi dengan struktur .gitignore yang melarang direktori data/unggahan. DOC_SECURITY_DEPLOY siap dengan panduan rate-limiting, proteksi privasi customer, dan arsitektur VPS.
-- 2026-10-10: Cek lingkungan berhasil. Go (go1.22.2 windows/amd64), PostgreSQL (17.11), dan Git (2.53.0.windows.1) terdeteksi. pg_isready menerima koneksi di port 5432.
-- (kosong)
+- 2026-10-11: Tema terang dan gelap diimplementasikan dengan rasio kontras WCAG 2.1 >= 4.5:1. Nilai danger pada mode gelap disesuaikan ke `#ff5252` (rasio 5.00:1) agar lulus standar aksesibilitas.
+- 2026-10-11: Spike Baileys: native buttons tidak dirender oleh WhatsApp pada nomor biasa/non-Cloud API. Di form campaign, opsi `tombol_asli` dinonaktifkan (`disabled`) dengan label jujur.
+- 2026-10-11: Tema yang sebelumnya hanya gelap disesuaikan dengan preferensi sistem; template form dan campaign memakai variabel warna agar teks, input, dan border tetap kontras dalam mode terang.
 
 ## Log kerja
 
-Terbaru di atas. Format: `tanggal: ringkasan satu baris`.
+Terbaru di atas. Format: `tanggal: ringkasan satu baris` (Log Tahap 0 - 5 diarsipkan di [ARSIP_PROGRES.md](ARSIP_PROGRES.md)).
 
+- 2026-10-11: Perapian repo (Bagian A, A2, B, C): bersihkan file nyasar, pisah main.go, hapus emoji/simbol UI, label jujur tombol_asli, tema adaptif terang & gelap, restrukturisasi docs/.
+- 2026-10-11: Tema adaptif terang/gelap diimplementasikan melalui `prefers-color-scheme` sesuai keputusan pemilik.
 - 2026-10-11: Tahap 8 selesai (Template dan campaign: list, form create/edit, preview, validation mode/url/image, logic Render format pesan).
 - 2026-10-11: Revisi aturan Tahap 7: Nomor tanpa awalan tidak lagi dianggap ambigu. Sistem langsung mem-parse (mendukung `49...` untuk Jerman, `1...` untuk US, dll) sesuai permintaan pemilik.
 - 2026-10-11: Tahap 7 selesai (Upload nomor, normalisasi E.164, filter duplikat per campaign, preview CSV, handler).
 - 2026-10-11: Menambahkan TODO untuk dompet di DOC_PROGRES.
 - 2026-10-11: Tahap 6 selesai (Autentikasi admin dan pekerja, form daftar, middleware rate limit & CSRF, tes auth, dan command createadmin).
-- 2026-10-11: Tahap 5 selesai (Skema database, migrasi, seed, DOC_SKEMA, dan test validasi skema constraint selesai).
-- 2026-10-11: Koreksi Tahap 4 dan 2: gofmt, perbaikan validasi lang+cookie Lax, teks i18n di index.html, dan pembaruan DOC_SECURITY_DEPLOY sesuai hasil rapat.
-
-- 2026-10-11: Tahap 4 selesai (Go 1.27.2 berhasil dipasang oleh pemilik proyek, konfigurasi dan dependensi beres).
-- 2026-10-11: Tahap 4 dihentikan (terblokir) karena pustaka pgx/v5 dan goose/v3 meminta Go versi yang lebih tinggi dari yang terpasang.
-- 2026-10-10: Tahap 3 selesai: program spike whatsmeow (pair, send, NativeFlowMessage) ditulis dan disusun laporan analisanya di HASIL.md.
-- 2026-10-10: Tahap 2 selesai: buat repo git lokal, commit awal, dan penulisan dokumen .gitignore serta DOC_SECURITY_DEPLOY.md.
-- 2026-10-10: Tahap 0 selesai: orientasi dokumen dan cek versi lingkungan (Go, PostgreSQL, Git).
-- 2026-10-10: DOC_PROMPTS ditulis ulang dengan gaya rinci (butir bernomor, file dan nilai persis, larangan, verifikasi, commit, laporan tabel). Ditambahkan AGENTS.md, DOC_AI_SLOP bagian 14 (pustaka yang diizinkan), dan tabel Daftar Tahap resmi di DOC_PROGRES.
-- 2026-10-10: Ditambahkan bagian Keputusan yang sudah diambil di DOC_PROGRES, aturan build dan seluruh tes sebelum selesai, serta DOC_AI_SLOP bagian 13 (git: satu commit per tugas, tanpa push otomatis).
-- 2026-10-10: Nama produk GO BLAST dan tema gelap tosca ditetapkan. DOC_KONSEP bagian 17 (identitas dan tampilan) ditambahkan, DOC_AI_SLOP bagian 12, P4, dan P13 disesuaikan.
-- 2026-10-10: DOC_AI_SLOP bagian 12 (tampilan dan aset) ditambahkan: warna sebagai variabel, font sistem, aturan maskot gopher dan atribusi.
-- 2026-10-10: Format upload nomor ditetapkan CSV, TXT, XLSX (DOC_KONSEP bagian 5 dan 16, P7, DOC_AI_SLOP).
-- 2026-10-10: Aturan nomor diubah dari "sekali seumur hidup" menjadi "sekali per campaign" (DOC_KONSEP bagian 2, 5, 6, 7, 16; DOC_AI_SLOP; P5 dan P7).
-- 2026-10-10: DOC_KONSEP ditulis ulang ke versi 2: mode tombol (`tombol_asli` atau `kartu_link`), empat kecepatan, dua mata uang, multi-nomor dan sesi dihitung per nomor aktif, nomor internasional, bagian arah ke depan, keputusan terbuka dirapikan dan diberi nomor ulang.
-- 2026-10-10: DOC_KONSEP direvisi pemilik (multi-nomor, tombol asli, penarikan USDT, empat kecepatan, tiga bahasa). DOC_AI_SLOP, DOC_PROGRES, DOC_PROMPTS dibuat.
-- 2026-10-10: DOC_KONSEP pertama ditulis dari rapat konsep.

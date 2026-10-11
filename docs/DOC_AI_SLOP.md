@@ -6,10 +6,10 @@ Wajib dibaca sebelum mengerjakan tugas apa pun di proyek ini. Tujuannya mencegah
 
 ## 1. Urutan baca (setiap sesi)
 
-1. `DOC_PROGRES.md`: untuk tahu posisi terakhir dan tugas berikutnya.
-2. `DOC_KONSEP.md`: sumber kebenaran konsep.
-3. `DOC_AI_SLOP.md`: dokumen ini.
-4. `DOC_SKEMA.md` dan `DOC_SECURITY_DEPLOY.md` kalau sudah ada, untuk tugas yang menyentuh database, keamanan, atau deploy.
+1. `docs/DOC_PROGRES.md`: untuk tahu posisi terakhir dan tugas berikutnya.
+2. `docs/DOC_KONSEP.md`: sumber kebenaran konsep.
+3. `docs/DOC_AI_SLOP.md`: dokumen ini.
+4. `docs/DOC_SKEMA.md` dan `docs/DOC_SECURITY_DEPLOY.md` kalau sudah ada, untuk tugas yang menyentuh database, keamanan, atau deploy.
 
 Kalau dokumen saling bertentangan, atau tugas tidak cocok dengan DOC_KONSEP: berhenti dan tanya. Jangan memilih sendiri.
 

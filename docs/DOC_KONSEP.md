@@ -2,7 +2,7 @@
 
 Dokumen ini adalah sumber kebenaran untuk konsep sistem. Semua pekerjaan (manusia maupun AI agent) mengacu ke sini. Kalau ada fitur yang tidak tertulis di sini, jangan dibuat tanpa izin pemilik proyek.
 
-Status: konsep versi 2, belum ada kode.
+Status: Dokumen hidup (living document), terus disinkronkan dengan keputusan proyek.
 
 ---
 
@@ -21,7 +21,7 @@ Pasar awal adalah Indonesia (kampung, kampus, dan pembeli pulsa). Sistem diranca
 Daftar ini sama pentingnya dengan daftar fitur. Jangan ditambahkan tanpa izin.
 
 - Pembacaan atau pemrosesan balasan dari customer. Sistem hanya mengirim.
-- Fitur berhenti otomatis (opt-out). Kalau penerima membalas "stop", sistem tidak membaca dan tidak mencatatnya. Sebagai gantinya: (1) setiap pesan wajib menyebut FEEPAY dan nomor CS supaya penerima tahu harus menghubungi siapa (bagian 8); (2) admin yang menjaga agar nomor yang sama tidak dimasukkan lagi ke campaign berikutnya (bagian 7).
+- Fitur berhenti otomatis (opt-out). Kalau penerima membalas "stop", sistem tidak membaca dan tidak mencatatnya. Sebagai gantinya: admin yang menjaga agar nomor yang sama tidak dimasukkan lagi ke campaign berikutnya (bagian 7). Kata FEEPAY dan elemen CS sekarang opsional (bukan wajib).
 - Beberapa campaign berjalan paralel dengan prioritas. Untuk sekarang satu per satu.
 - Role customer, login Google, PWA, Redis, WebSocket.
 - Pengiriman otomatis uang ke pekerja. Pembayaran tetap manual.
@@ -87,23 +87,21 @@ Aturan keras: dalam satu campaign, satu nomor tidak boleh berstatus `terkirim` d
 
 ## 8. Template pesan
 
-Admin bisa mengubah template kapan saja. Elemen berikut bisa dinyalakan atau dimatikan lewat panel tanpa mengubah kode, kecuali yang ditandai wajib:
+Admin bisa mengubah template kapan saja. Elemen berikut bisa dinyalakan atau dimatikan lewat panel tanpa mengubah kode:
 
 - Teks pesan (wajib)
 - Foto (opsional, teks menjadi caption foto)
-- Aksi ke web FEEPAY (opsional)
-- Aksi CS (wajib, tidak bisa dimatikan)
+- Aksi ke web (opsional)
+- Aksi CS (opsional, bawaan formulir: tidak aktif)
 - Aksi telepon (opsional)
 - Aksi claim promo (opsional)
 
 **Tampilan harus rapi.** Pesan tidak boleh tampil sebagai teks dan link polos tanpa tata letak. Tiap campaign memilih satu dari dua mode:
 
-1. `tombol_asli`: tombol interaktif sungguhan (link web, telepon atau CS, claim promo), memakai `NativeFlowMessage` (jenis pesan interaktif WhatsApp yang bisa membawa tombol) lewat `whatsmeow`. Tampilannya paling rapi, tapi caranya tidak resmi (bukan WhatsApp Business API). Risikonya: akun pekerja lebih mudah dibanned, dan tombol bisa gagal tampil sewaktu-waktu setelah WhatsApp memperbarui sistemnya. Server tidak bisa tahu apakah tombol benar-benar tampil di HP penerima, jadi pesan yang tombolnya tidak tampil tetap tercatat `terkirim` dan tetap dibayar.
-2. `kartu_link`: pesan berformat rapi (judul tebal, baris pendek, pemisah) dengan link ke web FEEPAY yang menampilkan kartu preview (judul, gambar, deskripsi dari halaman tujuan). Aman dari sisi protokol, dan tidak tampil telanjang.
+1. `tombol_asli`: tombol interaktif sungguhan (link web, telepon atau CS, claim promo), memakai `NativeFlowMessage` lewat Baileys/whatsmeow. **Temuan spike:** Baileys bisa mengirim gambar dengan teks (caption), tetapi tombol interaktif (native buttons) sudah tidak didukung oleh WhatsApp untuk nomor biasa/non-Cloud API. Di antarmuka admin, opsi `tombol_asli` dinonaktifkan (`disabled`) dengan label jujur. Pengujian Baileys yang sesungguhnya baru akan dilakukan pada Tahap 9.
+2. `kartu_link`: mode default dan andalan. Pesan berformat rapi (judul tebal, baris pendek, pemisah) dengan tautan yang memicu kartu preview Open Graph (OG tag). Aman dari sisi protokol dan tampil profesional.
 
-Mode bawaan ditentukan setelah uji nyata (Tahap 3). Kalau `tombol_asli` tidak tampil andal di Android dan iPhone, mode bawaan adalah `kartu_link`. Admin tetap bisa memilih mode per campaign.
-
-Pesan harus menyebut jelas bahwa ini dari FEEPAY dan menyertakan jalur CS, supaya penerima tahu harus menghubungi siapa dan tidak langsung melapor sebagai spam. Aturan ini dicek saat campaign disimpan: teks pesan harus memuat kata FEEPAY, dan elemen CS harus aktif dan terisi.
+Penyebutan kata "FEEPAY" dan pengisian elemen CS bersifat opsional (tidak diwajibkan secara kaku saat penyimpanan campaign). Default form campaign baru adalah CS tidak aktif (`CSActive: false`).
 
 Preview di panel hanyalah simulasi, bukan jaminan tampilan di HP penerima.
 
@@ -220,18 +218,26 @@ Referral, penanda klik, dan hal lain di luar daftar ini menyusul setelah fase 1 
 ## 17. Identitas dan tampilan
 
 - **Nama produk:** GO BLAST. Di dekat nama, tampil teks kecil "by feepay".
-- **Tema:** gelap dengan warna tosca, mengikuti tampilan referensi go.dev. Nilai awal diambil dari screenshot referensi dan bisa disesuaikan pemilik proyek:
+- **Tema:** Mengikuti pengaturan terang/gelap sistem perangkat secara default (`prefers-color-scheme`), serta dapat dipilih manual (auto, terang, gelap) via cookie `theme`. Referensi tampilan adalah go.dev, dengan tosca sebagai warna primer:
 
-| Peran | Nilai |
-|---|---|
-| Latar halaman | `#202224` |
-| Latar bagian atas (hero) | `#2d2d2d` |
-| Kartu | `#3f4042` |
-| Warna utama (header, tombol) | `#007d9c` |
-| Aksen (garis penanda, sorotan) | `#00add8` |
-| Tautan | sekitar `#50b7e0` (perkiraan, diuji kontrasnya) |
+| Peran | Variabel CSS | Tema Terang (Bawaan) | Tema Gelap |
+|---|---|---|---|
+| Latar halaman | `--color-bg` | `#ffffff` | `#202224` |
+| Latar hero | `--color-bg-hero` | `#f2f5f6` | `#2d2d2d` |
+| Kartu | `--color-card` | `#ffffff` | `#3f4042` |
+| Warna utama (tombol, brand) | `--color-primary` | `#007d9c` | `#007d9c` |
+| Teks tombol utama | `--color-on-primary` | `#ffffff` | `#ffffff` |
+| Aksen (sorotan) | `--color-accent` | `#00add8` | `#00add8` |
+| Tautan | `--color-link` | `#007d9c` | `#50b7e0` |
+| Teks utama | `--color-text` | `#202224` | `#e0e0e0` |
+| Teks muted | `--color-muted` | `#59666c` | `#b0b0b0` |
+| Garis batas | `--color-border` | `#d0d7de` | `#555555` |
+| Permukaan muted | `--color-surface-muted` | `#f2f5f6` | `#35383a` |
+| Sukses | `--color-success` | `#2e7d32` | `#4caf50` |
+| Bahaya | `--color-danger` | `#c62828` | `#ff5252` |
+| Peringatan | `--color-warning` | `#b25e00` | `#ff9800` |
 
-  Teks utama putih keabu-abuan dengan kontras yang terbaca di latar gelap. Hijau dipakai hanya untuk penghasilan dan status berhasil, merah hanya untuk gagal dan peringatan banned. Nilai hijau dan merah ditentukan saat Tahap 4 dengan kontras yang cukup di latar gelap.
-- **Font:** mengikuti tampilan referensi. Dari screenshot belum bisa dipastikan apakah itu font web atau font sistem. Sampai pemilik proyek memeriksanya, pakai daftar font sistem di `DOC_AI_SLOP.md` bagian 12.
-- **Maskot:** gopher kecil di panel pekerja dan admin. Aturan lisensi dan atribusi ada di `DOC_AI_SLOP.md` bagian 12.
+  Seluruh pasangan kontras warna telah divalidasi dengan rumus rasio WCAG 2.1 ($\ge 4.5:1$). Hijau dipakai hanya untuk penghasilan dan status berhasil, merah hanya untuk gagal dan peringatan banned.
+- **Font:** mengikuti tampilan referensi go.dev dengan daftar font sistem di `docs/DOC_AI_SLOP.md` bagian 12.
+- **Maskot:** gopher kecil di panel pekerja dan admin. Aturan lisensi dan atribusi ada di `docs/DOC_AI_SLOP.md` bagian 12.
 - **Catatan nama:** nama memakai kata "GO". Pemilik proyek memeriksa aturan merek dagang Go (go.dev/brand) sebelum nama ini dipakai di halaman publik.
