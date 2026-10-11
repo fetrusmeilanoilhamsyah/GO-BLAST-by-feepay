@@ -151,5 +151,10 @@
   "worker.theme_title": "Appearance",
   "worker.devices": "Devices",
   "worker.currency_label": "Currency:",
-  "worker.menu": "Menu"
+  "worker.id_label": "ID:",
+  "worker.role_label": "Role:",
+  "worker.username_label": "Username:",
+  "worker.menu": "Menu",
+  "auth.username": "Username",
+  "auth.login_identifier": "Username or Email"
 }

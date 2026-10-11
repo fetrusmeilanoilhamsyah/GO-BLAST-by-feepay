@@ -25,6 +25,7 @@ type UserSession struct {
 	ID          int64
 	Role        string
 	Email       string
+	Username    string
 	DisplayName string
 	Language    string
 	Currency    string
@@ -77,8 +78,11 @@ func RateLimitLogin(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
 			ip := getIP(r)
-			email := r.FormValue("email")
-			key := ip + ":" + email
+			identifier := strings.TrimSpace(r.FormValue("identifier"))
+			if identifier == "" {
+				identifier = strings.TrimSpace(r.FormValue("email"))
+			}
+			key := ip + ":" + identifier
 
 			// 5 attempts per 15 minutes = 1 attempt per 3 minutes (0.0055/s)
 			// We can use rate.Every(15*time.Minute/5), 5 burst.
@@ -138,11 +142,11 @@ func (s *Server) RequireRole(next http.HandlerFunc, roles ...string) http.Handle
 		var expiresAt time.Time
 
 		err = s.DB.Pool.QueryRow(context.Background(), `
-			SELECT u.id, u.role, u.email, COALESCE(u.display_name, u.email), u.language, u.currency, ws.expires_at
+			SELECT u.id, u.role, u.email, COALESCE(u.username, ''), COALESCE(u.display_name, u.email), u.language, u.currency, ws.expires_at
 			FROM web_sessions ws
 			JOIN users u ON u.id = ws.user_id
 			WHERE ws.token_hash = $1
-		`, hash).Scan(&user.ID, &user.Role, &user.Email, &user.DisplayName, &user.Language, &user.Currency, &expiresAt)
+		`, hash).Scan(&user.ID, &user.Role, &user.Email, &user.Username, &user.DisplayName, &user.Language, &user.Currency, &expiresAt)
 
 		if err != nil || time.Now().After(expiresAt) {
 			// Clean up invalid cookie

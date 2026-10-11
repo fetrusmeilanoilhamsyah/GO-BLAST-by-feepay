@@ -3,6 +3,8 @@ package web
 import (
 	"context"
 	"net/http"
+	"regexp"
+	"strings"
 	"time"
 
 	"goblast/internal/auth"
@@ -16,25 +18,30 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if r.Method == http.MethodPost {
-		email := r.FormValue("email")
+		identifier := strings.TrimSpace(r.FormValue("identifier"))
+		if identifier == "" {
+			identifier = strings.TrimSpace(r.FormValue("email"))
+		}
 		password := r.FormValue("password")
 
 		var id int64
 		var role, hash, lang string
 		err := s.DB.Pool.QueryRow(context.Background(), `
-			SELECT id, role, password_hash, language FROM users WHERE email = $1 AND status = 'active'
-		`, email).Scan(&id, &role, &hash, &lang)
+			SELECT id, role, password_hash, language 
+			FROM users 
+			WHERE (LOWER(email) = LOWER($1) OR LOWER(username) = LOWER($1)) AND status = 'active'
+		`, identifier).Scan(&id, &role, &hash, &lang)
 
 		if err != nil {
-			s.logAudit(nil, "login_failed", "users", email, "invalid email or inactive")
-			s.renderLogin(w, r, "Email atau kata sandi salah")
+			s.logAudit(nil, "login_failed", "users", identifier, "invalid identifier or inactive")
+			s.renderLogin(w, r, "Email/Username atau kata sandi salah")
 			return
 		}
 
 		match, err := auth.VerifyPassword(password, hash)
 		if err != nil || !match {
-			s.logAudit(nil, "login_failed", "users", email, "invalid password")
-			s.renderLogin(w, r, "Email atau kata sandi salah")
+			s.logAudit(nil, "login_failed", "users", identifier, "invalid password")
+			s.renderLogin(w, r, "Email/Username atau kata sandi salah")
 			return
 		}
 
@@ -59,7 +66,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		s.logAudit(&id, "login_success", "users", email, "")
+		s.logAudit(&id, "login_success", "users", identifier, "")
 
 		http.SetCookie(w, &http.Cookie{
 			Name:     "gb_session",
@@ -119,11 +126,25 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if r.Method == http.MethodPost {
-		email := r.FormValue("email")
+		email := strings.TrimSpace(r.FormValue("email"))
+		username := strings.ToLower(strings.TrimSpace(r.FormValue("username")))
 		password := r.FormValue("password")
 		lang := r.FormValue("language")
 		lang = validateLang(lang)
-		referralCode := r.FormValue("referral_code")
+		referralCode := strings.TrimSpace(r.FormValue("referral_code"))
+
+		if username == "" {
+			parts := strings.Split(email, "@")
+			if len(parts) > 0 {
+				username = strings.ToLower(parts[0])
+			}
+		}
+
+		matched, _ := regexp.MatchString(`^[a-zA-Z0-9_]{3,30}$`, username)
+		if !matched {
+			s.renderRegister(w, r, "Username harus 3-30 karakter (hanya huruf, angka, dan underscore)")
+			return
+		}
 
 		if len(password) < 10 {
 			s.renderRegister(w, r, "Kata sandi minimal 10 karakter")
@@ -149,16 +170,15 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		newRefCode, _, _ := auth.GenerateSessionToken()
 		newRefCode = newRefCode[:8] // simple short code
 
-		// default display name as email prefix
-		displayName := email
+		displayName := username
 
 		_, err = s.DB.Pool.Exec(context.Background(), `
-			INSERT INTO users (email, password_hash, role, display_name, language, currency, referral_code, referred_by)
-			VALUES ($1, $2, 'worker', $3, $4, 'IDR', $5, $6)
-		`, email, hash, displayName, lang, newRefCode, referredBy)
+			INSERT INTO users (email, username, password_hash, role, display_name, language, currency, referral_code, referred_by)
+			VALUES ($1, $2, $3, 'worker', $4, $5, 'IDR', $6, $7)
+		`, email, username, hash, displayName, lang, newRefCode, referredBy)
 
 		if err != nil {
-			s.renderRegister(w, r, "Email sudah terdaftar atau terjadi kesalahan")
+			s.renderRegister(w, r, "Email atau Username sudah terdaftar")
 			return
 		}
 

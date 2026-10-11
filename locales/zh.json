@@ -151,5 +151,10 @@
   "worker.theme_title": "外观模式",
   "worker.devices": "设备",
   "worker.currency_label": "货币:",
-  "worker.menu": "菜单"
+  "worker.id_label": "ID:",
+  "worker.role_label": "角色:",
+  "worker.username_label": "用户名:",
+  "worker.menu": "菜单",
+  "auth.username": "用户名",
+  "auth.login_identifier": "用户名或邮箱"
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 
 	"goblast/internal/auth"
 	"goblast/internal/config"
@@ -43,11 +44,16 @@ func runCreateAdmin(cfg *config.Config) {
 	newRefCode, _, _ := auth.GenerateSessionToken()
 	newRefCode = newRefCode[:8]
 
+	username := "admin"
+	if parts := strings.Split(email, "@"); len(parts) > 0 && parts[0] != "" {
+		username = strings.ToLower(parts[0])
+	}
+
 	var adminID int64
 	err = database.Pool.QueryRow(context.Background(), `
-		INSERT INTO users (email, password_hash, role, display_name, language, currency, referral_code)
-		VALUES ($1, $2, 'admin', 'Admin', 'id', 'IDR', $3) RETURNING id
-	`, email, hash, newRefCode).Scan(&adminID)
+		INSERT INTO users (email, username, password_hash, role, display_name, language, currency, referral_code)
+		VALUES ($1, $2, $3, 'admin', 'Admin', 'id', 'IDR', $4) RETURNING id
+	`, email, username, hash, newRefCode).Scan(&adminID)
 
 	if err != nil {
 		fmt.Printf("Error creating admin (email might exist): %v\n", err)

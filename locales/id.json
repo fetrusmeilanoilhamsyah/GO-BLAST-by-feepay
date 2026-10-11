@@ -150,5 +150,10 @@
   "worker.theme_title": "Mode Tampilan",
   "worker.devices": "Perangkat",
   "worker.currency_label": "Mata Uang:",
-  "worker.menu": "Menu"
+  "worker.id_label": "ID:",
+  "worker.role_label": "Peran:",
+  "worker.username_label": "Username:",
+  "worker.menu": "Menu",
+  "auth.username": "Username",
+  "auth.login_identifier": "Username atau Email"
 }
