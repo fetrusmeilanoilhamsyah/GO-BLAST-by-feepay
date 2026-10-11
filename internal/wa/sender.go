@@ -1,14 +1,11 @@
 package wa
 
 import (
-	"bytes"
 	"context"
 	"fmt"
-	"image/jpeg"
 	"sync"
 	"time"
 
-	"go.mau.fi/whatsmeow"
 	waProto "go.mau.fi/whatsmeow/binary/proto"
 	"go.mau.fi/whatsmeow/types"
 	"google.golang.org/protobuf/proto"
@@ -54,10 +51,10 @@ func NewRealSender(mgr *Manager) *RealSender {
 func (s *RealSender) Send(ctx context.Context, accountID int64, phone string, msg OutMessage) (Result, error) {
 	sess := s.mgr.GetSession(accountID)
 	if sess == nil {
-		return Result{}, fmt.Errorf("sesi %d tidak aktif", accountID)
+		return Result{}, ErrSessionNotActive
 	}
 	if !sess.Client.IsConnected() {
-		return Result{}, fmt.Errorf("sesi %d tidak terhubung", accountID)
+		return Result{}, ErrSessionNotConnected
 	}
 
 	jid := types.NewJID(phone, types.DefaultUserServer)
@@ -65,6 +62,7 @@ func (s *RealSender) Send(ctx context.Context, accountID int64, phone string, ms
 	var waMsg *waProto.Message
 	if msg.Preview != nil {
 		// Mode kartu_link: kirim dengan extended text message (link preview)
+		// Kirim hanya JPEGThumbnail (diuji di spike), tanpa pemanggilan Client.Upload per pesan
 		ep := &waProto.ExtendedTextMessage{
 			Text:          proto.String(msg.Text),
 			Title:         proto.String(msg.Preview.Title),
@@ -72,17 +70,6 @@ func (s *RealSender) Send(ctx context.Context, accountID int64, phone string, ms
 			MatchedText:   proto.String(msg.Preview.URL),
 			PreviewType:   waProto.ExtendedTextMessage_NONE.Enum(),
 			JPEGThumbnail: msg.Preview.Thumbnail,
-		}
-		if len(msg.Preview.Thumbnail) > 0 {
-			// Upload thumbnail ke server media WhatsApp
-			uploaded, err := sess.Client.Upload(ctx, msg.Preview.Thumbnail, whatsmeow.MediaLinkThumbnail)
-			if err == nil {
-				ep.ThumbnailDirectPath = proto.String(uploaded.DirectPath)
-				ep.ThumbnailSHA256 = uploaded.FileSHA256
-				ep.ThumbnailEncSHA256 = uploaded.FileEncSHA256
-				ep.MediaKey = uploaded.MediaKey
-			}
-			// Jika upload gagal, JPEGThumbnail langsung tetap terpasang
 		}
 		waMsg = &waProto.Message{ExtendedTextMessage: ep}
 	} else {
@@ -164,24 +151,4 @@ func (f *FakeSender) Reset() {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.Sent = nil
-}
-
-// --- thumbnail helper ---
-
-// encodeJPEG mengubah bytes JPEG (sudah diresiz) menjadi bytes dengan kualitas tertentu.
-// Dipakai oleh campaign.Render.
-func encodeJPEG(img interface{ Bounds() interface{} }, quality int) ([]byte, error) {
-	// Fungsi ini adalah placeholder; implementasi sebenarnya ada di campaign/thumbnail.go
-	_ = img
-	_ = quality
-	return nil, nil
-}
-
-// ValidateJPEGBytes memastikan bytes adalah JPEG valid.
-func ValidateJPEGBytes(b []byte) bool {
-	if len(b) < 3 {
-		return false
-	}
-	_, err := jpeg.Decode(bytes.NewReader(b))
-	return err == nil
 }

@@ -13,11 +13,18 @@ import (
 	"goblast/internal/config"
 	"goblast/internal/db"
 
+	"github.com/jackc/pgx/v5"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/store/sqlstore"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 	waLog "go.mau.fi/whatsmeow/util/log"
+)
+
+// Error sentinel untuk kondisi sesi
+var (
+	ErrSessionNotActive   = errors.New("sesi tidak aktif")
+	ErrSessionNotConnected = errors.New("sesi tidak terhubung")
 )
 
 // SettingsReader membaca nilai integer dari settings.
@@ -326,7 +333,7 @@ func (m *Manager) IsOnWhatsApp(ctx context.Context, accountID int64, phone strin
 	sess, ok := m.sessions[accountID]
 	m.mu.RUnlock()
 	if !ok || sess == nil || sess.Client == nil {
-		return false, errors.New("sesi tidak aktif")
+		return false, ErrSessionNotActive
 	}
 	jid := types.NewJID(phone, types.DefaultUserServer)
 	results, err := sess.Client.IsOnWhatsApp(ctx, []string{jid.User})
@@ -395,11 +402,10 @@ func (r *DBSettingsReader) GetInt(ctx context.Context, key string) (int, bool, e
 		`SELECT value FROM settings WHERE key = $1`, key,
 	).Scan(&raw)
 	if err != nil {
-		if err.Error() == "no rows in result set" {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return 0, false, nil
 		}
-		// pgx: sql.ErrNoRows alias
-		return 0, false, nil
+		return 0, false, fmt.Errorf("db get int %s: %w", key, err)
 	}
 	var val int
 	if jsonErr := json.Unmarshal([]byte(raw), &val); jsonErr != nil {
@@ -415,7 +421,10 @@ func (r *DBSettingsReader) GetJSON(ctx context.Context, key string, target inter
 		`SELECT value FROM settings WHERE key = $1`, key,
 	).Scan(&raw)
 	if err != nil {
-		return false, nil
+		if errors.Is(err, pgx.ErrNoRows) {
+			return false, nil
+		}
+		return false, fmt.Errorf("db get json %s: %w", key, err)
 	}
 	if err := json.Unmarshal([]byte(raw), target); err != nil {
 		return false, fmt.Errorf("settings %s JSON tidak valid: %w", key, err)
@@ -430,7 +439,10 @@ func (r *DBSettingsReader) GetString(ctx context.Context, key string) (string, b
 		`SELECT value FROM settings WHERE key = $1`, key,
 	).Scan(&raw)
 	if err != nil {
-		return "", false, nil
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", false, nil
+		}
+		return "", false, fmt.Errorf("db get string %s: %w", key, err)
 	}
 	var val string
 	if jsonErr := json.Unmarshal([]byte(raw), &val); jsonErr != nil {

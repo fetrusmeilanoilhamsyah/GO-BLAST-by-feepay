@@ -10,7 +10,7 @@ Nomor tahap mengacu ke tabel "Daftar Tahap" di bawah.
 ## Posisi sekarang
 
 - **Fase**: 1 (MVP)
-- **Terakhir dikerjakan**: Tahap 11 (Panel pekerja: ringkasan saldo per mata uang, daftar akun & agregat nomor di /worker, modal risiko banned & privasi sesi sebelum sambung akun pertama, 4 kecepatan & peringatan fast speed, riwayat pesan /worker/history paginasi tanpa nomor telepon customer, referral dengan pemberitahuan Tahap 18, ukuran halaman < 50 KB, tes 100% lulus) selesai dan terverifikasi penuh.
+- **Terakhir dikerjakan**: Koreksi Tahap 10 (Pengaman uang dan pesan, migrasi 0010_remove_seeded_business_defaults.sql, satuan rate_wage JSON mikro-USDT, thumbnail in-memory cache, batas harian Asia/Jakarta, dan seluruh 8 DB test baru 100% lulus) selesai dan terverifikasi penuh.
 - **Lanjut dari sini**: Tahap 12 (Panel admin: laporan, pengaturan, dompet).
 - **Blocker**: tidak ada.
 
@@ -90,6 +90,7 @@ Terbaru di atas. Agen menambah baris di sini setiap ada keputusan baru, dari pem
 
 | Tanggal | Keputusan | Alasan | Oleh |
 |---|---|---|---|
+| 2026-10-12 | Koreksi Tahap 10: Pengaman uang & pesan, satuan rate_wage mikro-USDT, thumbnail cache (path, modTime), batas harian Asia/Jakarta, migrasi 0010 pembersihan seeded business defaults | Melindungi integritas buku besar dan saldo, mencegah pengiriman ganda pada timeout/error tidak pasti, menghapus default bisnis dari migrasi agar kontrol penuh di tangan admin, dan meningkatkan efisiensi render per campaign | pemilik dan agen |
 | 2026-10-11 | Reposisi Navbar & Drawer (Menu di Kiri, Profil di Kanan) serta Pengelompokan Pengaturan Akun ke Accordion Collapsible Ringkas | Standarisasi letak menu navigasi umum di sebelah kiri dan profil di kanan, serta menggantikan form panjang di drawer profil yang meluber dengan 3 kartu accordion rapi (Pengaturan Profil, Rekening & Wallet, Keamanan Kata Sandi) | pemilik dan agen |
 | 2026-10-11 | Mode Gelap Pekat OLED Pitch Black (`#0a0a0a`), Pembersihan Total Font Hijau AI-Slop, dan Kartu Responsif Mobile Akun WA di Android | Menghilangkan rasa silau/merih di mata saat menggunakan mode gelap, menyelaraskan tipografi monokrom go.dev bersih, dan mencegah tabel akun WhatsApp meluber/penuh sesak di layar HP Android dengan tampilan kartu vertikal proporsional | pemilik dan agen |
 | 2026-10-11 | Pilihan Rekening Penarikan Global (SeaBank, BCA, DANA, USDT BEP20) untuk Semua Akun Pekerja | Membebaskan seluruh pekerja untuk memilih saluran pencairan lokal maupun internasional tanpa restriksi mata uang pendaftaran | pemilik dan agen |
@@ -101,7 +102,7 @@ Terbaru di atas. Agen menambah baris di sini setiap ada keputusan baru, dari pem
 | 2026-10-11 | Enkripsi data tujuan penarikan dengan AES-256-GCM (destination_encrypted) dan proteksi saldo negatif berbasis DB trigger | Menjaga kerahasiaan nomor rekening pekerja serta menjamin penarikan tidak bisa membuat saldo negatif (DOC_AI_SLOP bagian 6) | agen |
 | 2026-10-11 | Definisi "terkirim" ditaruh sebagai konstanta DeliveryLevel = "server_ack" (TODO keputusan terbuka #1) | Bawaan aman: centang satu dari server WA. Menunggu keputusan apakah perlu centang dua (delivered) | agen |
 | 2026-10-11 | ThumbnailSpec kartu_link sementara: lebar 300px, kualitas JPEG 70 | Pilihan sementara untuk implementasi Tahap 9 & 10 sambil menunggu konfirmasi uji send-card-thumb | pemilik dan agen |
-| 2026-10-11 | Penyimpanan kunci perangkat whatsmeow: Opsi A — enkripsi at-rest di level PostgreSQL/disk VPS, tanpa wrapper aplikasi | Data sesi WA sudah dilindungi kriptografis oleh Noise protocol. Enkripsi disk VPS + TLS koneksi DB cukup untuk fase 1. Wrapper driver (B) dan sqlstore kustom (C) over-engineering dan berisiko salah implementasi. | pemilik (memilih "terbaik untuk produksi", agen merekomendasikan A) |
+| 2026-10-11 | Penyimpanan kunci perangkat whatsmeow: Opsi A — enkripsi at-rest di level PostgreSQL/disk VPS, tanpa wrapper aplikasi | protokol Noise melindungi lalu lintas, bukan kunci yang tersimpan; kunci whatsmeow tersimpan tidak terenkripsi di tabel whatsmeow_* pada database yang sama; mitigasi: dihapus saat berhenti, enkripsi disk VPS, pengguna database terbatas (dikerjakan di Tahap 16). | pemilik (memilih "terbaik untuk produksi", agen merekomendasikan A) |
 | 2026-10-11 | Fleksibilitas data penerima: mendukung nomor polos, nomor+nama, serta atribut kustom (USN/ID) | Kebutuhan broadcast dinamis ke depan; template pesan mendukung variabel {nama} dengan fallback aman jika data kosong | pemilik |
 | 2026-10-11 | Restrukturisasi dokumen ke `docs/` dan arsip log Tahap 0-5 ke `docs/ARSIP_PROGRES.md` | Menjaga kebersihan root repo dan mempercepat pembacaan progres harian | agen dan pemilik |
 | 2026-10-11 | Opsi `tombol_asli` dinonaktifkan (`disabled`) dengan label jujur; `kartu_link` jadi mode utama | Temuan spike whatsmeow: native buttons tidak didukung WhatsApp untuk akun biasa/non-Cloud API | agen dan pemilik |
@@ -123,6 +124,16 @@ Terbaru di atas. Agen menambah baris di sini setiap ada keputusan baru, dari pem
 
 Hasil uji dan hal yang ditemukan saat bekerja (Tahap 0 - 5 diarsipkan di [ARSIP_PROGRES.md](ARSIP_PROGRES.md)). Terbaru di atas.
 
+- 2026-10-12 (Koreksi Tahap 10 — Pengaman Uang & Pesan, Nilai Bisnis Bawaan, Satuan Rate):
+  1. Migrasi 0010_remove_seeded_business_defaults.sql menghapus pengaturan bisnis bawaan 0007 (hanya jika nilai sama persis) dan dipindahkan ke db/seed/dev.sql dengan proteksi penolakan di produksi (APP_ENV=prod) via CLI sub-command `seed`.
+  2. Format rate upah disatukan menjadi JSON `rate_wage` {"IDR": <int rupiah>, "USDT": <int mikro-USDT, 3000 = 0.003 USDT>}. Seluruh fallback lama (rate_idr, rate_usdt, rate_wage_idr, rate_wage_usdt) dihapus. Jika rate kosong atau <= 0, engine tidak mengirim apa pun dan menulis stop_reason "rate upah belum diisi admin". DOC_SKEMA.md diperbarui.
+  3. Pencatatan pasca-kirim dibungkus context.WithoutCancel dengan timeout 10s dan 3x retry (200ms, 1s, 3s). Jika tetap gagal, status menjadi 'gagal' (last_error "terkirim_tidak_tercatat"), dicatat di slog.Error, dan tidak pernah dikembalikan ke tersedia.
+  4. Pengiriman sender.Send dibungkus context.WithTimeout 60s. Error batas waktu berstatus 'gagal' (last_error "hasil_tidak_pasti") tanpa ulang. Error sentinel wa.ErrSessionNotActive dan wa.ErrSessionNotConnected dibuat sebagai satu-satunya error yang boleh mengembalikan nomor ke tersedia. claim_timeout_seconds dipastikan selalu > timeout kirim.
+  5. Putaran tak terkendali: buildCampaignMessage gagal jeda 5s dan setelah 3 kegagalan beruntun akun dihentikan ("gagal menyusun pesan campaign") serta nomor diproses lewat max_attempts. Nomor tidak_terdaftar menerapkan jeda kecepatan yang sama seperti setelah kirim.
+  6. Thumbnail di-cache dalam memori dengan kunci (path gambar, waktu ubah file). Client.Upload di RealSender dihapus (kirim hanya JPEGThumbnail). Fungsi encodeJPEG dan ValidateJPEGBytes dihapus.
+  7. Batas harian dihitung dari awal hari zona Asia/Jakarta (00:00:00 WIB). Saat batas tercapai, akun menunggu awal hari berikutnya lalu lanjut. Campaign otomatis berstatus selesai saat tidak ada nomor tersedia maupun dikirim dalam satu transaksi bersama audit_logs.
+  8. DBSettingsReader membedakan pgx.ErrNoRows dari error database sungguhan.
+  9. Seluruh 8 tes DB baru (dan auto-complete campaign) lulus 100%.
 - 2026-10-12 (Tahap 11 — Panel Pekerja Selesai Sesuai Spesifikasi Penuh):
   1. Halaman `/worker`: ringkasan penghasilan per mata uang dari `ledger_entries` (IDR dan USDT), daftar akun WhatsApp pekerja langsung di beranda dengan status & aksi, dan sisa nomor tersedia (angka agregat sistem).
   2. Akun WhatsApp (`/worker/accounts`): modal persetujuan risiko banned & privasi sesi (i18n) wajib dicentang sebelum menyambung akun pertama. Dropdown 4 kecepatan (`over_slow`, `slow`, `medium`, `fast`) dengan peringatan ekstra pada pilihan `fast`.
@@ -168,6 +179,7 @@ Langkah uji sambung dan putus satu nomor cadangan:
 
 Terbaru di atas. Format: `tanggal: ringkasan satu baris` (Log Tahap 0 - 5 diarsipkan di [ARSIP_PROGRES.md](ARSIP_PROGRES.md)).
 
+- 2026-10-12: Koreksi Tahap 10 selesai: migrasi 0010, satuan rate_wage mikro-USDT, pengaman uang & pesan, thumbnail in-memory cache, batas harian Asia/Jakarta, dan 8 DB test baru lulus 100%.
 - 2026-10-12: UI Akun WhatsApp: Tambahkan kartu ringkasan Database Nomor Tersedia (Sistem) dan Akun Terhubung di halaman /worker/accounts.
 - 2026-10-12: Tahap 11 selesai penuh: Audit dan implementasi lengkap panel pekerja (beranda agregat & saldo per mata uang, modal risiko banned & privasi, riwayat pesan tanpa nomor customer, referral Tahap 18 notice, ukuran < 50 KB, tes lulus 100%).
 - 2026-10-11: Penyempurnaan UI: Reposisi tombol navbar (Menu di kiri, Profil di kanan), drawer navigasi kiri & drawer profil kanan, serta pengelompokan form profil ke dalam accordion collapsible ringkas.

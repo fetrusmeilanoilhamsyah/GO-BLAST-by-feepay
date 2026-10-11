@@ -562,3 +562,722 @@ func TestRateSnapshotStaticAfterRateChange(t *testing.T) {
 		t.Fatalf("rate_snapshot berubah! diharapkan %d, didapat %d", initialRate, storedSnapshot)
 	}
 }
+
+// (a) kegagalan menulis buku besar tidak pernah mengembalikan nomor ke tersedia
+func TestLedgerFailureNeverReturnsToAvailable(t *testing.T) {
+	sqlDB, pool, ok := getTestDB(t)
+	if !ok {
+		t.Skip("Database tidak tersedia untuk tes integrasi")
+	}
+	defer sqlDB.Close()
+	defer pool.Close()
+
+	ctx := context.Background()
+	database := &db.DB{Pool: pool}
+
+	var workerID, campaignID, batchID, numberID int64
+	err := pool.QueryRow(ctx,
+		`INSERT INTO users (email, password_hash, role, display_name, referral_code)
+		 VALUES ($1, 'hash', 'worker', 'Worker Fail', $2) RETURNING id`,
+		fmt.Sprintf("worker_lf_%d@test.local", time.Now().UnixNano()),
+		fmt.Sprintf("REF_LF_%d", time.Now().UnixNano()),
+	).Scan(&workerID)
+	if err != nil {
+		t.Fatalf("setup worker: %v", err)
+	}
+
+	err = pool.QueryRow(ctx,
+		`INSERT INTO campaigns (name, status, button_mode, body, elements, created_by)
+		 VALUES ('Camp LF', 'berjalan', 'kartu_link', 'Halo', '{}', $1) RETURNING id`,
+		workerID,
+	).Scan(&campaignID)
+	if err != nil {
+		t.Fatalf("setup campaign: %v", err)
+	}
+
+	err = pool.QueryRow(ctx,
+		`INSERT INTO number_batches (campaign_id, filename, uploaded_by, total, accepted)
+		 VALUES ($1, 'lf.csv', $2, 1, 1) RETURNING id`,
+		campaignID, workerID,
+	).Scan(&batchID)
+	if err != nil {
+		t.Fatalf("setup batch: %v", err)
+	}
+
+	err = pool.QueryRow(ctx,
+		`INSERT INTO campaign_numbers (campaign_id, batch_id, phone_e164, country_code, status, attempts)
+		 VALUES ($1, $2, $3, '62', 'dikirim', 1) RETURNING id`,
+		campaignID, batchID, fmt.Sprintf("62817%06d", time.Now().UnixNano()%1000000),
+	).Scan(&numberID)
+	if err != nil {
+		t.Fatalf("setup number: %v", err)
+	}
+
+	// Settings kosong untuk rate_wage sehingga recordSuccessAndLedger gagal
+	settings := newTestSettings()
+
+	eng := engine.New(database, &wa.FakeSender{}, nil, settings)
+
+	// Percepat delay coba ulang untuk tes
+	origDelays := engine.RecordRetryDelays
+	engine.RecordRetryDelays = []time.Duration{10 * time.Millisecond, 20 * time.Millisecond, 30 * time.Millisecond}
+	defer func() { engine.RecordRetryDelays = origDelays }()
+
+	err = eng.RecordWithRetry(ctx, numberID, workerID, "IDR")
+	if err == nil {
+		t.Fatal("diharapkan recordWithRetry gagal karena rate_wage belum diisi admin")
+	}
+
+	// Periksa status nomor di database: HARUS 'gagal' dengan last_error 'terkirim_tidak_tercatat'
+	var status, lastError string
+	err = pool.QueryRow(ctx,
+		`SELECT status, COALESCE(last_error, '') FROM campaign_numbers WHERE id = $1`,
+		numberID,
+	).Scan(&status, &lastError)
+	if err != nil {
+		t.Fatalf("query status nomor: %v", err)
+	}
+
+	if status == "tersedia" {
+		t.Fatal("KEAMANAN DILANGGAR: kegagalan menulis buku besar mengembalikan nomor ke tersedia!")
+	}
+	if status != "gagal" {
+		t.Fatalf("status nomor harus 'gagal', didapat '%s'", status)
+	}
+	if lastError != "terkirim_tidak_tercatat" {
+		t.Fatalf("last_error harus 'terkirim_tidak_tercatat', didapat '%s'", lastError)
+	}
+}
+
+// (b) kegagalan render berulang menghentikan akun
+func TestRepeatedRenderFailureStopsAccount(t *testing.T) {
+	sqlDB, pool, ok := getTestDB(t)
+	if !ok {
+		t.Skip("Database tidak tersedia untuk tes integrasi")
+	}
+	defer sqlDB.Close()
+	defer pool.Close()
+
+	ctx := context.Background()
+	database := &db.DB{Pool: pool}
+
+	var workerID, accID int64
+	err := pool.QueryRow(ctx,
+		`INSERT INTO users (email, password_hash, role, display_name, referral_code)
+		 VALUES ($1, 'hash', 'worker', 'Worker Render', $2) RETURNING id`,
+		fmt.Sprintf("worker_rnd_%d@test.local", time.Now().UnixNano()),
+		fmt.Sprintf("REF_RND_%d", time.Now().UnixNano()),
+	).Scan(&workerID)
+	if err != nil {
+		t.Fatalf("setup worker: %v", err)
+	}
+
+	err = pool.QueryRow(ctx,
+		`INSERT INTO wa_accounts (worker_id, label, jid_hash, status, speed)
+		 VALUES ($1, 'Akun Render', 'hash_rnd', 'terhubung', 'medium') RETURNING id`,
+		workerID,
+	).Scan(&accID)
+	if err != nil {
+		t.Fatalf("setup account: %v", err)
+	}
+
+	// Nonaktifkan campaign berjalan lain
+	_, _ = pool.Exec(ctx, `UPDATE campaigns SET status = 'draf' WHERE status = 'berjalan'`)
+
+	// Buat campaign dengan template tidak valid (tombol_asli ditolak oleh ValidateTemplate)
+	var campID, batchID int64
+	err = pool.QueryRow(ctx,
+		`INSERT INTO campaigns (name, status, button_mode, body, elements, created_by)
+		 VALUES ('Camp Corrupt', 'berjalan', 'tombol_asli', 'Halo', '{}', $1) RETURNING id`,
+		workerID,
+	).Scan(&campID)
+	if err != nil {
+		t.Fatalf("setup campaign: %v", err)
+	}
+
+	err = pool.QueryRow(ctx,
+		`INSERT INTO number_batches (campaign_id, filename, uploaded_by, total, accepted)
+		 VALUES ($1, 'rnd.csv', $2, 5, 5) RETURNING id`,
+		campID, workerID,
+	).Scan(&batchID)
+	if err != nil {
+		t.Fatalf("setup batch: %v", err)
+	}
+
+	// Masukkan nomor 'tersedia'
+	for i := 1; i <= 5; i++ {
+		_, _ = pool.Exec(ctx,
+			`INSERT INTO campaign_numbers (campaign_id, batch_id, phone_e164, country_code, status, attempts)
+			 VALUES ($1, $2, $3, '62', 'tersedia', 0)`,
+			campID, batchID, fmt.Sprintf("62818%06d", time.Now().UnixNano()%1000000+int64(i)),
+		)
+	}
+
+	settings := newTestSettings()
+	settings.SetJSON("daily_limits", `{"medium": 100}`)
+	settings.SetInt("max_attempts", 3)
+	settings.SetJSON("rate_wage", `{"IDR": 50}`)
+
+	eng := engine.New(database, &wa.FakeSender{}, nil, settings)
+
+	// Percepat jeda gagal susun pesan
+	origDelay := engine.BuildRetryDelay
+	engine.BuildRetryDelay = 10 * time.Millisecond
+	defer func() { engine.BuildRetryDelay = origDelay }()
+
+	eng.StartAccount(accID, workerID, "IDR")
+
+	// Tunggu sampai akun berhenti (maks 3 detik)
+	deadline := time.Now().Add(3 * time.Second)
+	stopped := false
+	var reason string
+	for time.Now().Before(deadline) {
+		var status string
+		_ = pool.QueryRow(ctx, `SELECT status, COALESCE(stop_reason, '') FROM wa_accounts WHERE id = $1`, accID).Scan(&status, &reason)
+		if status == "berhenti" {
+			stopped = true
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	eng.StopAccount(accID)
+
+	if !stopped {
+		t.Fatalf("akun tidak berhenti setelah 3 kegagalan render berturut-turut, reason: %s", reason)
+	}
+	if reason != "gagal menyusun pesan campaign" {
+		t.Fatalf("stop_reason harus 'gagal menyusun pesan campaign', didapat '%s'", reason)
+	}
+}
+
+// (c) rate_wage USDT 3000 menghasilkan baris buku besar bernilai 3000, dan rate hilang membuat engine tidak mengirim
+func TestRateWageUSDTAndMissingRate(t *testing.T) {
+	sqlDB, pool, ok := getTestDB(t)
+	if !ok {
+		t.Skip("Database tidak tersedia untuk tes integrasi")
+	}
+	defer sqlDB.Close()
+	defer pool.Close()
+
+	ctx := context.Background()
+	database := &db.DB{Pool: pool}
+
+	var workerID, campaignID, batchID, numberID int64
+	err := pool.QueryRow(ctx,
+		`INSERT INTO users (email, password_hash, role, display_name, referral_code, currency)
+		 VALUES ($1, 'hash', 'worker', 'Worker USDT', $2, 'USDT') RETURNING id`,
+		fmt.Sprintf("worker_usdt_%d@test.local", time.Now().UnixNano()),
+		fmt.Sprintf("REF_USDT_%d", time.Now().UnixNano()),
+	).Scan(&workerID)
+	if err != nil {
+		t.Fatalf("setup worker: %v", err)
+	}
+
+	err = pool.QueryRow(ctx,
+		`INSERT INTO campaigns (name, status, button_mode, body, elements, created_by)
+		 VALUES ('Camp USDT', 'berjalan', 'kartu_link', 'Halo', '{}', $1) RETURNING id`,
+		workerID,
+	).Scan(&campaignID)
+	if err != nil {
+		t.Fatalf("setup campaign: %v", err)
+	}
+
+	err = pool.QueryRow(ctx,
+		`INSERT INTO number_batches (campaign_id, filename, uploaded_by, total, accepted)
+		 VALUES ($1, 'usdt.csv', $2, 1, 1) RETURNING id`,
+		campaignID, workerID,
+	).Scan(&batchID)
+	if err != nil {
+		t.Fatalf("setup batch: %v", err)
+	}
+
+	err = pool.QueryRow(ctx,
+		`INSERT INTO campaign_numbers (campaign_id, batch_id, phone_e164, country_code, status, attempts)
+		 VALUES ($1, $2, $3, '62', 'dikirim', 1) RETURNING id`,
+		campaignID, batchID, fmt.Sprintf("62819%06d", time.Now().UnixNano()%1000000),
+	).Scan(&numberID)
+	if err != nil {
+		t.Fatalf("setup number: %v", err)
+	}
+
+	settings := newTestSettings()
+	settings.SetJSON("rate_wage", `{"IDR": 50, "USDT": 3000}`)
+
+	eng := engine.New(database, &wa.FakeSender{}, nil, settings)
+
+	// Uji Bagian 1: rate_wage USDT 3000 menghasilkan baris buku besar bernilai 3000
+	err = eng.RecordSuccessAndLedger(ctx, numberID, workerID, "USDT")
+	if err != nil {
+		t.Fatalf("RecordSuccessAndLedger gagal: %v", err)
+	}
+
+	var amount, rateSnapshot int64
+	var curr string
+	err = pool.QueryRow(ctx,
+		`SELECT amount, rate_snapshot, currency FROM ledger_entries WHERE campaign_number_id = $1 AND kind = 'upah'`,
+		numberID,
+	).Scan(&amount, &rateSnapshot, &curr)
+	if err != nil {
+		t.Fatalf("query ledger entry USDT gagal: %v", err)
+	}
+
+	if amount != 3000 {
+		t.Fatalf("amount buku besar diharapkan 3000, didapat %d", amount)
+	}
+	if rateSnapshot != 3000 {
+		t.Fatalf("rate_snapshot diharapkan 3000, didapat %d", rateSnapshot)
+	}
+	if curr != "USDT" {
+		t.Fatalf("currency diharapkan USDT, didapat %s", curr)
+	}
+
+	// Uji Bagian 2: rate hilang membuat engine tidak mengirim apa pun dan menulis stop_reason "rate upah belum diisi admin"
+	var accID int64
+	err = pool.QueryRow(ctx,
+		`INSERT INTO wa_accounts (worker_id, label, jid_hash, status, speed)
+		 VALUES ($1, 'Akun EUR', 'hash_eur', 'terhubung', 'medium') RETURNING id`,
+		workerID,
+	).Scan(&accID)
+	if err != nil {
+		t.Fatalf("setup account EUR: %v", err)
+	}
+
+	fakeSender := &wa.FakeSender{}
+	settingsMissing := newTestSettings()
+	settingsMissing.SetJSON("daily_limits", `{"medium": 100}`)
+	settingsMissing.SetInt("max_attempts", 3)
+	// rate_wage tidak memiliki mata uang EUR
+	settingsMissing.SetJSON("rate_wage", `{"IDR": 50, "USDT": 3000}`)
+
+	engMissing := engine.New(database, fakeSender, nil, settingsMissing)
+	engMissing.StartAccount(accID, workerID, "EUR")
+
+	time.Sleep(100 * time.Millisecond)
+	engMissing.StopAccount(accID)
+
+	var stopReason string
+	_ = pool.QueryRow(ctx, `SELECT COALESCE(stop_reason, '') FROM wa_accounts WHERE id = $1`, accID).Scan(&stopReason)
+	if stopReason != "rate upah belum diisi admin" {
+		t.Fatalf("stop_reason harus 'rate upah belum diisi admin', didapat '%s'", stopReason)
+	}
+	if fakeSender.SentCount() != 0 {
+		t.Fatalf("engine tidak boleh mengirim pesan apa pun saat rate hilang, terkirim: %d", fakeSender.SentCount())
+	}
+}
+
+// (d) mencapai max_attempts membuat nomor gagal
+func TestMaxAttemptsMakesNumberGagal(t *testing.T) {
+	sqlDB, pool, ok := getTestDB(t)
+	if !ok {
+		t.Skip("Database tidak tersedia untuk tes integrasi")
+	}
+	defer sqlDB.Close()
+	defer pool.Close()
+
+	ctx := context.Background()
+	database := &db.DB{Pool: pool}
+
+	var workerID, campaignID, batchID, num1ID, num2ID, accID int64
+	_ = pool.QueryRow(ctx,
+		`INSERT INTO users (email, password_hash, role, display_name, referral_code)
+		 VALUES ($1, 'hash', 'worker', 'Worker Max', $2) RETURNING id`,
+		fmt.Sprintf("worker_max_%d@test.local", time.Now().UnixNano()),
+		fmt.Sprintf("REF_MAX_%d", time.Now().UnixNano()),
+	).Scan(&workerID)
+
+	_ = pool.QueryRow(ctx,
+		`INSERT INTO wa_accounts (worker_id, label, jid_hash, status)
+		 VALUES ($1, 'Akun Max', 'hash_max', 'terhubung') RETURNING id`,
+		workerID,
+	).Scan(&accID)
+
+	_ = pool.QueryRow(ctx,
+		`INSERT INTO campaigns (name, status, button_mode, body, elements, created_by)
+		 VALUES ('Camp Max', 'berjalan', 'kartu_link', 'Halo', '{}', $1) RETURNING id`,
+		workerID,
+	).Scan(&campaignID)
+
+	_ = pool.QueryRow(ctx,
+		`INSERT INTO number_batches (campaign_id, filename, uploaded_by, total, accepted)
+		 VALUES ($1, 'max.csv', $2, 2, 2) RETURNING id`,
+		campaignID, workerID,
+	).Scan(&batchID)
+
+	_ = pool.QueryRow(ctx,
+		`INSERT INTO campaign_numbers (campaign_id, batch_id, phone_e164, country_code, status, attempts)
+		 VALUES ($1, $2, $3, '62', 'dikirim', 3) RETURNING id`,
+		campaignID, batchID, fmt.Sprintf("62820%06d", time.Now().UnixNano()%1000000),
+	).Scan(&num1ID)
+
+	_ = pool.QueryRow(ctx,
+		`INSERT INTO campaign_numbers (campaign_id, batch_id, phone_e164, country_code, status, attempts)
+		 VALUES ($1, $2, $3, '62', 'dikirim', 2) RETURNING id`,
+		campaignID, batchID, fmt.Sprintf("62821%06d", time.Now().UnixNano()%1000000),
+	).Scan(&num2ID)
+
+	settings := newTestSettings()
+	eng := engine.New(database, &wa.FakeSender{}, nil, settings)
+
+	// Kasus 1: attempts (3) >= maxAttempts (3) -> nomor harus menjadi 'gagal'
+	eng.HandleSendFailure(ctx, accID, num1ID, 3, 3, "gagal ketiga kali")
+
+	var status1 string
+	_ = pool.QueryRow(ctx, `SELECT status FROM campaign_numbers WHERE id = $1`, num1ID).Scan(&status1)
+	if status1 != "gagal" {
+		t.Fatalf("nomor yang mencapai max_attempts harus berstatus 'gagal', didapat '%s'", status1)
+	}
+
+	// Kasus 2: attempts (2) < maxAttempts (3) -> nomor harus kembali ke 'tersedia'
+	eng.HandleSendFailure(ctx, accID, num2ID, 2, 3, "gagal kedua kali")
+
+	var status2 string
+	_ = pool.QueryRow(ctx, `SELECT status FROM campaign_numbers WHERE id = $1`, num2ID).Scan(&status2)
+	if status2 != "tersedia" {
+		t.Fatalf("nomor di bawah max_attempts harus kembali ke 'tersedia', didapat '%s'", status2)
+	}
+}
+
+// (e) kegagalan beruntun menghentikan akun dan mengembalikan nomor yang dipegang
+func TestConsecutiveFailuresStopsAccountAndReleasesNumbers(t *testing.T) {
+	sqlDB, pool, ok := getTestDB(t)
+	if !ok {
+		t.Skip("Database tidak tersedia untuk tes integrasi")
+	}
+	defer sqlDB.Close()
+	defer pool.Close()
+
+	ctx := context.Background()
+	database := &db.DB{Pool: pool}
+
+	var workerID, accID, campID, batchID, numID int64
+	_ = pool.QueryRow(ctx,
+		`INSERT INTO users (email, password_hash, role, display_name, referral_code)
+		 VALUES ($1, 'hash', 'worker', 'Worker Csf', $2) RETURNING id`,
+		fmt.Sprintf("worker_csf_%d@test.local", time.Now().UnixNano()),
+		fmt.Sprintf("REF_CSF_%d", time.Now().UnixNano()),
+	).Scan(&workerID)
+
+	_ = pool.QueryRow(ctx,
+		`INSERT INTO wa_accounts (worker_id, label, jid_hash, status)
+		 VALUES ($1, 'Akun Csf', 'hash_csf', 'terhubung') RETURNING id`,
+		workerID,
+	).Scan(&accID)
+
+	_ = pool.QueryRow(ctx,
+		`INSERT INTO campaigns (name, status, button_mode, body, elements, created_by)
+		 VALUES ('Camp Csf', 'berjalan', 'kartu_link', 'Halo', '{}', $1) RETURNING id`,
+		workerID,
+	).Scan(&campID)
+
+	_ = pool.QueryRow(ctx,
+		`INSERT INTO number_batches (campaign_id, filename, uploaded_by, total, accepted)
+		 VALUES ($1, 'csf.csv', $2, 1, 1) RETURNING id`,
+		campID, workerID,
+	).Scan(&batchID)
+
+	_ = pool.QueryRow(ctx,
+		`INSERT INTO campaign_numbers (campaign_id, batch_id, phone_e164, country_code, status, claimed_account_id, claimed_at, attempts)
+		 VALUES ($1, $2, $3, '62', 'dikirim', $4, now(), 1) RETURNING id`,
+		campID, batchID, fmt.Sprintf("62822%06d", time.Now().UnixNano()%1000000), accID,
+	).Scan(&numID)
+
+	eng := engine.New(database, &wa.FakeSender{}, nil, newTestSettings())
+
+	eng.StopAccountForFailure(ctx, accID, "berhenti otomatis: 5 kegagalan beruntun")
+
+	// Periksa akun berstatus 'berhenti' dengan stop_reason
+	var accStatus, stopReason string
+	_ = pool.QueryRow(ctx, `SELECT status, COALESCE(stop_reason, '') FROM wa_accounts WHERE id = $1`, accID).Scan(&accStatus, &stopReason)
+	if accStatus != "berhenti" {
+		t.Fatalf("wa_account status harus 'berhenti', didapat '%s'", accStatus)
+	}
+	if stopReason != "berhenti otomatis: 5 kegagalan beruntun" {
+		t.Fatalf("stop_reason harus sesuai, didapat '%s'", stopReason)
+	}
+
+	// Periksa nomor yang dipegang kembali ke 'tersedia' dan claimed_account_id NULL
+	var numStatus string
+	var claimedAcc sql.NullInt64
+	_ = pool.QueryRow(ctx, `SELECT status, claimed_account_id FROM campaign_numbers WHERE id = $1`, numID).Scan(&numStatus, &claimedAcc)
+	if numStatus != "tersedia" {
+		t.Fatalf("nomor yang dipegang harus dikembalikan ke 'tersedia', didapat '%s'", numStatus)
+	}
+	if claimedAcc.Valid {
+		t.Fatalf("claimed_account_id harus NULL, didapat %d", claimedAcc.Int64)
+	}
+}
+
+// (f) awal hari batas harian memakai Asia/Jakarta
+func TestDailyLimitAsiaJakarta(t *testing.T) {
+	sqlDB, pool, ok := getTestDB(t)
+	if !ok {
+		t.Skip("Database tidak tersedia untuk tes integrasi")
+	}
+	defer sqlDB.Close()
+	defer pool.Close()
+
+	ctx := context.Background()
+
+	startOfDay := engine.GetJakartaStartOfDay()
+
+	// Verifikasi zona waktu Asia/Jakarta (+07 / 25200s)
+	_, offset := startOfDay.Zone()
+	if offset != 7*3600 {
+		t.Fatalf("GetJakartaStartOfDay offset diharapkan 25200 (WIB), didapat %d", offset)
+	}
+	if startOfDay.Hour() != 0 || startOfDay.Minute() != 0 || startOfDay.Second() != 0 {
+		t.Fatalf("awal hari harus jam 00:00:00, didapat %s", startOfDay.Format("15:04:05"))
+	}
+
+	// Setup data nomor di DB untuk memverifikasi query batas harian
+	var workerID, accID, campID, batchID int64
+	_ = pool.QueryRow(ctx,
+		`INSERT INTO users (email, password_hash, role, display_name, referral_code)
+		 VALUES ($1, 'hash', 'worker', 'Worker Jkt', $2) RETURNING id`,
+		fmt.Sprintf("worker_jkt_%d@test.local", time.Now().UnixNano()),
+		fmt.Sprintf("REF_JKT_%d", time.Now().UnixNano()),
+	).Scan(&workerID)
+
+	_ = pool.QueryRow(ctx,
+		`INSERT INTO wa_accounts (worker_id, label, jid_hash, status)
+		 VALUES ($1, 'Akun Jkt', 'hash_jkt', 'terhubung') RETURNING id`,
+		workerID,
+	).Scan(&accID)
+
+	_ = pool.QueryRow(ctx,
+		`INSERT INTO campaigns (name, status, button_mode, body, elements, created_by)
+		 VALUES ('Camp Jkt', 'berjalan', 'kartu_link', 'Halo', '{}', $1) RETURNING id`,
+		workerID,
+	).Scan(&campID)
+
+	_ = pool.QueryRow(ctx,
+		`INSERT INTO number_batches (campaign_id, filename, uploaded_by, total, accepted)
+		 VALUES ($1, 'jkt.csv', $2, 2, 2) RETURNING id`,
+		campID, workerID,
+	).Scan(&batchID)
+
+	// Nomor 1: terkirim kemarin (2 jam sebelum awal hari Jakarta)
+	yesterday := startOfDay.Add(-2 * time.Hour)
+	_, _ = pool.Exec(ctx,
+		`INSERT INTO campaign_numbers (campaign_id, batch_id, phone_e164, country_code, status, claimed_account_id, sent_at, attempts)
+		 VALUES ($1, $2, $3, '62', 'terkirim', $4, $5, 1)`,
+		campID, batchID, fmt.Sprintf("62823%06d", time.Now().UnixNano()%1000000), accID, yesterday,
+	)
+
+	// Nomor 2: terkirim hari ini (2 jam setelah awal hari Jakarta)
+	today := startOfDay.Add(2 * time.Hour)
+	_, _ = pool.Exec(ctx,
+		`INSERT INTO campaign_numbers (campaign_id, batch_id, phone_e164, country_code, status, claimed_account_id, sent_at, attempts)
+		 VALUES ($1, $2, $3, '62', 'terkirim', $4, $5, 1)`,
+		campID, batchID, fmt.Sprintf("62824%06d", time.Now().UnixNano()%1000000), accID, today,
+	)
+
+	// Hitung pesan terkirim hari ini zona Asia/Jakarta
+	var sentToday int
+	err := pool.QueryRow(ctx,
+		`SELECT COUNT(*) FROM campaign_numbers 
+		 WHERE claimed_account_id = $1 AND status = 'terkirim' AND sent_at >= $2`,
+		accID, startOfDay,
+	).Scan(&sentToday)
+	if err != nil {
+		t.Fatalf("query sentToday gagal: %v", err)
+	}
+
+	if sentToday != 1 {
+		t.Fatalf("sentToday berdasarkan awal hari Asia/Jakarta harus tepat 1, didapat %d", sentToday)
+	}
+}
+
+// (g) timeout kirim menjadi hasil_tidak_pasti dan tidak diulang
+func TestSendTimeoutResultsInHasilTidakPasti(t *testing.T) {
+	sqlDB, pool, ok := getTestDB(t)
+	if !ok {
+		t.Skip("Database tidak tersedia untuk tes integrasi")
+	}
+	defer sqlDB.Close()
+	defer pool.Close()
+
+	ctx := context.Background()
+	database := &db.DB{Pool: pool}
+
+	var workerID, accID, campID, batchID, numID int64
+	_ = pool.QueryRow(ctx,
+		`INSERT INTO users (email, password_hash, role, display_name, referral_code)
+		 VALUES ($1, 'hash', 'worker', 'Worker To', $2) RETURNING id`,
+		fmt.Sprintf("worker_to_%d@test.local", time.Now().UnixNano()),
+		fmt.Sprintf("REF_TO_%d", time.Now().UnixNano()),
+	).Scan(&workerID)
+
+	_ = pool.QueryRow(ctx,
+		`INSERT INTO wa_accounts (worker_id, label, jid_hash, status, speed)
+		 VALUES ($1, 'Akun To', 'hash_to', 'terhubung', 'medium') RETURNING id`,
+		workerID,
+	).Scan(&accID)
+
+	// Nonaktifkan campaign berjalan lain
+	_, _ = pool.Exec(ctx, `UPDATE campaigns SET status = 'draf' WHERE status = 'berjalan'`)
+
+	_ = pool.QueryRow(ctx,
+		`INSERT INTO campaigns (name, status, button_mode, body, elements, created_by)
+		 VALUES ('Camp To', 'berjalan', 'kartu_link', 'Halo', '{}', $1) RETURNING id`,
+		workerID,
+	).Scan(&campID)
+
+	_ = pool.QueryRow(ctx,
+		`INSERT INTO number_batches (campaign_id, filename, uploaded_by, total, accepted)
+		 VALUES ($1, 'to.csv', $2, 1, 1) RETURNING id`,
+		campID, workerID,
+	).Scan(&batchID)
+
+	_ = pool.QueryRow(ctx,
+		`INSERT INTO campaign_numbers (campaign_id, batch_id, phone_e164, country_code, status, attempts)
+		 VALUES ($1, $2, $3, '62', 'tersedia', 0) RETURNING id`,
+		campID, batchID, fmt.Sprintf("62825%06d", time.Now().UnixNano()%1000000),
+	).Scan(&numID)
+
+	// Sender yang selalu mengembalikan error batas waktu
+	timeoutSender := &wa.FakeSender{
+		ErrFunc: func(accountID int64) error {
+			return context.DeadlineExceeded
+		},
+	}
+
+	settings := newTestSettings()
+	settings.SetJSON("daily_limits", `{"medium": 100}`)
+	settings.SetInt("max_attempts", 3)
+	settings.SetJSON("rate_wage", `{"IDR": 50}`)
+
+	eng := engine.New(database, timeoutSender, nil, settings)
+	eng.StartAccount(accID, workerID, "IDR")
+
+	// Tunggu nomor diproses
+	deadline := time.Now().Add(3 * time.Second)
+	statusFound := false
+	var finalStatus, finalLastError string
+	for time.Now().Before(deadline) {
+		_ = pool.QueryRow(ctx, `SELECT status, COALESCE(last_error, '') FROM campaign_numbers WHERE id = $1`, numID).Scan(&finalStatus, &finalLastError)
+		if finalStatus == "gagal" {
+			statusFound = true
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	eng.StopAccount(accID)
+
+	if !statusFound {
+		t.Fatalf("nomor diharapkan berstatus 'gagal' setelah timeout kirim, didapat '%s'", finalStatus)
+	}
+	if finalLastError != "hasil_tidak_pasti" {
+		t.Fatalf("last_error diharapkan 'hasil_tidak_pasti', didapat '%s'", finalLastError)
+	}
+}
+
+// (h) GetInt mengembalikan error untuk kegagalan database
+func TestGetIntReturnsErrorOnDatabaseFailure(t *testing.T) {
+	sqlDB, pool, ok := getTestDB(t)
+	if !ok {
+		t.Skip("Database tidak tersedia untuk tes integrasi")
+	}
+	defer sqlDB.Close()
+	defer pool.Close()
+
+	database := &db.DB{Pool: pool}
+	reader := wa.NewDBSettingsReader(database)
+
+	// Kasus 1: Baris tidak ada (pgx.ErrNoRows) -> mengembalikan (0, false, nil)
+	val, okRow, err := reader.GetInt(context.Background(), fmt.Sprintf("non_existent_key_%d", time.Now().UnixNano()))
+	if err != nil {
+		t.Fatalf("key yang tidak ada harus mengembalikan err nil, didapat: %v", err)
+	}
+	if okRow {
+		t.Fatal("key yang tidak ada harus mengembalikan ok=false")
+	}
+	if val != 0 {
+		t.Fatalf("key yang tidak ada harus mengembalikan val=0, didapat %d", val)
+	}
+
+	// Kasus 2: Database error sungguhan (context dibatalkan sebelum query) -> HARUS mengembalikan error, BUKAN dianggap kosong
+	cancelledCtx, cancel := context.WithCancel(context.Background())
+	cancel() // langsung batalkan
+
+	_, okCancel, errCancel := reader.GetInt(cancelledCtx, "daily_limits")
+	if errCancel == nil {
+		t.Fatal("kegagalan database (context cancelled) HARUS mengembalikan error, bukan nil!")
+	}
+	if okCancel {
+		t.Fatal("kegagalan database harus mengembalikan ok=false")
+	}
+}
+
+// Uji tambahan: Campaign otomatis berstatus selesai saat tidak ada nomor tersedia maupun dikirim (tercatat di audit_logs)
+func TestCampaignAutoCompletedWithAuditLog(t *testing.T) {
+	sqlDB, pool, ok := getTestDB(t)
+	if !ok {
+		t.Skip("Database tidak tersedia untuk tes integrasi")
+	}
+	defer sqlDB.Close()
+	defer pool.Close()
+
+	ctx := context.Background()
+	database := &db.DB{Pool: pool}
+
+	var workerID, campID, batchID, numID int64
+	_ = pool.QueryRow(ctx,
+		`INSERT INTO users (email, password_hash, role, display_name, referral_code)
+		 VALUES ($1, 'hash', 'worker', 'Worker Auto', $2) RETURNING id`,
+		fmt.Sprintf("worker_auto_%d@test.local", time.Now().UnixNano()),
+		fmt.Sprintf("REF_AUTO_%d", time.Now().UnixNano()),
+	).Scan(&workerID)
+
+	_ = pool.QueryRow(ctx,
+		`INSERT INTO campaigns (name, status, button_mode, body, elements, created_by)
+		 VALUES ('Camp Auto', 'berjalan', 'kartu_link', 'Halo', '{}', $1) RETURNING id`,
+		workerID,
+	).Scan(&campID)
+
+	_ = pool.QueryRow(ctx,
+		`INSERT INTO number_batches (campaign_id, filename, uploaded_by, total, accepted)
+		 VALUES ($1, 'auto.csv', $2, 1, 1) RETURNING id`,
+		campID, workerID,
+	).Scan(&batchID)
+
+	// Masukkan nomor dengan status 'terkirim' (tidak ada lagi nomor 'tersedia' maupun 'dikirim')
+	_ = pool.QueryRow(ctx,
+		`INSERT INTO campaign_numbers (campaign_id, batch_id, phone_e164, country_code, status, attempts)
+		 VALUES ($1, $2, $3, '62', 'terkirim', 1) RETURNING id`,
+		campID, batchID, fmt.Sprintf("62826%06d", time.Now().UnixNano()%1000000),
+	).Scan(&numID)
+
+	eng := engine.New(database, &wa.FakeSender{}, nil, newTestSettings())
+
+	completed, err := eng.CheckAndCompleteCampaign(ctx, campID)
+	if err != nil {
+		t.Fatalf("CheckAndCompleteCampaign gagal: %v", err)
+	}
+	if !completed {
+		t.Fatal("campaign seharusnya diselesaikan otomatis")
+	}
+
+	// Verifikasi status campaign berubah ke 'selesai'
+	var campStatus string
+	_ = pool.QueryRow(ctx, `SELECT status FROM campaigns WHERE id = $1`, campID).Scan(&campStatus)
+	if campStatus != "selesai" {
+		t.Fatalf("status campaign diharapkan 'selesai', didapat '%s'", campStatus)
+	}
+
+	// Verifikasi audit_logs tercatat dalam transaksi yang sama
+	var auditCount int
+	err = pool.QueryRow(ctx,
+		`SELECT COUNT(*) FROM audit_logs WHERE action = 'campaign_completed' AND entity = 'campaign' AND entity_id = $1`,
+		fmt.Sprintf("%d", campID),
+	).Scan(&auditCount)
+	if err != nil {
+		t.Fatalf("query audit_logs gagal: %v", err)
+	}
+	if auditCount < 1 {
+		t.Fatal("audit_logs harus mencatat 'campaign_completed' untuk campaign yang selesai")
+	}
+}
+

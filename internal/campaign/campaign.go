@@ -3,6 +3,7 @@ package campaign
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/url"
 	"regexp"
 	"strings"
@@ -309,7 +310,11 @@ func Render(body string, imagePath string, elements Elements, mode string, recip
 
 			var thumb []byte
 			if imagePath != "" {
-				thumb, _ = GenerateThumbnail(imagePath, DefaultThumbWidth, DefaultThumbQuality)
+				var thumbErr error
+				thumb, thumbErr = GetOrCreateThumbnail(imagePath, DefaultThumbWidth, DefaultThumbQuality)
+				if thumbErr != nil {
+					slog.Error("campaign: gagal membuat thumbnail kartu_link", "image_path", imagePath, "err", thumbErr)
+				}
 			}
 
 			msg.Preview = &Preview{

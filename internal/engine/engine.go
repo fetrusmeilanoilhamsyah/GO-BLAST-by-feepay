@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"math/rand"
@@ -20,6 +21,15 @@ import (
 // TODO: keputusan terbuka nomor 1 di DOC_KONSEP bagian 15 —
 // apakah cukup server_ack (centang satu) atau butuh delivered (centang dua di perangkat).
 const DeliveryLevel = "server_ack"
+
+// SendTimeout batas waktu pengiriman pesan (60 detik).
+const SendTimeout = 60 * time.Second
+
+// BuildRetryDelay jeda waktu saat buildCampaignMessage gagal (bawaan 5 detik).
+var BuildRetryDelay = 5 * time.Second
+
+// RecordRetryDelays jeda percobaan ulang untuk pencatatan buku besar (bawaan 200ms, 1s, 3s).
+var RecordRetryDelays = []time.Duration{200 * time.Millisecond, 1 * time.Second, 3 * time.Second}
 
 // SettingsReader interface untuk membaca konfigurasi dari DB.
 type SettingsReader interface {
@@ -124,14 +134,15 @@ func (e *Engine) StartCleaner(ctx context.Context) {
 }
 
 // CleanStaleNumbers mengembalikan nomor dikirim yang claimed_at lebih tua dari claim_timeout_seconds ke tersedia.
+// claim_timeout_seconds dipastikan selalu lebih besar dari batas waktu kirim (SendTimeout: 60 detik).
 func (e *Engine) CleanStaleNumbers(ctx context.Context) (int64, error) {
 	if e.db == nil || e.db.Pool == nil {
 		return 0, nil
 	}
 
 	timeoutSec, ok, err := e.settings.GetInt(ctx, "claim_timeout_seconds")
-	if err != nil || !ok || timeoutSec <= 0 {
-		timeoutSec = 300 // Nilai awal 300 detik
+	if err != nil || !ok || timeoutSec <= int(SendTimeout.Seconds()) {
+		timeoutSec = 300 // Nilai awal 300 detik, harus selalu > timeout kirim (60s)
 	}
 
 	res, err := e.db.Pool.Exec(ctx,
@@ -183,6 +194,26 @@ func (e *Engine) ClaimNextNumber(ctx context.Context, accountID int64) (*Claimed
 	return &cn, nil
 }
 
+// GetJakartaStartOfDay mengembalikan awal hari (00:00:00) zona waktu Asia/Jakarta.
+func GetJakartaStartOfDay() time.Time {
+	loc, err := time.LoadLocation("Asia/Jakarta")
+	if err != nil {
+		loc = time.FixedZone("Asia/Jakarta", 7*3600)
+	}
+	now := time.Now().In(loc)
+	return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc)
+}
+
+func getJakartaNextDayWaitDuration() time.Duration {
+	loc, err := time.LoadLocation("Asia/Jakarta")
+	if err != nil {
+		loc = time.FixedZone("Asia/Jakarta", 7*3600)
+	}
+	now := time.Now().In(loc)
+	nextDay := time.Date(now.Year(), now.Month(), now.Day()+1, 0, 0, 1, 0, loc)
+	return nextDay.Sub(now)
+}
+
 // runWorker adalah siklus kerja utama satu akun WhatsApp.
 func (e *Engine) runWorker(ctx context.Context, accountID, workerID int64, currency string) {
 	defer func() {
@@ -192,6 +223,7 @@ func (e *Engine) runWorker(ctx context.Context, accountID, workerID int64, curre
 	}()
 
 	consecutiveFailures := 0
+	consecutiveBuildFailures := 0
 
 	for {
 		select {
@@ -200,7 +232,7 @@ func (e *Engine) runWorker(ctx context.Context, accountID, workerID int64, curre
 		default:
 		}
 
-		// 1. Ambil pengaturan penting (daily_limits, max_attempts)
+		// 1. Ambil pengaturan penting (daily_limits, max_attempts, rate_wage)
 		// Jika salah satu belum diisi admin, mesin tidak mengirim apa pun dan mencatat alasannya.
 		var dailyLimits map[string]int
 		okDaily, err := e.settings.GetJSON(ctx, "daily_limits", &dailyLimits)
@@ -215,6 +247,15 @@ func (e *Engine) runWorker(ctx context.Context, accountID, workerID int64, curre
 			return
 		}
 
+		// Validasi rate_wage: jika rate mata uang pekerja tidak ada atau tidak lebih dari 0,
+		// engine tidak mengirim apa pun dan menulis stop_reason "rate upah belum diisi admin".
+		var rateWage map[string]int64
+		okWage, err := e.settings.GetJSON(ctx, "rate_wage", &rateWage)
+		if err != nil || !okWage || rateWage == nil || rateWage[currency] <= 0 {
+			e.setAccountStopReason(ctx, accountID, "rate upah belum diisi admin")
+			return
+		}
+
 		// Baca data akun (speed, status)
 		var speed, status string
 		err = e.db.Pool.QueryRow(ctx, `SELECT speed, status FROM wa_accounts WHERE id = $1`, accountID).Scan(&speed, &status)
@@ -223,27 +264,39 @@ func (e *Engine) runWorker(ctx context.Context, accountID, workerID int64, curre
 			return
 		}
 
-		// 2. Cek batas harian akun
+		// 2. Cek batas harian akun (dihitung dari awal hari zona Asia/Jakarta)
 		dailyLimit, hasLimit := dailyLimits[speed]
 		if !hasLimit {
 			dailyLimit, hasLimit = dailyLimits["medium"]
 		}
 		if hasLimit && dailyLimit > 0 {
 			var sentToday int
+			startOfDayJakarta := GetJakartaStartOfDay()
 			err = e.db.Pool.QueryRow(ctx,
 				`SELECT COUNT(*) FROM campaign_numbers 
-				 WHERE claimed_account_id = $1 AND status = 'terkirim' AND sent_at >= date_trunc('day', now())`,
-				accountID,
+				 WHERE claimed_account_id = $1 AND status = 'terkirim' AND sent_at >= $2`,
+				accountID, startOfDayJakarta,
 			).Scan(&sentToday)
 			if err == nil && sentToday >= dailyLimit {
-				e.setAccountStopReason(ctx, accountID, fmt.Sprintf("batas harian tercapai (%d/%d)", sentToday, dailyLimit))
-				return
+				// Setelah batas tercapai, akun tidak berhenti permanen:
+				// goroutine menunggu sampai awal hari berikutnya lalu lanjut.
+				e.setAccountStopReason(ctx, accountID, fmt.Sprintf("batas harian tercapai (%d/%d), menunggu hari berikutnya", sentToday, dailyLimit))
+				waitDur := getJakartaNextDayWaitDuration()
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(waitDur):
+					continue
+				}
 			}
 		}
 
 		// 3. Klaim nomor secara atomik
 		claimed, err := e.ClaimNextNumber(ctx, accountID)
 		if err != nil {
+			// Periksa apakah campaign yang berjalan sudah selesai (tidak ada nomor tersedia maupun dikirim)
+			e.checkAllRunningCampaigns(ctx)
+
 			// Tidak ada nomor yang tersedia saat ini, tunggu jeda singkat sebelum mencoba lagi
 			select {
 			case <-ctx.Done():
@@ -256,10 +309,27 @@ func (e *Engine) runWorker(ctx context.Context, accountID, workerID int64, curre
 		// 4. Siapkan pesan campaign
 		msg, err := e.buildCampaignMessage(ctx, claimed.CampaignID, claimed.RecipientName)
 		if err != nil {
+			consecutiveBuildFailures++
 			slog.Error("engine: gagal menyusun pesan campaign", "campaign_id", claimed.CampaignID, "err", err)
-			e.returnNumberToAvailable(ctx, claimed.ID, "gagal render template")
-			continue
+
+			// Nomor yang gagal disusun tidak boleh diklaim ulang tanpa batas: pakai jalur max_attempts
+			e.HandleSendFailure(ctx, accountID, claimed.ID, claimed.Attempts, maxAttempts, "gagal menyusun pesan campaign")
+
+			// Setelah 3 kegagalan beruntun, hentikan akun dengan stop_reason "gagal menyusun pesan campaign"
+			if consecutiveBuildFailures >= 3 {
+				e.StopAccountForFailure(ctx, accountID, "gagal menyusun pesan campaign")
+				return
+			}
+
+			// Beri jeda jika gagal menyusun pesan campaign
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(BuildRetryDelay):
+				continue
+			}
 		}
+		consecutiveBuildFailures = 0
 
 		// 5. Cek terdaftar di WhatsApp sebelum kirim
 		if e.checker != nil {
@@ -270,21 +340,49 @@ func (e *Engine) runWorker(ctx context.Context, accountID, workerID int64, curre
 					`UPDATE campaign_numbers SET status = 'tidak_terdaftar', sent_at = now() WHERE id = $1`,
 					claimed.ID,
 				)
-				continue
+				_, _ = e.CheckAndCompleteCampaign(ctx, claimed.CampaignID)
+
+				// Setelah hasil tidak_terdaftar, terapkan jeda kecepatan yang sama seperti setelah kirim
+				delay := e.calculateSpeedDelay(ctx, speed)
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(delay):
+					continue
+				}
 			}
 		}
 
-		// 6. Kirim pesan lewat Sender
-		res, sendErr := e.sender.Send(ctx, accountID, claimed.PhoneE164, msg)
+		// 6. Kirim pesan lewat Sender dengan context timeout 60 detik
+		sendCtx, sendCancel := context.WithTimeout(ctx, SendTimeout)
+		res, sendErr := e.sender.Send(sendCtx, accountID, claimed.PhoneE164, msg)
+		sendCancel()
+
 		if sendErr != nil {
-			// Gagal sementara
 			consecutiveFailures++
-			e.handleSendFailure(ctx, accountID, claimed.ID, claimed.Attempts, maxAttempts, sendErr.Error())
+			if errors.Is(sendErr, context.DeadlineExceeded) || sendCtx.Err() == context.DeadlineExceeded {
+				// Error batas waktu dianggap hasil tidak pasti: nomor menjadi gagal dan tidak dicoba ulang
+				_, _ = e.db.Pool.Exec(ctx,
+					`UPDATE campaign_numbers SET status = 'gagal', last_error = 'hasil_tidak_pasti' WHERE id = $1`,
+					claimed.ID,
+				)
+				_, _ = e.CheckAndCompleteCampaign(ctx, claimed.CampaignID)
+			} else if errors.Is(sendErr, wa.ErrSessionNotActive) || errors.Is(sendErr, wa.ErrSessionNotConnected) {
+				// Hanya error yang jelas berarti belum terkirim yang boleh mengembalikan nomor ke tersedia
+				e.HandleSendFailure(ctx, accountID, claimed.ID, claimed.Attempts, maxAttempts, sendErr.Error())
+			} else {
+				// Error lain tidak pasti: nomor menjadi gagal dan tidak dicoba ulang
+				_, _ = e.db.Pool.Exec(ctx,
+					`UPDATE campaign_numbers SET status = 'gagal', last_error = $1 WHERE id = $2`,
+					sendErr.Error(), claimed.ID,
+				)
+				_, _ = e.CheckAndCompleteCampaign(ctx, claimed.CampaignID)
+			}
 
 			// Cek max_consecutive_failures
 			maxFail, okFail, _ := e.settings.GetInt(ctx, "max_consecutive_failures")
 			if okFail && maxFail > 0 && consecutiveFailures >= maxFail {
-				e.stopAccountForFailure(ctx, accountID, fmt.Sprintf("berhenti otomatis: %d kegagalan beruntun", consecutiveFailures))
+				e.StopAccountForFailure(ctx, accountID, fmt.Sprintf("berhenti otomatis: %d kegagalan beruntun", consecutiveFailures))
 				return
 			}
 		} else {
@@ -292,10 +390,11 @@ func (e *Engine) runWorker(ctx context.Context, accountID, workerID int64, curre
 			consecutiveFailures = 0
 			_ = res
 
-			// Catat status 'terkirim' dan buku besar 'upah' dalam satu transaksi idempoten
-			if err := e.recordSuccessAndLedger(ctx, claimed.ID, workerID, currency); err != nil {
-				slog.Error("engine: record ledger error", "number_id", claimed.ID, "err", err)
+			// Catat status 'terkirim' dan buku besar 'upah' dengan WithoutCancel, timeout 10s, dan 3 kali coba ulang
+			if err := e.RecordWithRetry(ctx, claimed.ID, workerID, currency); err != nil {
+				slog.Error("engine: gagal mencatat buku besar upah", "number_id", claimed.ID, "err", err)
 			}
+			_, _ = e.CheckAndCompleteCampaign(ctx, claimed.CampaignID)
 		}
 
 		// 7. Tunggu jeda kecepatan (dengan variasi acak ±20%)
@@ -326,6 +425,10 @@ func (e *Engine) buildCampaignMessage(ctx context.Context, campaignID int64, rec
 		_ = json.Unmarshal(elementsRaw, &elem)
 	}
 
+	if err := campaign.ValidateTemplate(body.String, mode.String, elem); err != nil {
+		return wa.OutMessage{}, fmt.Errorf("validasi template: %w", err)
+	}
+
 	var recVars map[string]string
 	if recipientName != "" {
 		recVars = map[string]string{"nama": recipientName, "name": recipientName}
@@ -347,27 +450,50 @@ func (e *Engine) buildCampaignMessage(ctx context.Context, campaignID int64, rec
 	return out, nil
 }
 
-// recordSuccessAndLedger mencatat keberhasilan pengiriman dan entri buku besar upah dalam satu transaksi.
-// Dibuat idempoten melalui indeks unik idx_ledger_entries_upah_unique di level database.
-func (e *Engine) recordSuccessAndLedger(ctx context.Context, numberID, workerID int64, currency string) error {
-	// Ambil rate saat ini dari settings
-	rateKey := "rate_idr"
-	if currency == "USDT" {
-		rateKey = "rate_usdt"
-	}
+// RecordWithRetry mencatat keberhasilan kirim dan buku besar menggunakan context.WithoutCancel(ctx)
+// dengan timeout 10 detik, coba ulang 3 kali (jeda 200 ms, 1 detik, 3 detik).
+// Jika tetap gagal, nomor diubah statusnya menjadi 'gagal' dengan last_error "terkirim_tidak_tercatat",
+// dicatat slog.Error beserta ID nomor, dan tidak pernah dikembalikan ke tersedia.
+func (e *Engine) RecordWithRetry(ctx context.Context, numberID, workerID int64, currency string) error {
+	delays := RecordRetryDelays
+	var lastErr error
 
-	rate, ok, err := e.settings.GetInt(ctx, rateKey)
-	if err != nil || !ok {
-		// Coba fallback key alternatif
-		if currency == "IDR" {
-			rate, ok, _ = e.settings.GetInt(ctx, "rate_wage_idr")
-		} else {
-			rate, ok, _ = e.settings.GetInt(ctx, "rate_wage_usdt")
+	for attempt := 0; attempt <= len(delays); attempt++ {
+		recordCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+		err := e.RecordSuccessAndLedger(recordCtx, numberID, workerID, currency)
+		cancel()
+
+		if err == nil {
+			return nil
+		}
+		lastErr = err
+
+		if attempt < len(delays) {
+			time.Sleep(delays[attempt])
 		}
 	}
-	if !ok || rate < 0 {
-		rate = 0
+
+	// Jika tetap gagal setelah coba ulang 3 kali:
+	failCtx, failCancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer failCancel()
+	_, _ = e.db.Pool.Exec(failCtx,
+		`UPDATE campaign_numbers SET status = 'gagal', last_error = 'terkirim_tidak_tercatat' WHERE id = $1`,
+		numberID,
+	)
+	slog.Error("engine: gagal menulis buku besar setelah 3 kali coba ulang, nomor ditandai gagal", "number_id", numberID, "err", lastErr)
+
+	return lastErr
+}
+
+// RecordSuccessAndLedger mencatat keberhasilan pengiriman dan entri buku besar upah dalam satu transaksi.
+// Menggunakan nilai rate_wage dari settings tanpa fallback ke kunci lama.
+func (e *Engine) RecordSuccessAndLedger(ctx context.Context, numberID, workerID int64, currency string) error {
+	var rateWage map[string]int64
+	okRate, err := e.settings.GetJSON(ctx, "rate_wage", &rateWage)
+	if err != nil || !okRate || rateWage == nil || rateWage[currency] <= 0 {
+		return fmt.Errorf("rate upah belum diisi admin")
 	}
+	rate := rateWage[currency]
 
 	tx, err := e.db.Pool.Begin(ctx)
 	if err != nil {
@@ -389,7 +515,7 @@ func (e *Engine) recordSuccessAndLedger(ctx context.Context, numberID, workerID 
 		`INSERT INTO ledger_entries (user_id, kind, currency, amount, rate_snapshot, campaign_number_id, note)
 		 VALUES ($1, 'upah', $2, $3, $4, $5, 'upah pesan terkirim')
 		 ON CONFLICT (campaign_number_id) WHERE kind = 'upah' DO NOTHING`,
-		workerID, currency, int64(rate), int64(rate), numberID,
+		workerID, currency, rate, rate, numberID,
 	)
 	if err != nil {
 		return fmt.Errorf("insert ledger upah: %w", err)
@@ -398,14 +524,19 @@ func (e *Engine) recordSuccessAndLedger(ctx context.Context, numberID, workerID 
 	return tx.Commit(ctx)
 }
 
-// handleSendFailure menangani kegagalan kirim sementara vs permanen.
-func (e *Engine) handleSendFailure(ctx context.Context, accountID, numberID int64, attempts, maxAttempts int, errMsg string) {
+// HandleSendFailure menangani kegagalan kirim sementara vs permanen sesuai max_attempts.
+func (e *Engine) HandleSendFailure(ctx context.Context, accountID, numberID int64, attempts, maxAttempts int, errMsg string) {
 	if attempts >= maxAttempts {
 		// Sudah mencapai batas percobaan: gagal final
 		_, _ = e.db.Pool.Exec(ctx,
 			`UPDATE campaign_numbers SET status = 'gagal', last_error = $1 WHERE id = $2`,
 			errMsg, numberID,
 		)
+		var cid int64
+		_ = e.db.Pool.QueryRow(ctx, `SELECT campaign_id FROM campaign_numbers WHERE id = $1`, numberID).Scan(&cid)
+		if cid > 0 {
+			_, _ = e.CheckAndCompleteCampaign(ctx, cid)
+		}
 	} else {
 		// Gagal sementara: kembalikan ke tersedia dengan attempts sudah bertambah
 		_, _ = e.db.Pool.Exec(ctx,
@@ -415,12 +546,87 @@ func (e *Engine) handleSendFailure(ctx context.Context, accountID, numberID int6
 	}
 }
 
-// returnNumberToAvailable mengembalikan nomor ke tersedia tanpa menambah attempts.
-func (e *Engine) returnNumberToAvailable(ctx context.Context, numberID int64, errMsg string) {
-	_, _ = e.db.Pool.Exec(ctx,
-		`UPDATE campaign_numbers SET status = 'tersedia', claimed_account_id = NULL, claimed_at = NULL, last_error = $1 WHERE id = $2`,
-		errMsg, numberID,
-	)
+// CheckAndCompleteCampaign memeriksa apakah suatu campaign sudah tidak memiliki nomor 'tersedia' maupun 'dikirim'.
+// Jika ya, status campaign diubah menjadi 'selesai' dan dicatat di audit_logs dalam satu transaksi.
+func (e *Engine) CheckAndCompleteCampaign(ctx context.Context, campaignID int64) (bool, error) {
+	if e.db == nil || e.db.Pool == nil {
+		return false, nil
+	}
+
+	tx, err := e.db.Pool.Begin(ctx)
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback(ctx)
+
+	var status string
+	err = tx.QueryRow(ctx, `SELECT status FROM campaigns WHERE id = $1 FOR UPDATE`, campaignID).Scan(&status)
+	if err != nil {
+		return false, err
+	}
+	if status != "berjalan" {
+		return false, nil
+	}
+
+	var remaining int
+	err = tx.QueryRow(ctx,
+		`SELECT COUNT(*) FROM campaign_numbers WHERE campaign_id = $1 AND status IN ('tersedia', 'dikirim')`,
+		campaignID,
+	).Scan(&remaining)
+	if err != nil {
+		return false, err
+	}
+
+	if remaining == 0 {
+		_, err = tx.Exec(ctx,
+			`UPDATE campaigns SET status = 'selesai', finished_at = now() WHERE id = $1`,
+			campaignID,
+		)
+		if err != nil {
+			return false, fmt.Errorf("update campaign selesai: %w", err)
+		}
+
+		_, err = tx.Exec(ctx,
+			`INSERT INTO audit_logs (actor_id, action, entity, entity_id, meta)
+			 VALUES (NULL, 'campaign_completed', 'campaign', $1, '{"reason": "tidak ada nomor tersedia maupun dikirim"}'::jsonb)`,
+			fmt.Sprintf("%d", campaignID),
+		)
+		if err != nil {
+			return false, fmt.Errorf("insert audit_logs campaign selesai: %w", err)
+		}
+
+		if err := tx.Commit(ctx); err != nil {
+			return false, err
+		}
+		slog.Info("engine: campaign otomatis selesai", "campaign_id", campaignID)
+		return true, nil
+	}
+
+	return false, nil
+}
+
+func (e *Engine) checkAllRunningCampaigns(ctx context.Context) {
+	if e.db == nil || e.db.Pool == nil {
+		return
+	}
+	rows, err := e.db.Pool.Query(ctx, `SELECT id FROM campaigns WHERE status = 'berjalan'`)
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err == nil {
+			ids = append(ids, id)
+		}
+	}
+	rows.Close()
+
+	for _, id := range ids {
+		_, _ = e.CheckAndCompleteCampaign(ctx, id)
+	}
 }
 
 // calculateSpeedDelay menghitung jeda kecepatan dari settings kunci speed_delays ditambah variasi acak ±20%.
@@ -464,7 +670,8 @@ func (e *Engine) setAccountStopReason(ctx context.Context, accountID int64, reas
 	}
 }
 
-func (e *Engine) stopAccountForFailure(ctx context.Context, accountID int64, reason string) {
+// StopAccountForFailure menghentikan akun karena kegagalan beruntun dan melepaskan nomor yang dipegang.
+func (e *Engine) StopAccountForFailure(ctx context.Context, accountID int64, reason string) {
 	slog.Warn("engine: akun berhenti otomatis karena kegagalan beruntun", "account_id", accountID, "alasan", reason)
 	if e.db != nil && e.db.Pool != nil {
 		_, _ = e.db.Pool.Exec(ctx,

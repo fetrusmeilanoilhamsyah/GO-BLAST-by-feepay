@@ -148,7 +148,7 @@ Pengaman yang wajib ada karena akun WhatsApp pekerja bisa dibanned (ini otomasi 
 
 - Server secara teknis memegang akses ke akun WhatsApp pekerja selama sesi aktif. Karena itu:
   - Sistem tidak menyimpan isi pesan masuk atau chat pribadi pekerja.
-  - Data sesi disimpan terenkripsi, dan dihapus ketika pekerja berhenti atau sesi terputus. Pekerja scan ulang tiap kali kerja.
+  - Data sesi dilindungi dan dihapus ketika pekerja berhenti atau sesi terputus. Protokol Noise melindungi lalu lintas, bukan kunci yang tersimpan; kunci whatsmeow tersimpan tidak terenkripsi di tabel whatsmeow_* pada database yang sama; mitigasi: dihapus saat berhenti, enkripsi disk VPS, pengguna database terbatas (dikerjakan di Tahap 16). Pekerja scan ulang tiap kali kerja.
   - Admin tidak membuka chat pribadi pekerja. Ini juga tertulis di syarat dan ketentuan.
 - Nomor customer tidak pernah ditampilkan ke pekerja. Pekerja hanya melihat angka agregat.
 

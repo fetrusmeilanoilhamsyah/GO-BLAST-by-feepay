@@ -1,6 +1,10 @@
 package campaign
 
 import (
+	"image"
+	"image/jpeg"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -314,4 +318,47 @@ func TestReplaceVariables(t *testing.T) {
 		}
 	})
 }
+
+func TestThumbnailCachingAndLogging(t *testing.T) {
+	ResetThumbnailCache()
+
+	// 1. Gambar tidak ada: mengembalikan error dan mencatat di log
+	_, err := GetOrCreateThumbnail("non_existent_image.jpg", DefaultThumbWidth, DefaultThumbQuality)
+	if err == nil {
+		t.Fatal("expected error for non-existent image, got nil")
+	}
+
+	// 2. Buat gambar temporary valid
+	tmpDir := t.TempDir()
+	imgPath := filepath.Join(tmpDir, "test.jpg")
+	img := image.NewRGBA(image.Rect(0, 0, 100, 100))
+	f, err := os.Create(imgPath)
+	if err != nil {
+		t.Fatalf("failed to create temp image: %v", err)
+	}
+	if err := jpeg.Encode(f, img, &jpeg.Options{Quality: 80}); err != nil {
+		f.Close()
+		t.Fatalf("failed to encode jpeg: %v", err)
+	}
+	f.Close()
+
+	// Panggilan pertama: menghasilkan thumbnail dan menyimpannya di cache
+	thumb1, err := GetOrCreateThumbnail(imgPath, DefaultThumbWidth, DefaultThumbQuality)
+	if err != nil {
+		t.Fatalf("failed to generate thumbnail: %v", err)
+	}
+	if len(thumb1) == 0 {
+		t.Fatal("expected non-empty thumbnail")
+	}
+
+	// Panggilan kedua: harus mengambil dari cache
+	thumb2, err := GetOrCreateThumbnail(imgPath, DefaultThumbWidth, DefaultThumbQuality)
+	if err != nil {
+		t.Fatalf("failed to get cached thumbnail: %v", err)
+	}
+	if len(thumb2) != len(thumb1) {
+		t.Fatalf("cached thumbnail length mismatch: %d vs %d", len(thumb2), len(thumb1))
+	}
+}
+
 

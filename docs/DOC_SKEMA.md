@@ -32,8 +32,9 @@ Menyimpan sesi login dari web.
 
 ### `settings`
 Menyimpan pengaturan aplikasi yang diubah melalui panel admin.
-- `key`: Kunci pengaturan (contoh: `default_country_code`).
+- `key`: Kunci pengaturan (contoh: `default_country_code`, `rate_wage`).
 - `value`: Nilai JSONB.
+- Pengaturan upah menggunakan kunci `rate_wage` dengan format JSON `{"IDR": <bilangan bulat rupiah>, "USDT": <bilangan bulat sepersejuta USDT>}`. Nilai 3000 pada USDT bernilai 0.003 USDT (sepersejuta USDT). Tidak ada fallback ke kunci lama.
 
 ### `campaigns`
 Kampanye pengiriman pesan.
@@ -65,8 +66,8 @@ Sesi WhatsApp pekerja.
 ### `ledger_entries`
 Buku besar untuk saldo pekerja (append-only).
 - `kind`: `upah`, `referral`, `penarikan`, `koreksi`.
-- `amount`: Nilai transaksi (positif untuk pendapatan, negatif untuk penarikan).
-- `rate_snapshot`: Rate yang berlaku saat itu.
+- `amount`: Nilai transaksi (positif untuk pendapatan, negatif untuk penarikan). Bilangan bulat (BIGINT): IDR dalam rupiah utuh, USDT dalam sepersejuta USDT (contoh: 3000 mewakili 0.003 USDT).
+- `rate_snapshot`: Rate yang berlaku saat itu (BIGINT, IDR: rupiah, USDT: sepersejuta USDT).
 - `reverses_entry_id`: Merujuk ke entri yang dikoreksi.
 
 ### `wallet_entries`

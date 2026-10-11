@@ -35,6 +35,9 @@ func main() {
 		case "createadmin":
 			runCreateAdmin(cfg)
 			return
+		case "seed":
+			runSeed(cfg)
+			return
 		}
 	}
 
