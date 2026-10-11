@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"goblast/internal/campaign"
+	"goblast/internal/i18n"
 )
 
 func (s *Server) HandleAdminCampaigns(w http.ResponseWriter, r *http.Request) {
@@ -36,20 +37,28 @@ func (s *Server) HandleAdminCampaigns(w http.ResponseWriter, r *http.Request) {
 		campaigns = append(campaigns, c)
 	}
 
-	user, _ := r.Context().Value(userContextKey).(UserSession)
-	lang := user.Language
+	var lang string
+	if u, ok := r.Context().Value(userContextKey).(UserSession); ok {
+		lang = u.Language
+	} else if uPtr, ok := r.Context().Value(userContextKey).(*UserSession); ok && uPtr != nil {
+		lang = uPtr.Language
+	}
 	if lang == "" {
 		lang = "id"
 	}
-	
+
 	data := struct {
-		Lang           string
-		Title          string
-		Campaigns      []campaign.Campaign
+		Lang      string
+		Title     string
+		Campaigns []campaign.Campaign
+		T         func(string) string
 	}{
 		Lang:      lang,
 		Title:     "Campaigns - GO BLAST",
 		Campaigns: campaigns,
+		T: func(key string) string {
+			return i18n.T(lang, key)
+		},
 	}
 
 	s.Tmpl["admin_campaigns.html"].ExecuteTemplate(w, "base.html", data)
@@ -68,35 +77,43 @@ func (s *Server) HandleAdminCampaignNewGET(w http.ResponseWriter, r *http.Reques
 		}
 	}
 
-	user, _ := r.Context().Value(userContextKey).(UserSession)
-	lang := user.Language
+	var lang string
+	if u, ok := r.Context().Value(userContextKey).(UserSession); ok {
+		lang = u.Language
+	} else if uPtr, ok := r.Context().Value(userContextKey).(*UserSession); ok && uPtr != nil {
+		lang = uPtr.Language
+	}
 	if lang == "" {
 		lang = "id"
 	}
-	
+
 	csrfCookie, _ := r.Cookie("gb_csrf")
 	csrfToken := ""
 	if csrfCookie != nil {
 		csrfToken = csrfCookie.Value
 	}
-	
+
 	data := struct {
 		Lang        string
 		Title       string
 		CSRFToken   string
 		Campaign    campaign.Campaign
 		DefaultMode string
+		T           func(string) string
 	}{
 		Lang:      lang,
 		Title:     "Buat Campaign Baru - GO BLAST",
 		CSRFToken: csrfToken,
 		Campaign: campaign.Campaign{
 			Elements: campaign.Elements{
-				CSActive: true,
+				CSActive: false,
 			},
 			ButtonMode: defaultMode,
 		},
 		DefaultMode: defaultMode,
+		T: func(key string) string {
+			return i18n.T(lang, key)
+		},
 	}
 
 	s.Tmpl["admin_campaign_form.html"].ExecuteTemplate(w, "base.html", data)
@@ -117,7 +134,7 @@ func (s *Server) HandleAdminCampaignNewPOST(w http.ResponseWriter, r *http.Reque
 
 	mode := r.FormValue("button_mode")
 	body := r.FormValue("body")
-	
+
 	elements := campaign.Elements{
 		CSActive:      r.FormValue("cs_active") == "on",
 		CSNumber:      r.FormValue("cs_number"),
@@ -159,7 +176,7 @@ func (s *Server) HandleAdminCampaignNewPOST(w http.ResponseWriter, r *http.Reque
 		b := make([]byte, 16)
 		rand.Read(b)
 		filename := hex.EncodeToString(b) + filepath.Ext(header.Filename)
-		
+
 		os.MkdirAll("uploads", 0755)
 		fullPath := filepath.Join("uploads", filename)
 		out, err := os.Create(fullPath)
@@ -198,16 +215,16 @@ func (s *Server) HandleAdminCampaignEditGET(w http.ResponseWriter, r *http.Reque
 	var imgPath *string
 	err := s.DB.Pool.QueryRow(r.Context(), "SELECT id, name, status, button_mode, body, image_path, elements FROM campaigns WHERE id = $1", id).Scan(
 		&c.ID, &c.Name, &c.Status, &c.ButtonMode, &c.Body, &imgPath, &elJSON)
-	
+
 	if err != nil {
 		http.NotFound(w, r)
 		return
 	}
-	
+
 	if imgPath != nil {
 		c.ImagePath = *imgPath
 	}
-	
+
 	json.Unmarshal([]byte(elJSON), &c.Elements)
 
 	if c.Status != campaign.StatusDraf {
@@ -215,28 +232,36 @@ func (s *Server) HandleAdminCampaignEditGET(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	user, _ := r.Context().Value(userContextKey).(UserSession)
-	lang := user.Language
+	var lang string
+	if u, ok := r.Context().Value(userContextKey).(UserSession); ok {
+		lang = u.Language
+	} else if uPtr, ok := r.Context().Value(userContextKey).(*UserSession); ok && uPtr != nil {
+		lang = uPtr.Language
+	}
 	if lang == "" {
 		lang = "id"
 	}
-	
+
 	csrfCookie, _ := r.Cookie("gb_csrf")
 	csrfToken := ""
 	if csrfCookie != nil {
 		csrfToken = csrfCookie.Value
 	}
-	
+
 	data := struct {
 		Lang      string
 		Title     string
 		CSRFToken string
 		Campaign  campaign.Campaign
+		T         func(string) string
 	}{
 		Lang:      lang,
 		Title:     "Edit Campaign - GO BLAST",
 		CSRFToken: csrfToken,
 		Campaign:  c,
+		T: func(key string) string {
+			return i18n.T(lang, key)
+		},
 	}
 
 	s.Tmpl["admin_campaign_form.html"].ExecuteTemplate(w, "base.html", data)
@@ -273,7 +298,7 @@ func (s *Server) HandleAdminCampaignEditPOST(w http.ResponseWriter, r *http.Requ
 
 	mode := r.FormValue("button_mode")
 	body := r.FormValue("body")
-	
+
 	elements := campaign.Elements{
 		CSActive:      r.FormValue("cs_active") == "on",
 		CSNumber:      r.FormValue("cs_number"),
@@ -295,7 +320,7 @@ func (s *Server) HandleAdminCampaignEditPOST(w http.ResponseWriter, r *http.Requ
 	if currentImagePath != nil {
 		imagePath = currentImagePath
 	}
-	
+
 	file, header, err := r.FormFile("image")
 	if err == nil {
 		defer file.Close()
@@ -319,7 +344,7 @@ func (s *Server) HandleAdminCampaignEditPOST(w http.ResponseWriter, r *http.Requ
 		b := make([]byte, 16)
 		rand.Read(b)
 		filename := hex.EncodeToString(b) + filepath.Ext(header.Filename)
-		
+
 		os.MkdirAll("uploads", 0755)
 		fullPath := filepath.Join("uploads", filename)
 		out, err := os.Create(fullPath)
@@ -359,7 +384,7 @@ func (s *Server) HandleAdminCampaignPreview(w http.ResponseWriter, r *http.Reque
 
 	mode := r.FormValue("button_mode")
 	body := r.FormValue("body")
-	
+
 	elements := campaign.Elements{
 		CSActive:      r.FormValue("cs_active") == "on",
 		CSNumber:      r.FormValue("cs_number"),
@@ -383,7 +408,29 @@ func (s *Server) HandleAdminCampaignPreview(w http.ResponseWriter, r *http.Reque
 
 	msg := campaign.Render(body, imagePath, elements, mode)
 
-	s.Tmpl["admin_campaign_preview.html"].Execute(w, msg)
+	var lang string
+	if u, ok := r.Context().Value(userContextKey).(UserSession); ok {
+		lang = u.Language
+	} else if uPtr, ok := r.Context().Value(userContextKey).(*UserSession); ok && uPtr != nil {
+		lang = uPtr.Language
+	}
+	if lang == "" {
+		lang = "id"
+	}
+
+	data := struct {
+		campaign.Message
+		Lang string
+		T    func(string) string
+	}{
+		Message: msg,
+		Lang:    lang,
+		T: func(key string) string {
+			return i18n.T(lang, key)
+		},
+	}
+
+	s.Tmpl["admin_campaign_preview.html"].Execute(w, data)
 }
 
 func (s *Server) HandleServeUpload(w http.ResponseWriter, r *http.Request) {

@@ -37,5 +37,5 @@ func main() {
 		log.Fatal("Failed creating campaign: ", err)
 	}
 
-	fmt.Printf("✅ Campaign dummy berhasil dibuat dengan ID: %d\n", campaignID)
+	fmt.Printf("Campaign dummy dibuat, ID: %d\n", campaignID)
 }

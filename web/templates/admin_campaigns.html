@@ -1,25 +1,25 @@
 {{define "content"}}
 <div style="max-width: 1200px; margin: 0 auto; padding: 20px;">
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-        <h2>Daftar Campaign</h2>
-        <a href="/admin/campaigns/new" style="background-color: var(--color-primary); color: white; padding: 10px 15px; border-radius: 4px; font-weight: bold; text-decoration: none;">+ Buat Campaign</a>
+        <h2>{{ call .T "campaign.list_title" }}</h2>
+        <a href="/admin/campaigns/new" class="btn btn-primary">+ {{ call .T "campaign.create_btn" }}</a>
     </div>
 
     <div style="background-color: var(--color-card); border-radius: 8px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
         <table style="width: 100%; border-collapse: collapse; text-align: left;">
             <thead style="background-color: rgba(0,0,0,0.2);">
                 <tr>
-                    <th style="padding: 15px; border-bottom: 1px solid #555;">ID</th>
-                    <th style="padding: 15px; border-bottom: 1px solid #555;">Nama</th>
-                    <th style="padding: 15px; border-bottom: 1px solid #555;">Status</th>
-                    <th style="padding: 15px; border-bottom: 1px solid #555;">Mode</th>
-                    <th style="padding: 15px; border-bottom: 1px solid #555;">Dibuat</th>
-                    <th style="padding: 15px; border-bottom: 1px solid #555;">Aksi</th>
+                    <th style="padding: 15px; border-bottom: 1px solid var(--color-border);">{{ call .T "campaign.th_id" }}</th>
+                    <th style="padding: 15px; border-bottom: 1px solid var(--color-border);">{{ call .T "campaign.th_name" }}</th>
+                    <th style="padding: 15px; border-bottom: 1px solid var(--color-border);">{{ call .T "campaign.th_status" }}</th>
+                    <th style="padding: 15px; border-bottom: 1px solid var(--color-border);">{{ call .T "campaign.th_mode" }}</th>
+                    <th style="padding: 15px; border-bottom: 1px solid var(--color-border);">{{ call .T "campaign.th_created_at" }}</th>
+                    <th style="padding: 15px; border-bottom: 1px solid var(--color-border);">{{ call .T "campaign.th_action" }}</th>
                 </tr>
             </thead>
             <tbody>
                 {{range .Campaigns}}
-                <tr style="border-bottom: 1px solid #444;">
+                <tr style="border-bottom: 1px solid var(--color-border);">
                     <td style="padding: 15px;">#{{.ID}}</td>
                     <td style="padding: 15px; font-weight: bold;">{{.Name}}</td>
                     <td style="padding: 15px;">
@@ -27,20 +27,20 @@
                             {{.Status}}
                         </span>
                     </td>
-                    <td style="padding: 15px;">{{if eq .ButtonMode "kartu_link"}}Kartu Link{{else}}Tombol Asli{{end}}</td>
+                    <td style="padding: 15px;">{{if eq .ButtonMode "kartu_link"}}{{ call $.T "campaign.mode_card_link" }}{{else}}{{ call $.T "campaign.mode_native_btn" }}{{end}}</td>
                     <td style="padding: 15px;">{{.CreatedAt.Format "02 Jan 06 15:04"}}</td>
                     <td style="padding: 15px;">
                         {{if eq .Status "draf"}}
-                        <a href="/admin/campaigns/{{.ID}}/edit" style="color: var(--color-accent); margin-right: 10px; text-decoration: none;">✏️ Edit</a>
-                        <a href="/admin/campaigns/{{.ID}}/numbers" style="color: #ff9800; text-decoration: none;">📝 Nomor</a>
+                        <a href="/admin/campaigns/{{.ID}}/edit" class="link-action" style="color: var(--color-accent);">{{ call $.T "campaign.action_edit" }}</a>
+                        <a href="/admin/campaigns/{{.ID}}/numbers" class="link-action" style="color: #ff9800;">{{ call $.T "campaign.action_numbers" }}</a>
                         {{else}}
-                        <a href="/admin/campaigns/{{.ID}}/numbers" style="color: #aaa; text-decoration: none;">📊 Laporan</a>
+                        <a href="/admin/campaigns/{{.ID}}/numbers" class="link-action" style="color: var(--color-muted);">{{ call $.T "campaign.action_report" }}</a>
                         {{end}}
                     </td>
                 </tr>
                 {{else}}
                 <tr>
-                    <td colspan="6" style="padding: 30px; text-align: center; color: #888;">Belum ada campaign. Silakan buat baru.</td>
+                    <td colspan="6" style="padding: 30px; text-align: center; color: var(--color-muted);">{{ call .T "campaign.empty_list" }}</td>
                 </tr>
                 {{end}}
             </tbody>

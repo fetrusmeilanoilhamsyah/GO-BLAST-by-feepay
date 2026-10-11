@@ -1,6 +1,6 @@
 {{define "content"}}
 <div style="max-width: 1200px; margin: 0 auto; padding: 20px;">
-    <h2>{{if .Campaign.ID}}Edit Campaign{{else}}Buat Campaign Baru{{end}}</h2>
+    <h2>{{if .Campaign.ID}}{{ call .T "campaign.form_edit_title" }}{{else}}{{ call .T "campaign.form_create_title" }}{{end}}</h2>
     
     <div style="display: flex; gap: 30px; flex-wrap: wrap; margin-top: 20px;">
         <!-- FORM SECTION -->
@@ -8,80 +8,80 @@
             <form id="campaignForm" method="POST" enctype="multipart/form-data">
                 <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
                 
-                <div style="margin-bottom: 15px;">
-                    <label style="display: block; margin-bottom: 5px;">Nama Campaign</label>
-                    <input type="text" name="name" style="width: 100%; padding: 10px; border-radius: 4px; border: 1px solid #555; background-color: var(--color-bg); color: var(--color-text); box-sizing: border-box;" value="{{.Campaign.Name}}" required>
+                <div class="field">
+                    <label>{{ call .T "campaign.field_name" }}</label>
+                    <input type="text" name="name" class="input" value="{{.Campaign.Name}}" required>
                 </div>
 
-                <div style="margin-bottom: 15px;">
-                    <label style="display: block; margin-bottom: 5px;">Mode Pesan</label>
-                    <select name="button_mode" id="modeSelect" style="width: 100%; padding: 10px; border-radius: 4px; border: 1px solid #555; background-color: var(--color-bg); color: var(--color-text); box-sizing: border-box;">
-                        <option value="kartu_link" {{if eq .Campaign.ButtonMode "kartu_link"}}selected{{end}}>Kartu Link (Aman & Tampil di Semua HP)</option>
-                        <option value="tombol_asli" {{if eq .Campaign.ButtonMode "tombol_asli"}}selected{{end}}>Tombol Asli (Bisa disembunyikan WhatsApp)</option>
+                <div class="field">
+                    <label>{{ call .T "campaign.field_mode" }}</label>
+                    <select name="button_mode" id="modeSelect" class="input">
+                        <option value="kartu_link" {{if eq .Campaign.ButtonMode "kartu_link"}}selected{{end}}>{{ call .T "campaign.mode_card_link_desc" }}</option>
+                        <option value="tombol_asli" {{if eq .Campaign.ButtonMode "tombol_asli"}}selected{{end}} disabled>{{ call .T "campaign.mode_native_btn_desc" }}</option>
                     </select>
                 </div>
 
-                <div style="margin-bottom: 15px;">
-                    <label style="display: block; margin-bottom: 5px;">Teks Pesan (max 1000 karakter)</label>
-                    <textarea name="body" rows="5" maxlength="1000" style="width: 100%; padding: 10px; border-radius: 4px; border: 1px solid #555; background-color: var(--color-bg); color: var(--color-text); box-sizing: border-box; resize: vertical;" required>{{.Campaign.Body}}</textarea>
+                <div class="field">
+                    <label>{{ call .T "campaign.field_body" }}</label>
+                    <textarea name="body" rows="5" maxlength="1000" class="input" required>{{.Campaign.Body}}</textarea>
                 </div>
 
-                <div style="margin-bottom: 15px;">
-                    <label style="display: block; margin-bottom: 5px;">Foto (Opsional, max 1MB, JPEG/PNG)</label>
+                <div class="field">
+                    <label>{{ call .T "campaign.field_image" }}</label>
                     {{if .Campaign.ImagePath}}
                     <div style="margin-bottom: 10px; font-size: 14px;">
-                        <span style="background-color: var(--color-primary); padding: 3px 8px; border-radius: 4px;">Foto terlampir</span>
-                        <label style="margin-left: 10px; cursor: pointer;">
-                            <input type="checkbox" name="remove_image" id="remove_image"> Hapus foto saat ini
+                        <span style="background-color: var(--color-primary); color: white; padding: 3px 8px; border-radius: 4px;">{{ call .T "campaign.image_attached" }}</span>
+                        <label style="margin-left: 10px; cursor: pointer; display: inline;">
+                            <input type="checkbox" name="remove_image" id="remove_image"> {{ call .T "campaign.remove_image" }}
                         </label>
                     </div>
                     {{end}}
-                    <input type="file" name="image" accept="image/jpeg,image/png" style="width: 100%; padding: 8px; border-radius: 4px; background-color: var(--color-bg); color: var(--color-text); box-sizing: border-box;">
+                    <input type="file" name="image" accept="image/jpeg,image/png" class="input">
                 </div>
 
-                <hr style="border: 0; border-top: 1px solid #555; margin: 25px 0;">
-                <h3 style="margin-bottom: 15px;">Elemen Pesan</h3>
+                <hr style="border: 0; border-top: 1px solid var(--color-border); margin: 25px 0;">
+                <h3 style="margin-bottom: 15px;">{{ call .T "campaign.section_elements" }}</h3>
 
-                <div style="margin-bottom: 15px; padding: 15px; border: 1px solid #555; border-radius: 6px; background-color: rgba(0,0,0,0.1);">
+                <div class="panel">
                     <div style="margin-bottom: 10px;">
                         <label style="font-weight: bold; cursor: pointer;">
-                            <input type="checkbox" name="cs_active" id="csCheck" {{if .Campaign.Elements.CSActive}}checked{{end}}> Customer Service
+                            <input type="checkbox" name="cs_active" id="csCheck" {{if .Campaign.Elements.CSActive}}checked{{end}}> {{ call .T "campaign.element_cs" }}
                         </label>
                     </div>
-                    <input type="text" name="cs_number" id="csNum" placeholder="Nomor E.164 atau link URL (cth: 62812...)" style="width: 100%; padding: 10px; border-radius: 4px; border: 1px solid #555; background-color: var(--color-bg); color: var(--color-text); box-sizing: border-box;" value="{{.Campaign.Elements.CSNumber}}">
+                    <input type="text" name="cs_number" id="csNum" placeholder="{{ call .T "campaign.cs_placeholder" }}" class="input" value="{{.Campaign.Elements.CSNumber}}">
                 </div>
 
-                <div style="margin-bottom: 15px; padding: 15px; border: 1px solid #555; border-radius: 6px; background-color: rgba(0,0,0,0.1);">
+                <div class="panel">
                     <div style="margin-bottom: 10px;">
                         <label style="font-weight: bold; cursor: pointer;">
-                            <input type="checkbox" name="link_web_active" id="linkWebCheck" {{if .Campaign.Elements.LinkWebActive}}checked{{end}}> Link Web
+                            <input type="checkbox" name="link_web_active" id="linkWebCheck" {{if .Campaign.Elements.LinkWebActive}}checked{{end}}> {{ call .T "campaign.element_web" }}
                         </label>
                     </div>
-                    <input type="url" name="link_web_url" id="linkWebUrl" placeholder="https://..." style="width: 100%; padding: 10px; border-radius: 4px; border: 1px solid #555; background-color: var(--color-bg); color: var(--color-text); box-sizing: border-box;" value="{{.Campaign.Elements.LinkWebURL}}">
+                    <input type="url" name="link_web_url" id="linkWebUrl" placeholder="{{ call .T "campaign.url_placeholder" }}" class="input" value="{{.Campaign.Elements.LinkWebURL}}">
                 </div>
 
-                <div style="margin-bottom: 15px; padding: 15px; border: 1px solid #555; border-radius: 6px; background-color: rgba(0,0,0,0.1);">
+                <div class="panel">
                     <div style="margin-bottom: 10px;">
                         <label style="font-weight: bold; cursor: pointer;">
-                            <input type="checkbox" name="phone_active" id="phoneCheck" {{if .Campaign.Elements.PhoneActive}}checked{{end}}> Nomor Telepon
+                            <input type="checkbox" name="phone_active" id="phoneCheck" {{if .Campaign.Elements.PhoneActive}}checked{{end}}> {{ call .T "campaign.element_phone" }}
                         </label>
                     </div>
-                    <input type="text" name="phone_number" id="phoneNum" placeholder="62812..." style="width: 100%; padding: 10px; border-radius: 4px; border: 1px solid #555; background-color: var(--color-bg); color: var(--color-text); box-sizing: border-box;" value="{{.Campaign.Elements.PhoneNumber}}">
+                    <input type="text" name="phone_number" id="phoneNum" placeholder="{{ call .T "campaign.phone_placeholder" }}" class="input" value="{{.Campaign.Elements.PhoneNumber}}">
                 </div>
 
-                <div style="margin-bottom: 15px; padding: 15px; border: 1px solid #555; border-radius: 6px; background-color: rgba(0,0,0,0.1);">
+                <div class="panel">
                     <div style="margin-bottom: 10px;">
                         <label style="font-weight: bold; cursor: pointer;">
-                            <input type="checkbox" name="promo_active" id="promoCheck" {{if .Campaign.Elements.PromoActive}}checked{{end}}> Klaim Promo
+                            <input type="checkbox" name="promo_active" id="promoCheck" {{if .Campaign.Elements.PromoActive}}checked{{end}}> {{ call .T "campaign.element_promo" }}
                         </label>
                     </div>
-                    <input type="text" name="promo_code" id="promoCode" placeholder="Kode Promo (cth: DISKON50)" style="width: 100%; padding: 10px; margin-bottom: 10px; border-radius: 4px; border: 1px solid #555; background-color: var(--color-bg); color: var(--color-text); box-sizing: border-box;" value="{{.Campaign.Elements.PromoCode}}">
-                    <input type="url" name="promo_url" id="promoUrl" placeholder="https://... (URL Tujuan)" style="width: 100%; padding: 10px; border-radius: 4px; border: 1px solid #555; background-color: var(--color-bg); color: var(--color-text); box-sizing: border-box;" value="{{.Campaign.Elements.PromoURL}}">
+                    <input type="text" name="promo_code" id="promoCode" placeholder="{{ call .T "campaign.promo_code_placeholder" }}" class="input" style="margin-bottom: 10px;" value="{{.Campaign.Elements.PromoCode}}">
+                    <input type="url" name="promo_url" id="promoUrl" placeholder="{{ call .T "campaign.promo_url_placeholder" }}" class="input" value="{{.Campaign.Elements.PromoURL}}">
                 </div>
 
                 <div style="display: flex; gap: 10px; margin-top: 25px;">
-                    <button type="submit" style="flex: 1; padding: 12px; background-color: var(--color-primary); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; font-weight: bold;">Simpan Campaign</button>
-                    <button type="button" id="btnPreview" style="padding: 12px 20px; background-color: #555; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px;">Refresh Preview</button>
+                    <button type="submit" class="btn btn-primary" style="flex: 1;">{{ call .T "campaign.btn_save" }}</button>
+                    <button type="button" id="btnPreview" class="btn btn-secondary">{{ call .T "campaign.btn_refresh_preview" }}</button>
                 </div>
             </form>
         </div>
@@ -101,13 +101,13 @@
                 </div>
                 
                 <!-- Chat Input Dummy -->
-                <div style="background-color: #f0f0f0; padding: 10px; display: flex; gap: 10px;">
-                    <div style="flex: 1; background-color: white; border-radius: 20px; padding: 10px 15px; color: #999;">Ketik pesan</div>
-                    <div style="width: 40px; height: 40px; background-color: #00a884; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white;">➤</div>
+                <div style="background-color: #f0f0f0; padding: 10px; display: flex; gap: 10px; align-items: center;">
+                    <div style="flex: 1; background-color: white; border-radius: 20px; padding: 10px 15px; color: #999;">{{ call .T "campaign.preview_input_placeholder" }}</div>
+                    <div style="padding: 10px 14px; background-color: #00a884; border-radius: 20px; color: white; font-size: 14px; font-weight: bold;">{{ call .T "campaign.preview_send" }}</div>
                 </div>
             </div>
             <div style="text-align: center; margin-top: 10px; font-size: 12px; color: #999;">
-                Simulasi tampilan (bukan jaminan hasil asli)
+                {{ call .T "campaign.preview_disclaimer" }}
             </div>
         </div>
     </div>

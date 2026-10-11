@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"goblast/internal/campaign"
+	"goblast/internal/i18n"
 )
 
 // HandleAdminCampaignNumbersGET shows the upload form
@@ -36,26 +37,36 @@ func (s *Server) HandleAdminCampaignNumbersGET(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-// Get CSRF from cookie
+	var lang string
+	if u, ok := r.Context().Value(userContextKey).(UserSession); ok {
+		lang = u.Language
+	} else if uPtr, ok := r.Context().Value(userContextKey).(*UserSession); ok && uPtr != nil {
+		lang = uPtr.Language
+	}
+	if lang == "" {
+		lang = "id"
+	}
+
+	// Get CSRF from cookie
 	csrfToken := ""
 	if c, err := r.Cookie("gb_csrf"); err == nil {
 		csrfToken = c.Value
 	}
-	
+
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Write([]byte(fmt.Sprintf(`
-		<h1>Upload Nomor</h1>
+		<h1>%s</h1>
 		<form method="post" action="/admin/campaigns/%d/numbers/preview" enctype="multipart/form-data">
 			<input type="hidden" name="csrf_token" value="%s">
-			<label>Upload File (CSV/TXT/XLSX):</label>
+			<label>%s</label>
 			<input type="file" name="file" accept=".csv,.txt,.xlsx">
 			<br>
-			<label>Atau Paste Nomor (satu per baris):</label>
+			<label>%s</label>
 			<textarea name="pasted"></textarea>
 			<br>
-			<button type="submit">Preview</button>
+			<button type="submit">%s</button>
 		</form>
-	`, campaignID, csrfToken)))
+	`, i18n.T(lang, "numbers.upload_title"), campaignID, csrfToken, i18n.T(lang, "numbers.file_label"), i18n.T(lang, "numbers.paste_label"), i18n.T(lang, "numbers.preview_btn"))))
 }
 
 // HandleAdminCampaignNumbersPreview POST reads the file and shows preview
@@ -91,7 +102,7 @@ func (s *Server) HandleAdminCampaignNumbersPreview(w http.ResponseWriter, r *htt
 		filename = "pasted.txt"
 	}
 
-	defaultCC := "62" 
+	defaultCC := "62"
 	_ = s.DB.Pool.QueryRow(r.Context(), "SELECT value->>'default_country_code' FROM settings WHERE key = 'app_settings'").Scan(&defaultCC)
 	if defaultCC == "" {
 		defaultCC = "62"
@@ -105,24 +116,41 @@ func (s *Server) HandleAdminCampaignNumbersPreview(w http.ResponseWriter, r *htt
 
 	csrfToken := r.FormValue("csrf_token")
 
+	var lang string
+	if u, ok := r.Context().Value(userContextKey).(UserSession); ok {
+		lang = u.Language
+	} else if uPtr, ok := r.Context().Value(userContextKey).(*UserSession); ok && uPtr != nil {
+		lang = uPtr.Language
+	}
+	if lang == "" {
+		lang = "id"
+	}
+
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Write([]byte(fmt.Sprintf(`
-		<h1>Preview Upload</h1>
-		<p>Total: %d</p>
-		<p>Diterima: %d</p>
-		<p>Duplikat (File): %d</p>
-		<p>Duplikat (Campaign): %d</p>
-		<p>Tidak Valid: %d</p>
-		<p>Ambigu: %d</p>
-		<a href="/admin/campaigns/%d/numbers/rejected/%s">Download Daftar Ditolak (CSV)</a>
+		<h1>%s</h1>
+		<p>%s: %d</p>
+		<p>%s: %d</p>
+		<p>%s: %d</p>
+		<p>%s: %d</p>
+		<p>%s: %d</p>
+		<p>%s: %d</p>
+		<a href="/admin/campaigns/%d/numbers/rejected/%s">%s</a>
 		
 		<form method="post" action="/admin/campaigns/%d/numbers/confirm">
 			<input type="hidden" name="csrf_token" value="%s">
 			<input type="hidden" name="preview_id" value="%s">
-			<button type="submit">Konfirmasi & Masukkan Nomor</button>
+			<button type="submit">%s</button>
 		</form>
-	`, preview.Stats.Total, preview.Stats.Accepted, preview.Stats.DupInFile, preview.Stats.DupInCampaign, preview.Stats.Invalid, preview.Stats.Ambiguous,
-	campaignID, preview.ID, campaignID, csrfToken, preview.ID)))
+	`, i18n.T(lang, "numbers.preview_title"),
+		i18n.T(lang, "numbers.total"), preview.Stats.Total,
+		i18n.T(lang, "numbers.accepted"), preview.Stats.Accepted,
+		i18n.T(lang, "numbers.dup_file"), preview.Stats.DupInFile,
+		i18n.T(lang, "numbers.dup_campaign"), preview.Stats.DupInCampaign,
+		i18n.T(lang, "numbers.invalid"), preview.Stats.Invalid,
+		i18n.T(lang, "numbers.ambiguous"), preview.Stats.Ambiguous,
+		campaignID, preview.ID, i18n.T(lang, "numbers.download_rejected"),
+		campaignID, csrfToken, preview.ID, i18n.T(lang, "numbers.confirm_btn"))))
 }
 
 // HandleAdminCampaignNumbersConfirm POST confirm upload
@@ -135,7 +163,7 @@ func (s *Server) HandleAdminCampaignNumbersConfirm(w http.ResponseWriter, r *htt
 		http.Error(w, "Preview ID missing", http.StatusBadRequest)
 		return
 	}
-	
+
 	userSessionCtx := r.Context().Value(userContextKey)
 	if userSessionCtx == nil {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
