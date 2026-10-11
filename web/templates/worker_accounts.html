@@ -17,7 +17,8 @@
             </div>
             {{end}}
 
-            <div class="responsive-table-container">
+            <!-- TAMPILAN DESKTOP (TABEL) -->
+            <div class="desktop-only responsive-table-container">
                 <table class="responsive-table">
                     <thead>
                         <tr>
@@ -93,6 +94,72 @@
                         {{end}}
                     </tbody>
                 </table>
+            </div>
+
+            <!-- TAMPILAN MOBILE (KARTU SIMETRIS & PAS DI LAYAR ANDROID) -->
+            <div class="mobile-only account-card-list">
+                {{range .Accounts}}
+                <div class="account-card-item">
+                    <div class="account-card-header">
+                        <div>
+                            <div class="account-card-title">{{.Label}} <span style="font-size: 12px; font-weight: normal; color: var(--color-muted);">#{{.ID}}</span></div>
+                            <div class="account-card-meta">
+                                <span>{{ call $.T "wa.speed" }}: <strong style="text-transform: uppercase;">{{.Speed}}</strong></span>
+                            </div>
+                        </div>
+                        <div>
+                            {{if eq .Status "terhubung"}}
+                            <span class="badge badge-success">{{ call $.T "wa.connected" }}</span>
+                            {{else if eq .Status "menunggu_scan"}}
+                            <span class="badge badge-warning">{{ call $.T "wa.waiting_scan" }}</span>
+                            {{else if eq .Status "antre"}}
+                            <span class="badge badge-muted">{{ call $.T "wa.queued" }}</span>
+                            {{else if eq .Status "terputus"}}
+                            <span class="badge badge-danger">{{ call $.T "wa.disconnected" }}</span>
+                            {{else}}
+                            <span class="badge badge-muted">{{ call $.T "wa.stopped" }}</span>
+                            {{end}}
+                        </div>
+                    </div>
+
+                    <div class="account-card-actions">
+                        {{if eq .Status "menunggu_scan"}}
+                        <button type="button" onclick="openAddAccountModal({{.ID}})" class="btn btn-primary" style="flex: 1; padding: 8px 12px; font-size: 13px; font-weight: bold; cursor: pointer;">
+                            Pindai / Tautkan
+                        </button>
+                        <form method="POST" action="/worker/accounts/{{.ID}}/delete" onsubmit="return confirm('Hapus antrean akun ini?');" style="display: inline;">
+                            <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                            <button type="submit" style="background: none; border: 1px solid var(--color-danger); color: var(--color-danger); padding: 7px 12px; border-radius: 4px; cursor: pointer; font-size: 13px;">Hapus</button>
+                        </form>
+                        {{end}}
+
+                        {{if eq .Status "terhubung"}}
+                        <form method="POST" action="/worker/accounts/{{.ID}}/disconnect" style="flex: 1;">
+                            <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                            <button type="submit" style="width: 100%; background: none; border: 1px solid var(--color-warning); color: var(--color-warning); padding: 7px 12px; border-radius: 4px; cursor: pointer; font-size: 13px;">{{ call $.T "wa.action_disconnect" }}</button>
+                        </form>
+                        <form method="POST" action="/worker/accounts/{{.ID}}/stop" style="flex: 1;">
+                            <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                            <button type="submit" style="width: 100%; background: none; border: 1px solid var(--color-danger); color: var(--color-danger); padding: 7px 12px; border-radius: 4px; cursor: pointer; font-size: 13px;">{{ call $.T "wa.action_stop" }}</button>
+                        </form>
+                        {{end}}
+
+                        {{if or (eq .Status "terputus") (eq .Status "berhenti")}}
+                        <button type="button" onclick="openAddAccountModal({{.ID}})" style="flex: 1; background: none; border: 1px solid var(--color-primary); color: var(--color-primary); padding: 7px 12px; border-radius: 4px; font-size: 13px; font-weight: bold; cursor: pointer;">
+                            {{ call $.T "wa.action_connect" }}
+                        </button>
+                        <form method="POST" action="/worker/accounts/{{.ID}}/delete" onsubmit="return confirm('Hapus akun ini?');" style="display: inline;">
+                            <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                            <button type="submit" style="background: none; border: 1px solid var(--color-border); color: var(--color-muted); padding: 7px 12px; border-radius: 4px; cursor: pointer; font-size: 13px;">Hapus</button>
+                        </form>
+                        {{end}}
+                    </div>
+                </div>
+                {{else}}
+                <div style="background-color: var(--color-card); border: 1px solid var(--color-border); border-radius: 8px; padding: 24px; text-align: center; color: var(--color-muted);">
+                    {{ call .T "wa.empty_accounts" }}
+                </div>
+                {{end}}
             </div>
     </main>
 </div>
@@ -186,7 +253,7 @@
             <!-- STEP 2: SETELAH TERHUBUNG (PILIH KECEPATAN & SIMPAN) -->
             <div id="modal-step-settings" style="display: none;">
                 <div style="text-align: center; margin-bottom: 20px;">
-                    <div style="font-size: 16px; font-weight: bold; color: var(--color-success); margin-bottom: 6px;">Berhasil Terhubung!</div>
+                    <div style="font-size: 16px; font-weight: 700; color: var(--color-text); margin-bottom: 6px;">Berhasil Terhubung!</div>
                     <p style="font-size: 13px; color: var(--color-muted); margin: 0;">Akun WhatsApp Anda telah sukses ditautkan. Silakan atur nama dan kecepatan pengiriman:</p>
                 </div>
 

@@ -90,6 +90,8 @@ Terbaru di atas. Agen menambah baris di sini setiap ada keputusan baru, dari pem
 
 | Tanggal | Keputusan | Alasan | Oleh |
 |---|---|---|---|
+| 2026-10-11 | Mode Gelap Pekat OLED Pitch Black (`#0a0a0a`), Pembersihan Total Font Hijau AI-Slop, dan Kartu Responsif Mobile Akun WA di Android | Menghilangkan rasa silau/merih di mata saat menggunakan mode gelap, menyelaraskan tipografi monokrom go.dev bersih, dan mencegah tabel akun WhatsApp meluber/penuh sesak di layar HP Android dengan tampilan kartu vertikal proporsional | pemilik dan agen |
+| 2026-10-11 | Pilihan Rekening Penarikan Global (SeaBank, BCA, DANA, USDT BEP20) untuk Semua Akun Pekerja | Membebaskan seluruh pekerja untuk memilih saluran pencairan lokal maupun internasional tanpa restriksi mata uang pendaftaran | pemilik dan agen |
 | 2026-10-11 | Penyimpanan Rekening/Wallet Tujuan di Pengaturan Akun (SeaBank, BCA, DANA, USDT BEP20) & Form Penarikan Cepat 1-Klik Berbasis Preset Chip Nominal (10K - 1 Juta) | Pekerja hanya menyimpan rekening sekali secara terenkripsi (AES-256-GCM), tidak perlu mengetik ulang rekening/nama setiap kali penarikan. Form penarikan menyediakan tombol nominal cepat (10K, 20K, 30K, 50K, 100K, 200K, 500K, 1 Juta) serta opsi Tarik Semua Saldo | pemilik dan agen |
 | 2026-10-11 | Dukungan kolom `username` pada pendaftaran & fleksibilitas login (Username atau Email), tampilan profil ringkas di panel, serta kesiapan proteksi bot Cloudflare Turnstile | Mencegah tampilan nama email kepanjangan/terpotong di layar mobile, mempermudah akses login fleksibel, dan menyiapkan arsitektur anti-bot | pemilik dan agen |
 | 2026-10-11 | Desain monokrom elegan ala go.dev (soft off-white `#f8f9fa`, aksen hitam `#111827`, kartu putih `#ffffff`) menggantikan aksen tosca/biru, serta pembersihan ikon ke garis minimalis 1.75px | Menghilangkan rasa silau di layar HP, menghasilkan visual bersih dan tenang, serta bebas dari kesan grafis AI slop | pemilik dan agen |
@@ -158,6 +160,7 @@ Langkah uji sambung dan putus satu nomor cadangan:
 
 Terbaru di atas. Format: `tanggal: ringkasan satu baris` (Log Tahap 0 - 5 diarsipkan di [ARSIP_PROGRES.md](ARSIP_PROGRES.md)).
 
+- 2026-10-11: Penyempurnaan UI: Mode gelap pekat OLED Pitch Black (#0a0a0a), kartu mobile vertikal akun WhatsApp untuk layar Android, pembersihan total font hijau AI-slop, dan rekening penarikan global (SeaBank, BCA, DANA, USDT BEP20).
 - 2026-10-11: Tahap 11 selesai: Panel pekerja simetris dan responsif dengan sidebar kiri rapi sesuai DOC_AI_SLOP. Pemisahan halaman Beranda (/worker), Akun WhatsApp (/worker/accounts), Penarikan (/worker/withdrawals), dan Referral (/worker/referral), modul enkripsi withdraw (AES-256-GCM), dan tes lulus 100%.
 - 2026-10-11: Tahap 10 selesai: Mesin kirim internal/engine (klaim atomik FOR UPDATE SKIP LOCKED, jeda kecepatan ±20%, daily_limits, buku besar idempoten, pembersih stale numbers, dan auto-stop). Tes lulus 100%.
 - 2026-10-11: Tahap 9 selesai: Pengelola sesi WhatsApp internal/wa (Manager, RealSender, FakeSender, Preview kartu_link, generator thumbnail 300px), handler worker accounts, migrasi 0006_wa_sessions.sql, template HTML dan polling status 3 detik.

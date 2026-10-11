@@ -52,56 +52,58 @@
   :root:not([data-theme="light"]) {
     color-scheme: dark;
 
-    --color-bg: #111827;
-    --color-bg-hero: #1f2937;
-    --color-card: #1f2937;
-    --color-primary: #f9fafb;
-    --color-on-primary: #111827;
-    --color-accent: #374151;
-    --color-link: #f9fafb;
-    --color-text: #f9fafb;
-    --color-muted: #9ca3af;
-    --color-border: #374151;
-    --color-shadow: rgba(0, 0, 0, 0.4);
-    --color-modal-backdrop: rgba(0, 0, 0, 0.7);
-    --color-input-bg: #1f2937;
-    --color-input-text: #f9fafb;
-    --color-surface-muted: #1e2530;
-    --color-success: #4ade80;
+    /* Tema Gelap Pekat (OLED / Pitch Black) - Tenang, Tidak Silau, Nyaman di Mata */
+    --color-bg: #0a0a0a;
+    --color-bg-hero: #121214;
+    --color-card: #141416;
+    --color-primary: #f4f4f5;
+    --color-on-primary: #0a0a0a;
+    --color-accent: #27272a;
+    --color-link: #f4f4f5;
+    --color-text: #f4f4f5;
+    --color-muted: #a1a1aa;
+    --color-border: #262628;
+    --color-shadow: rgba(0, 0, 0, 0.7);
+    --color-modal-backdrop: rgba(0, 0, 0, 0.85);
+    --color-input-bg: #141416;
+    --color-input-text: #f4f4f5;
+    --color-surface-muted: #1c1c1f;
+    --color-success: #22c55e;
     --color-danger: #f87171;
     --color-warning: #fbbf24;
 
-    --color-status-draft: #9ca3af;
-    --color-status-running: #f9fafb;
-    --color-status-done: #4ade80;
+    --color-status-draft: #a1a1aa;
+    --color-status-running: #f4f4f5;
+    --color-status-done: #22c55e;
   }
 }
 
 :root[data-theme="dark"] {
   color-scheme: dark;
 
-  --color-bg: #111827;
-  --color-bg-hero: #1f2937;
-  --color-card: #1f2937;
-  --color-primary: #f9fafb;
-  --color-on-primary: #111827;
-  --color-accent: #374151;
-  --color-link: #f9fafb;
-  --color-text: #f9fafb;
-  --color-muted: #9ca3af;
-  --color-border: #374151;
-  --color-shadow: rgba(0, 0, 0, 0.4);
-  --color-modal-backdrop: rgba(0, 0, 0, 0.7);
-  --color-input-bg: #1f2937;
-  --color-input-text: #f9fafb;
-  --color-surface-muted: #1e2530;
-  --color-success: #4ade80;
+  /* Tema Gelap Pekat (OLED / Pitch Black) - Tenang, Tidak Silau, Nyaman di Mata */
+  --color-bg: #0a0a0a;
+  --color-bg-hero: #121214;
+  --color-card: #141416;
+  --color-primary: #f4f4f5;
+  --color-on-primary: #0a0a0a;
+  --color-accent: #27272a;
+  --color-link: #f4f4f5;
+  --color-text: #f4f4f5;
+  --color-muted: #a1a1aa;
+  --color-border: #262628;
+  --color-shadow: rgba(0, 0, 0, 0.7);
+  --color-modal-backdrop: rgba(0, 0, 0, 0.85);
+  --color-input-bg: #141416;
+  --color-input-text: #f4f4f5;
+  --color-surface-muted: #1c1c1f;
+  --color-success: #22c55e;
   --color-danger: #f87171;
   --color-warning: #fbbf24;
 
-  --color-status-draft: #9ca3af;
-  --color-status-running: #f9fafb;
-  --color-status-done: #4ade80;
+  --color-status-draft: #a1a1aa;
+  --color-status-running: #f4f4f5;
+  --color-status-done: #22c55e;
 }
 
 body {
@@ -533,7 +535,7 @@ textarea.input {
 }
 
 .stat-value-success {
-  color: var(--color-success);
+  color: var(--color-text);
 }
 
 /* Responsive Table */
@@ -586,8 +588,8 @@ textarea.input {
 
 .badge-success {
   background-color: var(--color-surface-muted);
-  color: var(--color-success);
-  border: 1px solid var(--color-success);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
 }
 
 .badge-warning {
@@ -606,6 +608,62 @@ textarea.input {
   background-color: var(--color-surface-muted);
   color: var(--color-muted);
   border: 1px solid var(--color-border);
+}
+
+/* Responsive View Switchers */
+.desktop-only {
+  display: block;
+}
+
+.mobile-only {
+  display: none;
+}
+
+.account-card-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.account-card-item {
+  background-color: var(--color-card);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 14px 16px;
+  box-sizing: border-box;
+}
+
+.account-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.account-card-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.account-card-meta {
+  font-size: 12px;
+  color: var(--color-muted);
+  margin-top: 3px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.account-card-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  border-top: 1px solid var(--color-border);
+  padding-top: 10px;
+  margin-top: 10px;
+  flex-wrap: wrap;
 }
 
 /* Quick Nominal Chips */
@@ -645,12 +703,20 @@ textarea.input {
 
 /* Mobile Responsive */
 @media (max-width: 768px) {
+  .desktop-only {
+    display: none !important;
+  }
+
+  .mobile-only {
+    display: block !important;
+  }
+
   .worker-topbar {
     padding: 10px 14px;
   }
 
   .worker-content {
-    padding: 16px 14px;
+    padding: 14px 12px;
     max-width: 100%;
   }
 

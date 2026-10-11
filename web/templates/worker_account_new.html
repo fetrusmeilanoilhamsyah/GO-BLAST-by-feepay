@@ -164,8 +164,8 @@
             if (data.status === 'terhubung') {
                 clearInterval(pollInterval);
                 if (badge) {
-                    badge.style.color = 'var(--color-success)';
-                    badge.style.borderColor = 'var(--color-success)';
+                    badge.style.color = 'var(--color-text)';
+                    badge.style.borderColor = 'var(--color-border)';
                     badge.innerText = 'Berhasil terhubung! Mengalihkan...';
                 }
                 setTimeout(() => {

@@ -14,7 +14,7 @@
             <div class="stat-grid">
                 <div class="stat-card">
                     <div class="stat-label">{{ call .T "worker.available_balance" }}</div>
-                    <div class="stat-value stat-value-success">
+                    <div class="stat-value">
                         {{if eq .User.Currency "IDR"}}Rp {{.Balance}}{{else}}{{.Balance}} USDT{{end}}
                     </div>
                     <div style="margin-top: 10px;">
@@ -85,9 +85,9 @@
                                 <td>{{.ID}}</td>
                                 <td>
                                     {{if eq .Kind "upah"}}
-                                    <span class="badge badge-success">Upah Kirim</span>
+                                    <span class="badge badge-muted">Upah Kirim</span>
                                     {{else if eq .Kind "referral"}}
-                                    <span class="badge badge-success">Bonus Referral</span>
+                                    <span class="badge badge-muted">Bonus Referral</span>
                                     {{else if eq .Kind "penarikan"}}
                                     <span class="badge badge-warning">Penarikan</span>
                                     {{else}}
@@ -98,7 +98,7 @@
                                     {{if lt .Amount 0}}
                                     <span style="color: var(--color-danger);">{{.Amount}} {{.Currency}}</span>
                                     {{else}}
-                                    <span style="color: var(--color-success);">+{{.Amount}} {{.Currency}}</span>
+                                    <span style="color: var(--color-text);">+{{.Amount}} {{.Currency}}</span>
                                     {{end}}
                                 </td>
                                 <td style="color: var(--color-muted); font-size: 13px;">{{.CreatedAt}}</td>

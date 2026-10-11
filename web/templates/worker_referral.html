@@ -20,7 +20,7 @@
 
                 <div class="stat-card">
                     <div class="stat-label">{{ call .T "worker.total_referral" }}</div>
-                    <div class="stat-value stat-value-success">
+                    <div class="stat-value">
                         {{if eq .User.Currency "IDR"}}Rp {{.TotalBonus}}{{else}}{{.TotalBonus}} USDT{{end}}
                     </div>
                     <p style="margin: 6px 0 0 0; font-size: 12px; color: var(--color-muted);">Masuk otomatis ke saldo Anda</p>
@@ -49,7 +49,7 @@
                             {{ call .T "worker.referral_copy" }}
                         </button>
                     </div>
-                    <span id="copy-feedback" style="display: none; margin-top: 6px; font-size: 13px; font-weight: bold; color: var(--color-success);">
+                    <span id="copy-feedback" style="display: none; margin-top: 6px; font-size: 13px; font-weight: bold; color: var(--color-text);">
                         {{ call .T "worker.referral_copied" }}
                     </span>
                 </div>
@@ -73,7 +73,7 @@
                             {{range .BonusList}}
                             <tr>
                                 <td>{{.ID}}</td>
-                                <td style="font-weight: bold; color: var(--color-success);">
+                                <td style="font-weight: bold; color: var(--color-text);">
                                     +{{.Amount}} {{.Currency}}
                                 </td>
                                 <td style="font-size: 13px; color: var(--color-muted);">{{.CreatedAt}}</td>
