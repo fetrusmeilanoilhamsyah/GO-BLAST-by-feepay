@@ -19,6 +19,7 @@
 /tmp/
 /bin/
 *.exe
+*.exe~
 
 # Sistem & IDE
 .DS_Store
