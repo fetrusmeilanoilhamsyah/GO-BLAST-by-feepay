@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="{{ .Lang }}">
+<html lang="{{ .Lang }}"{{ if .Theme }} data-theme="{{ .Theme }}"{{ end }}>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -8,5 +8,19 @@
 </head>
 <body>
     {{ template "content" . }}
+    <footer style="margin-top: 40px; padding: 20px; border-top: 1px solid var(--color-border); text-align: center; font-size: 14px; color: var(--color-muted);">
+        <form method="POST" action="/theme" style="display: inline-flex; align-items: center; gap: 8px;">
+            <input type="hidden" name="csrf_token" value="{{ .CSRFToken }}">
+            <label for="theme-select">{{ call .T "theme.label" }}:</label>
+            <select id="theme-select" name="theme" onchange="this.form.submit()" style="padding: 4px 8px; border: 1px solid var(--color-border); border-radius: 4px; background-color: var(--color-input-bg); color: var(--color-input-text);">
+                <option value="auto"{{ if or (eq .Theme "") (eq .Theme "auto") }} selected{{ end }}>{{ call .T "theme.auto" }}</option>
+                <option value="light"{{ if eq .Theme "light" }} selected{{ end }}>{{ call .T "theme.light" }}</option>
+                <option value="dark"{{ if eq .Theme "dark" }} selected{{ end }}>{{ call .T "theme.dark" }}</option>
+            </select>
+            <noscript>
+                <button type="submit" style="padding: 4px 8px; border: 1px solid var(--color-border); border-radius: 4px; background-color: var(--color-surface-muted); color: var(--color-text); cursor: pointer;">{{ call .T "theme.choose" }}</button>
+            </noscript>
+        </form>
+    </footer>
 </body>
 </html>

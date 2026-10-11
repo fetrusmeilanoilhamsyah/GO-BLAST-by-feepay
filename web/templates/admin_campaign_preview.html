@@ -4,21 +4,22 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ call .T "campaign.preview_title" }}</title>
+    <link rel="stylesheet" href="/static/css/theme.css">
     <style>
         body {
-            font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-            background-color: #e5ddd5;
+            font-family: var(--font-body);
+            background-color: var(--wa-chat-bg);
             margin: 0;
             padding: 20px;
             display: flex;
             justify-content: center;
         }
         .bubble {
-            background-color: #ffffff;
+            background-color: var(--wa-bubble-bg);
             border-radius: 8px;
             padding: 12px;
             max-width: 90%;
-            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+            box-shadow: 0 1px 2px var(--wa-bubble-shadow);
             position: relative;
         }
         .bubble::after {
@@ -29,7 +30,7 @@
             width: 0;
             height: 0;
             border: 10px solid transparent;
-            border-bottom-color: #ffffff;
+            border-bottom-color: var(--wa-bubble-bg);
             border-top: 0;
             border-left: 0;
             margin-top: 0;
@@ -38,32 +39,32 @@
         .image-placeholder {
             width: 100%;
             height: 150px;
-            background-color: #ccc;
+            background-color: var(--wa-placeholder-bg);
             border-radius: 6px;
             margin-bottom: 8px;
             display: flex;
             align-items: center;
             justify-content: center;
-            color: #666;
+            color: var(--wa-placeholder-text);
             font-size: 14px;
         }
         .text {
             white-space: pre-wrap;
             font-size: 15px;
-            color: #111;
+            color: var(--wa-bubble-text);
             line-height: 1.4;
         }
         .buttons {
             margin-top: 10px;
-            border-top: 1px solid #ddd;
+            border-top: 1px solid var(--wa-buttons-border);
         }
         .button {
             display: flex;
             align-items: center;
             justify-content: center;
             padding: 10px 0;
-            border-bottom: 1px solid #eee;
-            color: #00a884;
+            border-bottom: 1px solid var(--wa-button-border);
+            color: var(--wa-button-text);
             font-weight: 500;
             font-size: 15px;
             text-decoration: none;

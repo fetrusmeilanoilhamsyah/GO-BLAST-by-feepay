@@ -16,6 +16,7 @@ type contextKey string
 const (
 	userContextKey contextKey = "user"
 	sessionKey     contextKey = "session"
+	csrfContextKey contextKey = "csrf"
 )
 
 type UserSession struct {
@@ -166,36 +167,40 @@ func (s *Server) RequireRole(next http.HandlerFunc, roles ...string) http.Handle
 
 func (s *Server) CSRFMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var csrfToken string
+		cookie, err := r.Cookie("gb_csrf")
+		if err == nil && cookie.Value != "" {
+			csrfToken = cookie.Value
+		}
+
 		if r.Method == http.MethodPost || r.Method == http.MethodPut || r.Method == http.MethodDelete {
-			csrfToken := r.FormValue("csrf_token")
-			if csrfToken == "" {
-				csrfToken = r.Header.Get("X-CSRF-Token")
+			sentToken := r.FormValue("csrf_token")
+			if sentToken == "" {
+				sentToken = r.Header.Get("X-CSRF-Token")
 			}
-			cookie, err := r.Cookie("gb_csrf")
-			if err != nil || cookie.Value == "" || csrfToken != cookie.Value {
+			if csrfToken == "" || sentToken != csrfToken {
 				http.Error(w, "Invalid CSRF token", http.StatusForbidden)
 				return
 			}
 		}
 
 		// Set CSRF cookie for GET requests if not exists
-		if r.Method == http.MethodGet {
-			_, err := r.Cookie("gb_csrf")
-			if err != nil {
-				token, _ := auth.GenerateCSRFToken()
-				secure := s.Env != "dev"
-				http.SetCookie(w, &http.Cookie{
-					Name:     "gb_csrf",
-					Value:    token,
-					Path:     "/",
-					HttpOnly: false, // Must be readable by JS if needed, or we just put it in templates
-					Secure:   secure,
-					SameSite: http.SameSiteLaxMode,
-				})
-			}
+		if r.Method == http.MethodGet && csrfToken == "" {
+			token, _ := auth.GenerateCSRFToken()
+			csrfToken = token
+			secure := s.Env != "dev"
+			http.SetCookie(w, &http.Cookie{
+				Name:     "gb_csrf",
+				Value:    token,
+				Path:     "/",
+				HttpOnly: false, // Must be readable by JS if needed, or we just put it in templates
+				Secure:   secure,
+				SameSite: http.SameSiteLaxMode,
+			})
 		}
 
-		next.ServeHTTP(w, r)
+		ctx := context.WithValue(r.Context(), csrfContextKey, csrfToken)
+		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 

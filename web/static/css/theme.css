@@ -1,43 +1,104 @@
 :root {
-  color-scheme: light dark;
+  color-scheme: light;
 
-  --color-bg: #f4f7f8;
-  --color-bg-hero: #ffffff;
+  /* Tema Terang (Bawaan) */
+  --color-bg: #ffffff;
+  --color-bg-hero: #f2f5f6;
   --color-card: #ffffff;
   --color-primary: #007d9c;
-  --color-accent: #007d9c;
-  --color-link: #006f8b;
+  --color-on-primary: #ffffff;
+  --color-accent: #00add8;
+  --color-link: #007d9c;
   --color-text: #202224;
   --color-muted: #59666c;
-  --color-border: #c7d1d6;
+  --color-border: #d0d7de;
+  --color-shadow: rgba(0, 0, 0, 0.1);
   --color-input-bg: #ffffff;
   --color-input-text: #202224;
-  --color-surface-muted: #edf2f4;
+  --color-surface-muted: #f2f5f6;
   --color-success: #2e7d32;
   --color-danger: #c62828;
+  --color-warning: #b25e00;
+
+  --color-status-draft: #757575;
+  --color-status-running: #1976d2;
+  --color-status-done: #2e7d32;
+
+  /* WhatsApp Simulation (Identik di kedua tema) */
+  --wa-phone-frame: #222222;
+  --wa-phone-bg: #d8c3ad;
+  --wa-header-bg: #075e54;
+  --wa-header-text: #ffffff;
+  --wa-chat-bg: #e5ddd5;
+  --wa-bubble-bg: #ffffff;
+  --wa-bubble-text: #111111;
+  --wa-bubble-shadow: rgba(0, 0, 0, 0.1);
+  --wa-button-text: #00a884;
+  --wa-button-border: #eeeeee;
+  --wa-buttons-border: #dddddd;
+  --wa-input-bar-bg: #f0f0f0;
+  --wa-input-box-bg: #ffffff;
+  --wa-input-placeholder: #999999;
+  --wa-send-btn-bg: #00a884;
+  --wa-send-btn-text: #ffffff;
+  --wa-placeholder-bg: #cccccc;
+  --wa-placeholder-text: #666666;
 
   --font-body: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", "PingFang SC", "Microsoft YaHei", sans-serif;
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     color-scheme: dark;
 
     --color-bg: #202224;
     --color-bg-hero: #2d2d2d;
     --color-card: #3f4042;
     --color-primary: #007d9c;
+    --color-on-primary: #ffffff;
     --color-accent: #00add8;
     --color-link: #50b7e0;
     --color-text: #e0e0e0;
     --color-muted: #b0b0b0;
-    --color-border: #666666;
+    --color-border: #555555;
+    --color-shadow: rgba(0, 0, 0, 0.3);
     --color-input-bg: #2d2d2d;
     --color-input-text: #e0e0e0;
     --color-surface-muted: #35383a;
     --color-success: #4caf50;
-    --color-danger: #f44336;
+    --color-danger: #ff5252;
+    --color-warning: #ff9800;
+
+    --color-status-draft: #757575;
+    --color-status-running: #1976d2;
+    --color-status-done: #4caf50;
   }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --color-bg: #202224;
+  --color-bg-hero: #2d2d2d;
+  --color-card: #3f4042;
+  --color-primary: #007d9c;
+  --color-on-primary: #ffffff;
+  --color-accent: #00add8;
+  --color-link: #50b7e0;
+  --color-text: #e0e0e0;
+  --color-muted: #b0b0b0;
+  --color-border: #555555;
+  --color-shadow: rgba(0, 0, 0, 0.3);
+  --color-input-bg: #2d2d2d;
+  --color-input-text: #e0e0e0;
+  --color-surface-muted: #35383a;
+  --color-success: #4caf50;
+  --color-danger: #ff5252;
+  --color-warning: #ff9800;
+
+  --color-status-draft: #757575;
+  --color-status-running: #1976d2;
+  --color-status-done: #4caf50;
 }
 
 body {
@@ -66,6 +127,7 @@ a:hover {
 
 .card {
   background-color: var(--color-card);
+  border: 1px solid var(--color-border);
   border-radius: 8px;
   padding: 1.5rem;
   margin: 1rem;
@@ -115,7 +177,7 @@ textarea.input {
 
 .btn-primary {
   background-color: var(--color-primary);
-  color: #ffffff;
+  color: var(--color-on-primary);
   font-weight: bold;
 }
 
@@ -129,4 +191,3 @@ textarea.input {
   text-decoration: none;
   margin-right: 10px;
 }
-

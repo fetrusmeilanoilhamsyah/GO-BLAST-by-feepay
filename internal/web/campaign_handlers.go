@@ -50,11 +50,15 @@ func (s *Server) HandleAdminCampaigns(w http.ResponseWriter, r *http.Request) {
 	data := struct {
 		Lang      string
 		Title     string
+		Theme     string
+		CSRFToken string
 		Campaigns []campaign.Campaign
 		T         func(string) string
 	}{
 		Lang:      lang,
 		Title:     "Campaigns - GO BLAST",
+		Theme:     getTheme(r),
+		CSRFToken: getCSRF(r),
 		Campaigns: campaigns,
 		T: func(key string) string {
 			return i18n.T(lang, key)
@@ -87,15 +91,12 @@ func (s *Server) HandleAdminCampaignNewGET(w http.ResponseWriter, r *http.Reques
 		lang = "id"
 	}
 
-	csrfCookie, _ := r.Cookie("gb_csrf")
-	csrfToken := ""
-	if csrfCookie != nil {
-		csrfToken = csrfCookie.Value
-	}
+	csrfToken := getCSRF(r)
 
 	data := struct {
 		Lang        string
 		Title       string
+		Theme       string
 		CSRFToken   string
 		Campaign    campaign.Campaign
 		DefaultMode string
@@ -103,6 +104,7 @@ func (s *Server) HandleAdminCampaignNewGET(w http.ResponseWriter, r *http.Reques
 	}{
 		Lang:      lang,
 		Title:     "Buat Campaign Baru - GO BLAST",
+		Theme:     getTheme(r),
 		CSRFToken: csrfToken,
 		Campaign: campaign.Campaign{
 			Elements: campaign.Elements{
@@ -242,21 +244,19 @@ func (s *Server) HandleAdminCampaignEditGET(w http.ResponseWriter, r *http.Reque
 		lang = "id"
 	}
 
-	csrfCookie, _ := r.Cookie("gb_csrf")
-	csrfToken := ""
-	if csrfCookie != nil {
-		csrfToken = csrfCookie.Value
-	}
+	csrfToken := getCSRF(r)
 
 	data := struct {
 		Lang      string
 		Title     string
+		Theme     string
 		CSRFToken string
 		Campaign  campaign.Campaign
 		T         func(string) string
 	}{
 		Lang:      lang,
 		Title:     "Edit Campaign - GO BLAST",
+		Theme:     getTheme(r),
 		CSRFToken: csrfToken,
 		Campaign:  c,
 		T: func(key string) string {

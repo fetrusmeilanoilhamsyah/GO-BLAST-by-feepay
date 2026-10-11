@@ -69,5 +69,10 @@
   "numbers.invalid": "无效",
   "numbers.ambiguous": "格式模糊",
   "numbers.download_rejected": "下载已拒绝列表 (CSV)",
-  "numbers.confirm_btn": "确认并导入号码"
+  "numbers.confirm_btn": "确认并导入号码",
+  "theme.label": "主题：",
+  "theme.auto": "自动",
+  "theme.light": "浅色",
+  "theme.dark": "深色",
+  "theme.choose": "应用"
 }

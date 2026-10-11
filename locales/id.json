@@ -68,5 +68,10 @@
   "numbers.invalid": "Tidak Valid",
   "numbers.ambiguous": "Ambigu",
   "numbers.download_rejected": "Download Daftar Ditolak (CSV)",
-  "numbers.confirm_btn": "Konfirmasi & Masukkan Nomor"
+  "numbers.confirm_btn": "Konfirmasi & Masukkan Nomor",
+  "theme.label": "Tema:",
+  "theme.auto": "Otomatis",
+  "theme.light": "Terang",
+  "theme.dark": "Gelap",
+  "theme.choose": "Pilih"
 }

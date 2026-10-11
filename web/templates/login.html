@@ -1,10 +1,10 @@
 {{ define "content" }}
 <div class="container" style="max-width: 400px; margin: 40px auto; padding: 20px; background-color: var(--color-card); border-radius: 8px;">
-    <h2 style="text-align: center; color: var(--color-primary);">GO BLAST <small style="font-size: 0.5em; color: #aaa;">by feepay</small></h2>
+    <h2 style="text-align: center; color: var(--color-primary);">GO BLAST <small style="font-size: 0.5em; color: var(--color-muted);">by feepay</small></h2>
     <h3 style="text-align: center; margin-bottom: 20px;">{{ .Title }}</h3>
     
     {{ if .Error }}
-    <div style="background-color: var(--color-danger); padding: 10px; border-radius: 4px; margin-bottom: 20px; text-align: center;">
+    <div style="background-color: var(--color-danger); color: var(--color-on-primary); padding: 10px; border-radius: 4px; margin-bottom: 20px; text-align: center;">
         {{ .Error }}
     </div>
     {{ end }}
@@ -14,15 +14,15 @@
         
         <div style="margin-bottom: 15px;">
             <label style="display: block; margin-bottom: 5px;">{{ call .T "auth.email" }}</label>
-            <input type="email" name="email" required style="width: 100%; padding: 8px; box-sizing: border-box; background-color: var(--color-bg-hero); color: #fff; border: 1px solid var(--color-card); border-radius: 4px;">
+            <input type="email" name="email" required style="width: 100%; padding: 8px; box-sizing: border-box; background-color: var(--color-input-bg); color: var(--color-input-text); border: 1px solid var(--color-border); border-radius: 4px;">
         </div>
 
         <div style="margin-bottom: 20px;">
             <label style="display: block; margin-bottom: 5px;">{{ call .T "auth.password" }}</label>
-            <input type="password" name="password" required style="width: 100%; padding: 8px; box-sizing: border-box; background-color: var(--color-bg-hero); color: #fff; border: 1px solid var(--color-card); border-radius: 4px;">
+            <input type="password" name="password" required style="width: 100%; padding: 8px; box-sizing: border-box; background-color: var(--color-input-bg); color: var(--color-input-text); border: 1px solid var(--color-border); border-radius: 4px;">
         </div>
 
-        <button type="submit" style="width: 100%; padding: 10px; background-color: var(--color-primary); color: #fff; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">
+        <button type="submit" style="width: 100%; padding: 10px; background-color: var(--color-primary); color: var(--color-on-primary); border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">
             {{ call .T "auth.login_btn" }}
         </button>
     </form>

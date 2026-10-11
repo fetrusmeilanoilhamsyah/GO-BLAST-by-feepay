@@ -4,7 +4,7 @@
     
     <div style="display: flex; gap: 30px; flex-wrap: wrap; margin-top: 20px;">
         <!-- FORM SECTION -->
-        <div style="flex: 1; min-width: 300px; background-color: var(--color-card); padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+        <div style="flex: 1; min-width: 300px; background-color: var(--color-card); padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px var(--color-shadow);">
             <form id="campaignForm" method="POST" enctype="multipart/form-data">
                 <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
                 
@@ -88,25 +88,25 @@
         
         <!-- PREVIEW SECTION -->
         <div style="flex: 0 0 350px;">
-            <div style="background-color: #d8c3ad; border-radius: 12px; overflow: hidden; position: sticky; top: 20px; box-shadow: 0 10px 20px rgba(0,0,0,0.3); border: 8px solid #222;">
+            <div style="background-color: var(--wa-phone-bg); border-radius: 12px; overflow: hidden; position: sticky; top: 20px; box-shadow: 0 10px 20px var(--color-shadow); border: 8px solid var(--wa-phone-frame);">
                 <!-- Phone Header -->
-                <div style="background-color: #075e54; color: white; padding: 15px; font-weight: bold; display: flex; align-items: center;">
-                    <div style="width: 32px; height: 32px; background-color: #fff; border-radius: 50%; margin-right: 12px; display: flex; align-items: center; justify-content: center; color: #075e54;">GB</div>
+                <div style="background-color: var(--wa-header-bg); color: var(--wa-header-text); padding: 15px; font-weight: bold; display: flex; align-items: center;">
+                    <div style="width: 32px; height: 32px; background-color: var(--wa-header-text); border-radius: 50%; margin-right: 12px; display: flex; align-items: center; justify-content: center; color: var(--wa-header-bg);">GB</div>
                     <div>GO BLAST</div>
                 </div>
                 
                 <!-- Chat Area -->
-                <div style="background-color: #e5ddd5; height: 500px; padding: 15px; overflow-y: auto;">
+                <div style="background-color: var(--wa-chat-bg); height: 500px; padding: 15px; overflow-y: auto;">
                     <iframe id="previewFrame" style="width: 100%; height: 100%; border: none; background: transparent;"></iframe>
                 </div>
                 
                 <!-- Chat Input Dummy -->
-                <div style="background-color: #f0f0f0; padding: 10px; display: flex; gap: 10px; align-items: center;">
-                    <div style="flex: 1; background-color: white; border-radius: 20px; padding: 10px 15px; color: #999;">{{ call .T "campaign.preview_input_placeholder" }}</div>
-                    <div style="padding: 10px 14px; background-color: #00a884; border-radius: 20px; color: white; font-size: 14px; font-weight: bold;">{{ call .T "campaign.preview_send" }}</div>
+                <div style="background-color: var(--wa-input-bar-bg); padding: 10px; display: flex; gap: 10px; align-items: center;">
+                    <div style="flex: 1; background-color: var(--wa-input-box-bg); border-radius: 20px; padding: 10px 15px; color: var(--wa-input-placeholder);">{{ call .T "campaign.preview_input_placeholder" }}</div>
+                    <div style="padding: 10px 14px; background-color: var(--wa-send-btn-bg); border-radius: 20px; color: var(--wa-send-btn-text); font-size: 14px; font-weight: bold;">{{ call .T "campaign.preview_send" }}</div>
                 </div>
             </div>
-            <div style="text-align: center; margin-top: 10px; font-size: 12px; color: #999;">
+            <div style="text-align: center; margin-top: 10px; font-size: 12px; color: var(--color-muted);">
                 {{ call .T "campaign.preview_disclaimer" }}
             </div>
         </div>
@@ -150,7 +150,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const doc = frame.contentWindow.document;
             doc.open();
             // Reset background color of preview to transparent to blend with phone wallpaper
-            html = html.replace('background-color: #e5ddd5;', 'background-color: transparent;');
+            html = html.replace('background-color: var(--wa-chat-bg);', 'background-color: transparent;');
             html = html.replace('padding: 20px;', 'padding: 0; padding-bottom: 20px;');
             doc.write(html);
             doc.close();

@@ -97,17 +97,14 @@ func (s *Server) renderLogin(w http.ResponseWriter, r *http.Request, errMsg stri
 		}
 	}
 
-	csrfCookie, _ := r.Cookie("gb_csrf")
-	csrfToken := ""
-	if csrfCookie != nil {
-		csrfToken = csrfCookie.Value
-	}
+	csrfToken := getCSRF(r)
 
 	data := map[string]interface{}{
 		"Lang":      lang,
 		"Title":     i18n.T(lang, "auth.login_title"),
 		"Error":     errMsg,
 		"CSRFToken": csrfToken,
+		"Theme":     getTheme(r),
 		"T": func(key string) string {
 			return i18n.T(lang, key)
 		},
@@ -178,17 +175,14 @@ func (s *Server) renderRegister(w http.ResponseWriter, r *http.Request, errMsg s
 		}
 	}
 
-	csrfCookie, _ := r.Cookie("gb_csrf")
-	csrfToken := ""
-	if csrfCookie != nil {
-		csrfToken = csrfCookie.Value
-	}
+	csrfToken := getCSRF(r)
 
 	data := map[string]interface{}{
 		"Lang":      lang,
 		"Title":     i18n.T(lang, "auth.register_title"),
 		"Error":     errMsg,
 		"CSRFToken": csrfToken,
+		"Theme":     getTheme(r),
 		"T": func(key string) string {
 			return i18n.T(lang, key)
 		},

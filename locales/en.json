@@ -69,5 +69,10 @@
   "numbers.invalid": "Invalid",
   "numbers.ambiguous": "Ambiguous",
   "numbers.download_rejected": "Download Rejected List (CSV)",
-  "numbers.confirm_btn": "Confirm & Import Numbers"
+  "numbers.confirm_btn": "Confirm & Import Numbers",
+  "theme.label": "Theme:",
+  "theme.auto": "Auto",
+  "theme.light": "Light",
+  "theme.dark": "Dark",
+  "theme.choose": "Apply"
 }
