@@ -288,6 +288,10 @@
   "admin.search_placeholder": "Search worker by username or email...",
   "admin.search_btn": "Search",
   "admin.campaign_delete_btn": "Delete",
-  "admin.campaign_delete_confirm": "Are you sure you want to delete this campaign? All numbers inside will be removed."
+  "admin.campaign_delete_confirm": "Are you sure you want to delete this campaign? All numbers inside will be removed.",
+  "campaign.delete_btn": "Delete",
+  "campaign.delete_confirm": "Are you sure you want to delete this campaign? All numbers inside will be removed.",
+  "admin.tickets": "Support Tickets",
+  "admin.broadcasts": "Broadcasts"
 }
 

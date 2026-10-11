@@ -1334,3 +1334,281 @@ func (s *Server) HandleAdminWorkerEnablePOST(w http.ResponseWriter, r *http.Requ
 
 	http.Redirect(w, r, "/admin/workers", http.StatusSeeOther)
 }
+
+// --- Support Tickets & Broadcasts Management ---
+
+type AdminSupportTicketRow struct {
+	ID         int64
+	UserID     int64
+	Username   string
+	Email      string
+	Category   string
+	Message    string
+	Status     string
+	AdminNotes string
+	CreatedAt  string
+	ResolvedAt string
+}
+
+type AdminBroadcastRow struct {
+	ID        int64
+	Title     string
+	Message   string
+	Badge     string
+	IsActive  bool
+	CreatedAt string
+}
+
+func (s *Server) HandleAdminTicketsGET(w http.ResponseWriter, r *http.Request) {
+	adminUser, ok := currentUser(r)
+	if !ok || adminUser.Role != "admin" {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+	ctx := r.Context()
+	lang := adminUser.Language
+	if lang == "" {
+		lang = "id"
+	}
+	statusFilter := strings.TrimSpace(r.URL.Query().Get("status"))
+	if statusFilter == "" {
+		statusFilter = "all"
+	}
+
+	query := `
+		SELECT st.id, st.user_id, COALESCE(u.username, ''), COALESCE(u.email, ''),
+		       st.category, st.message, st.status, COALESCE(st.admin_notes, ''),
+		       st.created_at, st.resolved_at
+		FROM support_tickets st
+		LEFT JOIN users u ON u.id = st.user_id
+	`
+	if statusFilter == "open" {
+		query += " WHERE st.status = 'open'"
+	} else if statusFilter == "resolved" {
+		query += " WHERE st.status = 'resolved'"
+	}
+	query += " ORDER BY st.id DESC LIMIT 100"
+
+	rows, err := s.DB.Pool.Query(ctx, query)
+	var tickets []AdminSupportTicketRow
+	if err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var t AdminSupportTicketRow
+			var cAt time.Time
+			var rAt *time.Time
+			if err := rows.Scan(&t.ID, &t.UserID, &t.Username, &t.Email, &t.Category, &t.Message, &t.Status, &t.AdminNotes, &cAt, &rAt); err == nil {
+				t.CreatedAt = cAt.Format("02 Jan 2006 15:04")
+				if rAt != nil {
+					t.ResolvedAt = rAt.Format("02 Jan 2006 15:04")
+				}
+				tickets = append(tickets, t)
+			}
+		}
+	}
+
+	data := struct {
+		Lang         string
+		Title        string
+		Theme        string
+		CSRFToken    string
+		ActiveNav    string
+		StatusFilter string
+		Tickets      []AdminSupportTicketRow
+		Success      string
+		Error        string
+		T            func(string) string
+	}{
+		Lang:         lang,
+		Title:        "Laporan Pengguna - Admin",
+		Theme:        getTheme(r),
+		CSRFToken:    getCSRF(r),
+		ActiveNav:    "tickets",
+		StatusFilter: statusFilter,
+		Tickets:      tickets,
+		Success:      r.URL.Query().Get("success"),
+		Error:        r.URL.Query().Get("error"),
+		T: func(key string) string {
+			return i18n.T(lang, key)
+		},
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_ = s.Tmpl["admin_tickets.html"].ExecuteTemplate(w, "base.html", data)
+}
+
+func (s *Server) HandleAdminTicketResolvePOST(w http.ResponseWriter, r *http.Request) {
+	adminUser, ok := currentUser(r)
+	if !ok || adminUser.Role != "admin" {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+	idStr := r.PathValue("id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		http.Redirect(w, r, "/admin/tickets?error=ID+tiket+tidak+valid", http.StatusSeeOther)
+		return
+	}
+
+	now := time.Now()
+	_, err = s.DB.Pool.Exec(r.Context(), `
+		UPDATE support_tickets
+		SET status = 'resolved', resolved_at = $1
+		WHERE id = $2
+	`, now, id)
+	if err != nil {
+		http.Redirect(w, r, "/admin/tickets?error=Gagal+memperbarui+status+tiket: "+err.Error(), http.StatusSeeOther)
+		return
+	}
+
+	s.logAudit(&adminUser.ID, "resolve_ticket", "support_tickets", strconv.FormatInt(id, 10), "Status diubah menjadi resolved")
+	http.Redirect(w, r, "/admin/tickets?success=Tiket+berhasil+ditandai+selesai", http.StatusSeeOther)
+}
+
+func (s *Server) HandleAdminBroadcastsGET(w http.ResponseWriter, r *http.Request) {
+	adminUser, ok := currentUser(r)
+	if !ok || adminUser.Role != "admin" {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+	ctx := r.Context()
+	lang := adminUser.Language
+	if lang == "" {
+		lang = "id"
+	}
+
+	rows, err := s.DB.Pool.Query(ctx, `
+		SELECT id, title, message, badge, is_active, created_at
+		FROM broadcasts
+		ORDER BY id DESC
+		LIMIT 50
+	`)
+	var broadcasts []AdminBroadcastRow
+	if err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var b AdminBroadcastRow
+			var cAt time.Time
+			if err := rows.Scan(&b.ID, &b.Title, &b.Message, &b.Badge, &b.IsActive, &cAt); err == nil {
+				b.CreatedAt = cAt.Format("02 Jan 2006 15:04")
+				broadcasts = append(broadcasts, b)
+			}
+		}
+	}
+
+	data := struct {
+		Lang       string
+		Title      string
+		Theme      string
+		CSRFToken  string
+		ActiveNav  string
+		Broadcasts []AdminBroadcastRow
+		Success    string
+		Error      string
+		T          func(string) string
+	}{
+		Lang:       lang,
+		Title:      "Kelola Broadcast - Admin",
+		Theme:      getTheme(r),
+		CSRFToken:  getCSRF(r),
+		ActiveNav:  "broadcasts",
+		Broadcasts: broadcasts,
+		Success:    r.URL.Query().Get("success"),
+		Error:      r.URL.Query().Get("error"),
+		T: func(key string) string {
+			return i18n.T(lang, key)
+		},
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_ = s.Tmpl["admin_broadcasts.html"].ExecuteTemplate(w, "base.html", data)
+}
+
+func (s *Server) HandleAdminBroadcastNewPOST(w http.ResponseWriter, r *http.Request) {
+	adminUser, ok := currentUser(r)
+	if !ok || adminUser.Role != "admin" {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+
+	title := strings.TrimSpace(r.FormValue("title"))
+	message := strings.TrimSpace(r.FormValue("message"))
+	badge := strings.TrimSpace(r.FormValue("badge"))
+	isActive := r.FormValue("is_active") == "true" || r.FormValue("is_active") == "on" || r.FormValue("is_active") == "1"
+
+	if title == "" {
+		http.Redirect(w, r, "/admin/broadcasts?error=Judul+broadcast+tidak+boleh+kosong", http.StatusSeeOther)
+		return
+	}
+	if message == "" {
+		http.Redirect(w, r, "/admin/broadcasts?error=Pesan+broadcast+tidak+boleh+kosong", http.StatusSeeOther)
+		return
+	}
+	if badge == "" {
+		badge = "INFO"
+	}
+
+	var bID int64
+	err := s.DB.Pool.QueryRow(r.Context(), `
+		INSERT INTO broadcasts (title, message, badge, is_active, created_by)
+		VALUES ($1, $2, $3, $4, $5)
+		RETURNING id
+	`, title, message, badge, isActive, adminUser.ID).Scan(&bID)
+	if err != nil {
+		http.Redirect(w, r, "/admin/broadcasts?error=Gagal+membuat+broadcast: "+err.Error(), http.StatusSeeOther)
+		return
+	}
+
+	s.logAudit(&adminUser.ID, "create_broadcast", "broadcasts", strconv.FormatInt(bID, 10), title)
+	http.Redirect(w, r, "/admin/broadcasts?success=Broadcast+berhasil+diterbitkan", http.StatusSeeOther)
+}
+
+func (s *Server) HandleAdminBroadcastTogglePOST(w http.ResponseWriter, r *http.Request) {
+	adminUser, ok := currentUser(r)
+	if !ok || adminUser.Role != "admin" {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+	idStr := r.PathValue("id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		http.Redirect(w, r, "/admin/broadcasts?error=ID+broadcast+tidak+valid", http.StatusSeeOther)
+		return
+	}
+
+	_, err = s.DB.Pool.Exec(r.Context(), `
+		UPDATE broadcasts
+		SET is_active = NOT is_active
+		WHERE id = $1
+	`, id)
+	if err != nil {
+		http.Redirect(w, r, "/admin/broadcasts?error=Gagal+mengubah+status+broadcast: "+err.Error(), http.StatusSeeOther)
+		return
+	}
+
+	s.logAudit(&adminUser.ID, "toggle_broadcast", "broadcasts", strconv.FormatInt(id, 10), "Status broadcast di-toggle")
+	http.Redirect(w, r, "/admin/broadcasts?success=Status+broadcast+berhasil+diperbarui", http.StatusSeeOther)
+}
+
+func (s *Server) HandleAdminBroadcastDeletePOST(w http.ResponseWriter, r *http.Request) {
+	adminUser, ok := currentUser(r)
+	if !ok || adminUser.Role != "admin" {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+	idStr := r.PathValue("id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		http.Redirect(w, r, "/admin/broadcasts?error=ID+broadcast+tidak+valid", http.StatusSeeOther)
+		return
+	}
+
+	_, err = s.DB.Pool.Exec(r.Context(), `DELETE FROM broadcasts WHERE id = $1`, id)
+	if err != nil {
+		http.Redirect(w, r, "/admin/broadcasts?error=Gagal+menghapus+broadcast: "+err.Error(), http.StatusSeeOther)
+		return
+	}
+
+	s.logAudit(&adminUser.ID, "delete_broadcast", "broadcasts", strconv.FormatInt(id, 10), "Broadcast dihapus")
+	http.Redirect(w, r, "/admin/broadcasts?success=Broadcast+berhasil+dihapus", http.StatusSeeOther)
+}

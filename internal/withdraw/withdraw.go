@@ -58,10 +58,28 @@ func DecryptDestination(ciphertextB64 string, key []byte) (string, error) {
 	if len(data) < nonceSize {
 		return "", errors.New("ciphertext terlalu pendek")
 	}
+
+	// 1. Coba dekripsi dengan kunci utama
 	nonce, ciphertext := data[:nonceSize], data[nonceSize:]
 	plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)
-	if err != nil {
-		return "", err
+	if err == nil {
+		return string(plaintext), nil
 	}
-	return string(plaintext), nil
+
+	// 2. Jika kunci utama gagal dan berbeda dengan devFallbackKey, coba devFallbackKey
+	if string(k) != string(devFallbackKey) {
+		fallbackBlock, fbErr := aes.NewCipher(devFallbackKey)
+		if fbErr == nil {
+			fallbackGCM, fbGcmErr := cipher.NewGCM(fallbackBlock)
+			if fbGcmErr == nil && len(data) >= fallbackGCM.NonceSize() {
+				fbSize := fallbackGCM.NonceSize()
+				fbNonce, fbCiphertext := data[:fbSize], data[fbSize:]
+				if fbPlaintext, fbOpenErr := fallbackGCM.Open(nil, fbNonce, fbCiphertext, nil); fbOpenErr == nil {
+					return string(fbPlaintext), nil
+				}
+			}
+		}
+	}
+
+	return "", err
 }

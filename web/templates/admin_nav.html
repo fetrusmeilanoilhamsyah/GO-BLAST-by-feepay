@@ -44,6 +44,12 @@
             <a href="/admin/settings" class="btn btn-secondary{{if eq .ActiveNav "settings"}} btn-primary{{end}}" style="padding: 6px 14px; font-size: 13px; text-decoration: none; border-radius: 6px; flex-shrink: 0;">
                 {{ call .T "admin.settings" }}
             </a>
+            <a href="/admin/tickets" class="btn btn-secondary{{if eq .ActiveNav "tickets"}} btn-primary{{end}}" style="padding: 6px 14px; font-size: 13px; text-decoration: none; border-radius: 6px; flex-shrink: 0;">
+                {{ call .T "admin.tickets" }}
+            </a>
+            <a href="/admin/broadcasts" class="btn btn-secondary{{if eq .ActiveNav "broadcasts"}} btn-primary{{end}}" style="padding: 6px 14px; font-size: 13px; text-decoration: none; border-radius: 6px; flex-shrink: 0;">
+                {{ call .T "admin.broadcasts" }}
+            </a>
         </nav>
     </div>
 </header>

@@ -1,0 +1,97 @@
+{{define "content"}}
+<div style="min-height: 100vh; background-color: var(--color-bg);">
+    {{ template "admin_nav" . }}
+
+    <main style="max-width: 1200px; margin: 0 auto; padding: 24px 16px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 12px;">
+            <div>
+                <h1 style="font-size: 22px; font-weight: 800; margin: 0; color: var(--color-text);">Laporan Pengguna &amp; CS</h1>
+                <p style="margin: 4px 0 0 0; color: var(--color-muted); font-size: 13px;">Daftar tiket bantuan dan laporan kendala yang dikirimkan oleh pekerja.</p>
+            </div>
+            <div style="display: flex; gap: 8px;">
+                <a href="/admin/tickets?status=all" class="btn btn-secondary{{if eq .StatusFilter "all"}} btn-primary{{end}}" style="padding: 6px 14px; font-size: 13px; text-decoration: none;">Semua</a>
+                <a href="/admin/tickets?status=open" class="btn btn-secondary{{if eq .StatusFilter "open"}} btn-primary{{end}}" style="padding: 6px 14px; font-size: 13px; text-decoration: none;">Menunggu</a>
+                <a href="/admin/tickets?status=resolved" class="btn btn-secondary{{if eq .StatusFilter "resolved"}} btn-primary{{end}}" style="padding: 6px 14px; font-size: 13px; text-decoration: none;">Selesai</a>
+            </div>
+        </div>
+
+        {{if .Success}}
+        <div style="background-color: var(--color-surface-muted); color: var(--color-text); border-left: 4px solid var(--color-primary); padding: 12px 16px; margin-bottom: 20px; border-radius: 4px; font-weight: bold;">
+            {{.Success}}
+        </div>
+        {{end}}
+
+        {{if .Error}}
+        <div style="background-color: var(--color-surface-muted); color: var(--color-danger); border-left: 4px solid var(--color-danger); padding: 12px 16px; margin-bottom: 20px; border-radius: 4px;">
+            {{.Error}}
+        </div>
+        {{end}}
+
+        <div class="card" style="padding: 0; overflow: hidden;">
+            <div class="responsive-table-container">
+                <table class="responsive-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 60px;">ID</th>
+                            <th>Pekerja</th>
+                            <th>Kategori</th>
+                            <th>Pesan Laporan</th>
+                            <th>Waktu</th>
+                            <th>Status</th>
+                            <th>Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {{range .Tickets}}
+                        <tr>
+                            <td>{{.ID}}</td>
+                            <td>
+                                <strong style="font-size: 13px; color: var(--color-text);">{{if .Username}}{{.Username}}{{else}}User {{.UserID}}{{end}}</strong>
+                                <div style="font-size: 12px; color: var(--color-muted);">{{.Email}}</div>
+                            </td>
+                            <td>
+                                <span class="badge badge-muted">{{.Category}}</span>
+                            </td>
+                            <td style="max-width: 380px;">
+                                <div style="font-size: 13px; color: var(--color-text); line-height: 1.5; white-space: pre-wrap; word-break: break-word;">{{.Message}}</div>
+                            </td>
+                            <td style="font-size: 12px; color: var(--color-muted); white-space: nowrap;">
+                                {{.CreatedAt}}
+                                {{if .ResolvedAt}}
+                                <div style="font-size: 11px; color: var(--color-muted); margin-top: 2px;">Selesai: {{.ResolvedAt}}</div>
+                                {{end}}
+                            </td>
+                            <td>
+                                {{if eq .Status "resolved"}}
+                                <span class="badge badge-success">Selesai</span>
+                                {{else}}
+                                <span class="badge badge-warning">Menunggu</span>
+                                {{end}}
+                            </td>
+                            <td>
+                                {{if eq .Status "open"}}
+                                <form method="POST" action="/admin/tickets/{{.ID}}/resolve" style="display: inline; margin: 0;">
+                                    <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                                    <button type="submit" class="btn btn-secondary" style="padding: 4px 10px; font-size: 12px; font-weight: bold; cursor: pointer;">
+                                        Tandai Selesai
+                                    </button>
+                                </form>
+                                {{else}}
+                                <span style="font-size: 12px; color: var(--color-muted);">-</span>
+                                {{end}}
+                            </td>
+                        </tr>
+                        {{else}}
+                        <tr>
+                            <td colspan="7" style="text-align: center; padding: 32px; color: var(--color-muted);">
+                                Tidak ada laporan tiket yang ditemukan.
+                            </td>
+                        </tr>
+                        {{end}}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+</div>
+{{end}}

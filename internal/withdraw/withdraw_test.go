@@ -37,6 +37,15 @@ func TestEncryptDecryptDestination(t *testing.T) {
 		t.Fatalf("Expected %q, got %q", plaintext, decDev)
 	}
 
+	// Test cross-key: encrypted with dev fallback key, decrypted with custom key
+	decCross, err := DecryptDestination(encDev, key)
+	if err != nil {
+		t.Fatalf("Decrypt cross-key with fallback error: %v", err)
+	}
+	if decCross != plaintext {
+		t.Fatalf("Expected %q, got %q", plaintext, decCross)
+	}
+
 	// Corrupted ciphertext
 	_, err = DecryptDestination("invalid-base64!!!", key)
 	if err == nil {

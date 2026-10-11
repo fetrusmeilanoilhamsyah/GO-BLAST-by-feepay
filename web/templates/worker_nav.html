@@ -337,6 +337,180 @@
     </div>
 </aside>
 
+<!-- TOMBOL MENGAMBANG (FAB) BANTUAN & CS -->
+<button type="button" class="worker-help-fab" onclick="openHelpdeskModal()" aria-label="Bantuan dan Layanan CS" title="Pusat Bantuan & CS">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="10"></circle>
+        <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+        <line x1="12" y1="17" x2="12.01" y2="17"></line>
+    </svg>
+</button>
+
+<!-- OVERLAY BACKDROP MODAL BANTUAN -->
+<div id="helpdesk-backdrop" class="drawer-backdrop" onclick="closeHelpdeskModal()"></div>
+
+<!-- MODAL POPUP BANTUAN CS & FAQ -->
+<div id="helpdesk-modal" class="helpdesk-modal" role="dialog" aria-modal="true" aria-labelledby="helpdesk-title">
+    <div class="helpdesk-modal-header">
+        <div>
+            <div id="helpdesk-title" style="font-weight: 700; font-size: 15px; color: var(--color-text);">Pusat Bantuan & Layanan</div>
+            <div style="font-size: 12px; color: var(--color-muted); margin-top: 2px;">Jawaban instan, kontak resmi, atau kirim laporan</div>
+        </div>
+        <button type="button" class="worker-drawer-close" onclick="closeHelpdeskModal()" aria-label="Tutup Bantuan">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+        </button>
+    </div>
+
+    <div class="helpdesk-tab-nav">
+        <button type="button" class="helpdesk-tab-btn active" id="tab-btn-faq" onclick="switchHelpTab('faq')">FAQ Cerdas</button>
+        <button type="button" class="helpdesk-tab-btn" id="tab-btn-contact" onclick="switchHelpTab('contact')">Kontak CS</button>
+        <button type="button" class="helpdesk-tab-btn" id="tab-btn-ticket" onclick="switchHelpTab('ticket')">Kirim Laporan</button>
+    </div>
+
+    <div class="helpdesk-modal-body">
+        <!-- TAB 1: FAQ BOT CERDAS -->
+        <div id="help-pane-faq">
+            <div style="font-size: 12px; color: var(--color-muted); margin-bottom: 12px; line-height: 1.4;">
+                Pilih topik di bawah ini untuk melihat panduan penyelesaian masalah secara instan:
+            </div>
+
+            <div class="faq-item" id="faq-item-1">
+                <div class="faq-question" onclick="toggleFaq('faq-item-1')">
+                    <span>Bagaimana cara menghubungkan WhatsApp?</span>
+                    <svg class="faq-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="6 9 12 15 18 9"></polyline>
+                    </svg>
+                </div>
+                <div class="faq-answer">
+                    Buka menu Perangkat &gt; Tambah Akun. Masukkan label akun dan pilih kecepatan blast yang diinginkan. Klik tombol scan QR dan arahkan pemindai WhatsApp ponsel Anda (Menu &gt; Perangkat tertaut &gt; Tautkan perangkat), atau pilih opsi 8-digit Pairing Code.
+                </div>
+            </div>
+
+            <div class="faq-item" id="faq-item-2">
+                <div class="faq-question" onclick="toggleFaq('faq-item-2')">
+                    <span>Mengapa saldo penarikan belum masuk ke rekening?</span>
+                    <svg class="faq-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="6 9 12 15 18 9"></polyline>
+                    </svg>
+                </div>
+                <div class="faq-answer">
+                    Setiap penarikan dana diproses dan diverifikasi secara manual oleh admin dalam kurun waktu 1x24 jam kerja. Pastikan nomor rekening atau alamat USDT Anda valid di menu Pengaturan Rekening. Anda dapat memantau status persetujuan di tab Riwayat Penarikan.
+                </div>
+            </div>
+
+            <div class="faq-item" id="faq-item-3">
+                <div class="faq-question" onclick="toggleFaq('faq-item-3')">
+                    <span>Berapa lama akun WhatsApp aman digunakan untuk blast?</span>
+                    <svg class="faq-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="6 9 12 15 18 9"></polyline>
+                    </svg>
+                </div>
+                <div class="faq-answer">
+                    Gunakan selalu mode jeda 'Slow' (45-90 detik) atau 'Over Slow' (90-180 detik) untuk akun WhatsApp baru atau akun utama Anda guna meminimalkan risiko pembatasan oleh sistem WhatsApp. Hindari mode fast bila akun belum memiliki interaksi alami sebelumnya.
+                </div>
+            </div>
+
+            <div class="faq-item" id="faq-item-4">
+                <div class="faq-question" onclick="toggleFaq('faq-item-4')">
+                    <span>Bagaimana perhitungan upah per pesan?</span>
+                    <svg class="faq-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="6 9 12 15 18 9"></polyline>
+                    </svg>
+                </div>
+                <div class="faq-answer">
+                    Upah dihitung dan otomatis ditambahkan ke saldo akun Anda setiap kali pesan berhasil terkirim ke target. Anda dapat memeriksa rincian upah per pesan dan bonus referral pada halaman Riwayat Aktivitas Saldo.
+                </div>
+            </div>
+
+            <div class="faq-item" id="faq-item-5">
+                <div class="faq-question" onclick="toggleFaq('faq-item-5')">
+                    <span>Bisakah menghubungkan banyak nomor WhatsApp sekaligus?</span>
+                    <svg class="faq-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="6 9 12 15 18 9"></polyline>
+                    </svg>
+                </div>
+                <div class="faq-answer">
+                    Bisa. Anda dapat menautkan beberapa nomor hingga batas maksimal yang diizinkan sistem. Masing-masing nomor bekerja secara independen dalam mengambil antrean blast pesan sehingga pendapatan Anda bisa bertambah lebih cepat.
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB 2: KONTAK LANGSUNG CS -->
+        <div id="help-pane-contact" style="display: none;">
+            <div style="font-size: 12px; color: var(--color-muted); margin-bottom: 14px; line-height: 1.4;">
+                Butuh bantuan langsung dari staf kami? Hubungi layanan pelanggan resmi melalui saluran berikut:
+            </div>
+
+            <a href="https://wa.me/" target="_blank" rel="noopener noreferrer" class="contact-card">
+                <div>
+                    <div style="font-weight: 700; font-size: 14px;">WhatsApp Customer Service</div>
+                    <div style="font-size: 12px; color: var(--color-muted); margin-top: 2px;">Layanan chat bantuan dan kendala teknis</div>
+                </div>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="7" y1="17" x2="17" y2="7"></line>
+                    <polyline points="7 7 17 7 17 17"></polyline>
+                </svg>
+            </a>
+
+            <a href="https://t.me/feepay_cs" target="_blank" rel="noopener noreferrer" class="contact-card">
+                <div>
+                    <div style="font-weight: 700; font-size: 14px;">Telegram Customer Service</div>
+                    <div style="font-size: 12px; color: var(--color-muted); margin-top: 2px;">Dukungan pesan instan Telegram</div>
+                </div>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="7" y1="17" x2="17" y2="7"></line>
+                    <polyline points="7 7 17 7 17 17"></polyline>
+                </svg>
+            </a>
+
+            <a href="https://t.me/goblast_channel" target="_blank" rel="noopener noreferrer" class="contact-card">
+                <div>
+                    <div style="font-weight: 700; font-size: 14px;">Official Telegram Channel</div>
+                    <div style="font-size: 12px; color: var(--color-muted); margin-top: 2px;">Pembaruan kuota blast, rate, dan tips keamanan</div>
+                </div>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="7" y1="17" x2="17" y2="7"></line>
+                    <polyline points="7 7 17 7 17 17"></polyline>
+                </svg>
+            </a>
+
+            <div style="padding: 10px 12px; border-radius: 6px; background-color: var(--color-surface-muted); font-size: 11px; color: var(--color-muted); line-height: 1.5; margin-top: 12px;">
+                Perhatian: Admin tidak pernah meminta kata sandi akun Anda atau data rahasia lainnya. Waspada terhadap pihak yang mengatasnamakan GO BLAST.
+            </div>
+        </div>
+
+        <!-- TAB 3: KIRIM TIKET LAPORAN -->
+        <div id="help-pane-ticket" style="display: none;">
+            <div style="font-size: 12px; color: var(--color-muted); margin-bottom: 12px; line-height: 1.4;">
+                Kirim pesan langsung ke panel admin. Admin akan meninjau laporan Anda di sistem.
+            </div>
+
+            <form method="POST" action="/worker/ticket">
+                <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+                <div class="field" style="margin-bottom: 10px;">
+                    <label for="ticket-category" style="font-size: 12px; font-weight: 600; color: var(--color-muted);">Kategori Masalah</label>
+                    <select id="ticket-category" name="category" class="input" required style="padding: 8px 10px; font-size: 13px;">
+                        <option value="Penarikan Dana">Penarikan Dana (Withdrawal)</option>
+                        <option value="Koneksi WhatsApp">Koneksi WhatsApp / Scan QR</option>
+                        <option value="Masalah Saldo / Upah">Masalah Saldo / Upah Belum Masuk</option>
+                        <option value="Lainnya">Pertanyaan Umum / Masalah Lainnya</option>
+                    </select>
+                </div>
+                <div class="field" style="margin-bottom: 14px;">
+                    <label for="ticket-message" style="font-size: 12px; font-weight: 600; color: var(--color-muted);">Rincian Laporan (minimal 5 karakter)</label>
+                    <textarea id="ticket-message" name="message" class="input" rows="4" minlength="5" maxlength="2000" placeholder="Jelaskan masalah yang Anda alami secara rinci..." required style="padding: 10px; font-size: 13px; line-height: 1.5; resize: vertical;"></textarea>
+                </div>
+                <button type="submit" class="btn btn-primary" style="width: 100%; padding: 10px; font-size: 13px; font-weight: bold; cursor: pointer;">
+                    Kirim Laporan ke Admin
+                </button>
+            </form>
+        </div>
+    </div>
+</div>
+
 <!-- JAVASCRIPT KONTROL DRAWER & ACCORDION -->
 <script>
 function toggleDrawer(id) {
@@ -347,6 +521,7 @@ function toggleDrawer(id) {
         closeDrawer(id);
     } else {
         closeAllDrawers();
+        closeHelpdeskModal();
         drawer.classList.add('is-open');
         if (backdrop) backdrop.classList.add('is-open');
     }
@@ -365,9 +540,49 @@ function closeAllDrawers() {
     if (backdrop) backdrop.classList.remove('is-open');
 }
 
+function openHelpdeskModal() {
+    closeAllDrawers();
+    var modal = document.getElementById('helpdesk-modal');
+    var backdrop = document.getElementById('helpdesk-backdrop');
+    if (modal) modal.classList.add('is-open');
+    if (backdrop) backdrop.classList.add('is-open');
+}
+
+function closeHelpdeskModal() {
+    var modal = document.getElementById('helpdesk-modal');
+    var backdrop = document.getElementById('helpdesk-backdrop');
+    if (modal) modal.classList.remove('is-open');
+    if (backdrop) backdrop.classList.remove('is-open');
+}
+
+function switchHelpTab(tabName) {
+    var tabs = ['faq', 'contact', 'ticket'];
+    tabs.forEach(function(t) {
+        var btn = document.getElementById('tab-btn-' + t);
+        var pane = document.getElementById('help-pane-' + t);
+        if (btn) {
+            if (t === tabName) {
+                btn.classList.add('active');
+            } else {
+                btn.classList.remove('active');
+            }
+        }
+        if (pane) {
+            pane.style.display = (t === tabName) ? 'block' : 'none';
+        }
+    });
+}
+
+function toggleFaq(id) {
+    var item = document.getElementById(id);
+    if (!item) return;
+    item.classList.toggle('is-open');
+}
+
 document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
         closeAllDrawers();
+        closeHelpdeskModal();
     }
 });
 

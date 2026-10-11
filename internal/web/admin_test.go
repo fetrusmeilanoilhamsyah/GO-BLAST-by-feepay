@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -415,6 +416,8 @@ func TestWorkerAccessToAdminRoutesForbidden(t *testing.T) {
 		{"POST", "/admin/workers/1/disable"},
 		{"POST", "/admin/workers/1/enable"},
 		{"GET", "/admin/campaigns"},
+		{"GET", "/admin/tickets"},
+		{"GET", "/admin/broadcasts"},
 		{"GET", "/admin/nonexistent_route"},
 	}
 
@@ -829,6 +832,106 @@ func TestAdminWorkersSearch(t *testing.T) {
 
 	if rr.Code != http.StatusOK {
 		t.Errorf("Expected 200 OK for search workers, got %d", rr.Code)
+	}
+}
+
+func TestAdminTicketsAndBroadcastsManagement(t *testing.T) {
+	srv, pool, adminID, workerID := setupAdminTest(t)
+	ctxAdmin := context.WithValue(context.Background(), userContextKey, UserSession{ID: adminID, Role: "admin", Language: "id"})
+
+	// 1. Worker creates a ticket
+	var tID int64
+	err := pool.QueryRow(context.Background(), `
+		INSERT INTO support_tickets (user_id, category, message, status)
+		VALUES ($1, 'Penarikan Dana', 'Kendala pencairan saldo', 'open')
+		RETURNING id
+	`, workerID).Scan(&tID)
+	if err != nil {
+		t.Fatalf("Failed to insert ticket: %v", err)
+	}
+
+	// 2. Admin views tickets
+	reqGet := httptest.NewRequest("GET", "/admin/tickets?status=open", nil)
+	reqGet = reqGet.WithContext(ctxAdmin)
+	rrGet := httptest.NewRecorder()
+	srv.HandleAdminTicketsGET(rrGet, reqGet)
+	if rrGet.Code != http.StatusOK {
+		t.Errorf("Expected 200 OK for GET /admin/tickets, got %d", rrGet.Code)
+	}
+	if !strings.Contains(rrGet.Body.String(), "Kendala pencairan saldo") {
+		t.Errorf("Expected tickets page to contain ticket message")
+	}
+
+	// 3. Admin resolves ticket
+	reqResolve := httptest.NewRequest("POST", fmt.Sprintf("/admin/tickets/%d/resolve", tID), nil)
+	reqResolve.SetPathValue("id", strconv.FormatInt(tID, 10))
+	reqResolve = reqResolve.WithContext(ctxAdmin)
+	rrResolve := httptest.NewRecorder()
+	srv.HandleAdminTicketResolvePOST(rrResolve, reqResolve)
+	if rrResolve.Code != http.StatusSeeOther {
+		t.Errorf("Expected 303 redirect after resolving ticket, got %d", rrResolve.Code)
+	}
+
+	var status string
+	_ = pool.QueryRow(context.Background(), "SELECT status FROM support_tickets WHERE id = $1", tID).Scan(&status)
+	if status != "resolved" {
+		t.Errorf("Expected ticket status 'resolved', got %s", status)
+	}
+
+	// 4. Admin creates a broadcast
+	bForm := url.Values{
+		"title":     {"Maintenance Pengumuman"},
+		"message":   {"Server akan mengalami pemeliharaan rutin."},
+		"badge":     {"MAINTENANCE"},
+		"is_active": {"true"},
+	}
+	reqBNew := httptest.NewRequest("POST", "/admin/broadcasts/new", strings.NewReader(bForm.Encode()))
+	reqBNew.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	reqBNew = reqBNew.WithContext(ctxAdmin)
+	rrBNew := httptest.NewRecorder()
+	srv.HandleAdminBroadcastNewPOST(rrBNew, reqBNew)
+	if rrBNew.Code != http.StatusSeeOther {
+		t.Errorf("Expected 303 after creating broadcast, got %d", rrBNew.Code)
+	}
+
+	var bID int64
+	var bActive bool
+	err = pool.QueryRow(context.Background(), `
+		SELECT id, is_active FROM broadcasts WHERE title = 'Maintenance Pengumuman' ORDER BY id DESC LIMIT 1
+	`).Scan(&bID, &bActive)
+	if err != nil || !bActive {
+		t.Fatalf("Broadcast not found or not active: %v", err)
+	}
+
+	// 5. Admin toggles broadcast
+	reqBToggle := httptest.NewRequest("POST", fmt.Sprintf("/admin/broadcasts/%d/toggle", bID), nil)
+	reqBToggle.SetPathValue("id", strconv.FormatInt(bID, 10))
+	reqBToggle = reqBToggle.WithContext(ctxAdmin)
+	rrBToggle := httptest.NewRecorder()
+	srv.HandleAdminBroadcastTogglePOST(rrBToggle, reqBToggle)
+	if rrBToggle.Code != http.StatusSeeOther {
+		t.Errorf("Expected 303 after toggling broadcast, got %d", rrBToggle.Code)
+	}
+
+	_ = pool.QueryRow(context.Background(), "SELECT is_active FROM broadcasts WHERE id = $1", bID).Scan(&bActive)
+	if bActive {
+		t.Errorf("Expected broadcast to be inactive after toggle")
+	}
+
+	// 6. Admin deletes broadcast
+	reqBDel := httptest.NewRequest("POST", fmt.Sprintf("/admin/broadcasts/%d/delete", bID), nil)
+	reqBDel.SetPathValue("id", strconv.FormatInt(bID, 10))
+	reqBDel = reqBDel.WithContext(ctxAdmin)
+	rrBDel := httptest.NewRecorder()
+	srv.HandleAdminBroadcastDeletePOST(rrBDel, reqBDel)
+	if rrBDel.Code != http.StatusSeeOther {
+		t.Errorf("Expected 303 after deleting broadcast, got %d", rrBDel.Code)
+	}
+
+	var count int
+	_ = pool.QueryRow(context.Background(), "SELECT COUNT(*) FROM broadcasts WHERE id = $1", bID).Scan(&count)
+	if count != 0 {
+		t.Errorf("Expected broadcast to be deleted")
 	}
 }
 

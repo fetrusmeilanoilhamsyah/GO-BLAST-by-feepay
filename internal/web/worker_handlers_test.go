@@ -764,4 +764,80 @@ func TestWorkerPanelFlows(t *testing.T) {
 			}
 		}
 	})
+
+	t.Run("HandleWorkerTicketPOST validation and submission", func(t *testing.T) {
+		// Test 1: Message too short (<5 chars)
+		{
+			form := url.Values{
+				"category": {"Koneksi WhatsApp"},
+				"message":  {"abc"},
+			}
+			req := httptest.NewRequest("POST", "/worker/ticket", strings.NewReader(form.Encode()))
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			req = withWorker(req)
+			rr := httptest.NewRecorder()
+
+			srv.HandleWorkerTicketPOST(rr, req)
+			if rr.Code != http.StatusSeeOther || !strings.Contains(rr.Header().Get("Location"), "error=") {
+				t.Errorf("Expected redirect with error for short message, got code %d, loc %s", rr.Code, rr.Header().Get("Location"))
+			}
+		}
+
+		// Test 2: Valid ticket submission
+		{
+			form := url.Values{
+				"category": {"Penarikan Dana"},
+				"message":  {"Mohon dicek penarikan saldo belum masuk ke rekening."},
+			}
+			req := httptest.NewRequest("POST", "/worker/ticket", strings.NewReader(form.Encode()))
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			req = withWorker(req)
+			rr := httptest.NewRecorder()
+
+			srv.HandleWorkerTicketPOST(rr, req)
+			if rr.Code != http.StatusSeeOther || !strings.Contains(rr.Header().Get("Location"), "success=") {
+				t.Errorf("Expected redirect with success for valid ticket, got code %d, loc %s", rr.Code, rr.Header().Get("Location"))
+			}
+
+			// Verify ticket in DB
+			var ticketID int64
+			var cat, msg, status string
+			err := pool.QueryRow(context.Background(), `
+				SELECT id, category, message, status
+				FROM support_tickets
+				WHERE user_id = $1
+				ORDER BY id DESC LIMIT 1
+			`, workerID).Scan(&ticketID, &cat, &msg, &status)
+			if err != nil {
+				t.Fatalf("Failed to query created ticket: %v", err)
+			}
+			if cat != "Penarikan Dana" || status != "open" {
+				t.Errorf("Expected category 'Penarikan Dana' and status 'open', got cat=%s status=%s", cat, status)
+			}
+		}
+	})
+
+	t.Run("HandleWorkerHome renders active broadcast banner", func(t *testing.T) {
+		// Insert active broadcast
+		_, err := pool.Exec(context.Background(), `
+			INSERT INTO broadcasts (title, message, badge, is_active)
+			VALUES ('Pembaruan Rate Spesial', 'Rate per pesan naik menjadi 35 rupiah', 'UPDATE RATE', true)
+		`)
+		if err != nil {
+			t.Fatalf("Failed to insert broadcast: %v", err)
+		}
+
+		req := httptest.NewRequest("GET", "/worker", nil)
+		req = withWorker(req)
+		rr := httptest.NewRecorder()
+
+		srv.HandleWorkerHome(rr, req)
+		if rr.Code != http.StatusOK {
+			t.Errorf("Expected status 200, got %d", rr.Code)
+		}
+		body := rr.Body.String()
+		if !strings.Contains(body, "Pembaruan Rate Spesial") || !strings.Contains(body, "UPDATE RATE") {
+			t.Errorf("Expected worker home to contain broadcast announcement banner")
+		}
+	})
 }

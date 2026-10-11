@@ -1,0 +1,130 @@
+{{define "content"}}
+<div style="min-height: 100vh; background-color: var(--color-bg);">
+    {{ template "admin_nav" . }}
+
+    <main style="max-width: 1200px; margin: 0 auto; padding: 24px 16px;">
+        <div style="margin-bottom: 24px;">
+            <h1 style="font-size: 22px; font-weight: 800; margin: 0; color: var(--color-text);">Kelola Broadcast &amp; Pengumuman</h1>
+            <p style="margin: 4px 0 0 0; color: var(--color-muted); font-size: 13px;">Kirim pengumuman pembaruan rate, pemeliharaan sistem, atau info penting ke dashboard pekerja.</p>
+        </div>
+
+        {{if .Success}}
+        <div style="background-color: var(--color-surface-muted); color: var(--color-text); border-left: 4px solid var(--color-primary); padding: 12px 16px; margin-bottom: 20px; border-radius: 4px; font-weight: bold;">
+            {{.Success}}
+        </div>
+        {{end}}
+
+        {{if .Error}}
+        <div style="background-color: var(--color-surface-muted); color: var(--color-danger); border-left: 4px solid var(--color-danger); padding: 12px 16px; margin-bottom: 20px; border-radius: 4px;">
+            {{.Error}}
+        </div>
+        {{end}}
+
+        <!-- FORM BUAT BROADCAST BARU -->
+        <div class="card" style="margin-bottom: 24px; padding: 20px;">
+            <h3 style="margin: 0 0 16px 0; font-size: 16px;">Buat Pengumuman Baru</h3>
+            <form method="POST" action="/admin/broadcasts/new">
+                <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+                <div style="display: grid; grid-template-columns: 1fr 200px; gap: 16px; margin-bottom: 12px;">
+                    <div>
+                        <label for="broadcast-title" style="display: block; font-size: 12px; font-weight: 600; color: var(--color-muted); margin-bottom: 4px;">Judul Pengumuman</label>
+                        <input type="text" id="broadcast-title" name="title" class="input" placeholder="Contoh: Pembaruan Rate Upah IDR dan USDT" required style="width: 100%; box-sizing: border-box;">
+                    </div>
+                    <div>
+                        <label for="broadcast-badge" style="display: block; font-size: 12px; font-weight: 600; color: var(--color-muted); margin-bottom: 4px;">Label / Badge</label>
+                        <select id="broadcast-badge" name="badge" class="input" style="width: 100%; box-sizing: border-box;">
+                            <option value="UPDATE RATE">UPDATE RATE</option>
+                            <option value="PENGUMUMAN">PENGUMUMAN</option>
+                            <option value="INFO SISTEM">INFO SISTEM</option>
+                            <option value="MAINTENANCE">MAINTENANCE</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div style="margin-bottom: 16px;">
+                    <label for="broadcast-message" style="display: block; font-size: 12px; font-weight: 600; color: var(--color-muted); margin-bottom: 4px;">Isi Pesan Pengumuman</label>
+                    <textarea id="broadcast-message" name="message" class="input" rows="3" placeholder="Tuliskan rincian pengumuman yang akan tampil di banner dashboard pekerja..." required style="width: 100%; box-sizing: border-box; resize: vertical;"></textarea>
+                </div>
+
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <label style="display: inline-flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; user-select: none;">
+                        <input type="checkbox" name="is_active" value="true" checked>
+                        <span>Langsung aktifkan dan tampilkan ke pekerja</span>
+                    </label>
+                    <button type="submit" class="btn btn-primary" style="padding: 8px 20px; font-size: 13px; font-weight: bold;">
+                        Terbitkan Broadcast
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <!-- DAFTAR BROADCAST -->
+        <div class="card" style="padding: 0; overflow: hidden;">
+            <div style="padding: 16px 20px; border-bottom: 1px solid var(--color-border); background-color: var(--color-surface-muted);">
+                <h3 style="margin: 0; font-size: 15px;">Riwayat Pengumuman Broadcast</h3>
+            </div>
+            <div class="responsive-table-container">
+                <table class="responsive-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 60px;">ID</th>
+                            <th>Badge</th>
+                            <th>Judul</th>
+                            <th>Pesan</th>
+                            <th>Status</th>
+                            <th>Waktu</th>
+                            <th>Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {{range .Broadcasts}}
+                        <tr>
+                            <td>{{.ID}}</td>
+                            <td>
+                                <span class="badge badge-muted">{{.Badge}}</span>
+                            </td>
+                            <td>
+                                <strong style="font-size: 13px; color: var(--color-text);">{{.Title}}</strong>
+                            </td>
+                            <td style="max-width: 350px;">
+                                <div style="font-size: 13px; color: var(--color-text); line-height: 1.5; white-space: pre-wrap; word-break: break-word;">{{.Message}}</div>
+                            </td>
+                            <td>
+                                {{if .IsActive}}
+                                <span class="badge badge-success">Aktif</span>
+                                {{else}}
+                                <span class="badge badge-muted">Nonaktif</span>
+                                {{end}}
+                            </td>
+                            <td style="font-size: 12px; color: var(--color-muted); white-space: nowrap;">{{.CreatedAt}}</td>
+                            <td>
+                                <div style="display: flex; gap: 6px; align-items: center;">
+                                    <form method="POST" action="/admin/broadcasts/{{.ID}}/toggle" style="display: inline; margin: 0;">
+                                        <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                                        <button type="submit" class="btn btn-secondary" style="padding: 4px 10px; font-size: 12px; cursor: pointer;">
+                                            {{if .IsActive}}Nonaktifkan{{else}}Aktifkan{{end}}
+                                        </button>
+                                    </form>
+                                    <form method="POST" action="/admin/broadcasts/{{.ID}}/delete" style="display: inline; margin: 0;" onsubmit="return confirm('Apakah Anda yakin ingin menghapus broadcast ini?');">
+                                        <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                                        <button type="submit" class="btn btn-secondary" style="padding: 4px 10px; font-size: 12px; color: var(--color-danger); border-color: var(--color-danger); cursor: pointer;">
+                                            Hapus
+                                        </button>
+                                    </form>
+                                </div>
+                            </td>
+                        </tr>
+                        {{else}}
+                        <tr>
+                            <td colspan="7" style="text-align: center; padding: 32px; color: var(--color-muted);">
+                                Belum ada pengumuman broadcast yang dibuat.
+                            </td>
+                        </tr>
+                        {{end}}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+</div>
+{{end}}

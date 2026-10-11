@@ -192,6 +192,7 @@ Langkah uji sambung dan putus satu nomor cadangan:
 
 Terbaru di atas. Format: `tanggal: ringkasan satu baris` (Log Tahap 0 - 5 diarsipkan di [ARSIP_PROGRES.md](ARSIP_PROGRES.md)).
 
+- 2026-10-12: Pusat Bantuan & CS (Worker FAB, FAQ bot interaktif, tautan WhatsApp & Telegram resmi, formulir tiket laporan ke admin), sistem broadcast pengumuman (banner dinamis di worker dashboard, kelola broadcast di admin panel), perbaikan teks tombol hapus campaign dan dekripsi rekening penarikan admin cross-key. Seluruh tes unit & integrasi lulus 100%.
 - 2026-10-12: Tahap 12 selesai: Panel admin (dashboard statistik & tren 14 hari dengan polling 10s vanilla fetch, pengaturan dengan audit log perubahan nilai lama & baru serta validasi ketat, dompet pembukuan modal IDR/USDT dan riwayat isi ulang, direktori pekerja dengan aksi enable/disable yang otomatis menghentikan akun WA dan membersihkan sesi web). Seluruh tes unit & integrasi lulus 100%.
 - 2026-10-12: Responsif mobile riwayat pesan /worker/history: ganti tabel kaku dengan tata letak adaptif desktop-only tabel dan mobile-only daftar kartu simetris ala akun WhatsApp, touch target paginasi >= 40px, dan verifikasi seluruh tes 100% lulus.
 - 2026-10-12: Optimasi kecepatan QR code WhatsApp: singleton sqlstore container (hindari overhead koneksi DB & migrasi berulang per sambung akun), background pre-encoding PNG base64 di memori Session, sertakan QR langsung di HTTP response POST /init, polling awal 200ms & interval 800ms. Seluruh tes lulus 100%.

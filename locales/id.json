@@ -287,6 +287,10 @@
   "admin.search_placeholder": "Cari pekerja berdasarkan username atau email...",
   "admin.search_btn": "Cari",
   "admin.campaign_delete_btn": "Hapus",
-  "admin.campaign_delete_confirm": "Apakah Anda yakin ingin menghapus campaign ini? Semua nomor di dalamnya akan dihapus."
+  "admin.campaign_delete_confirm": "Apakah Anda yakin ingin menghapus campaign ini? Semua nomor di dalamnya akan dihapus.",
+  "campaign.delete_btn": "Hapus",
+  "campaign.delete_confirm": "Apakah Anda yakin ingin menghapus campaign ini? Semua nomor di dalamnya akan dihapus.",
+  "admin.tickets": "Laporan",
+  "admin.broadcasts": "Broadcast"
 }
 

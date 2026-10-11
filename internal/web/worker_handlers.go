@@ -56,6 +56,14 @@ type CurrencyIncomeView struct {
 	Balance   int64
 }
 
+type WorkerBroadcastView struct {
+	ID        int64
+	Title     string
+	Message   string
+	Badge     string
+	CreatedAt string
+}
+
 func (s *Server) HandleWorkerHome(w http.ResponseWriter, r *http.Request) {
 	user, ok := currentUser(r)
 	if !ok {
@@ -177,6 +185,27 @@ func (s *Server) HandleWorkerHome(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// 11. Broadcast pengumuman aktif dari admin
+	var activeBroadcast *WorkerBroadcastView
+	var bID int64
+	var bTitle, bMessage, bBadge string
+	var bCreatedAt time.Time
+	if err := s.DB.Pool.QueryRow(ctx, `
+		SELECT id, title, message, badge, created_at
+		FROM broadcasts
+		WHERE is_active = true
+		ORDER BY id DESC
+		LIMIT 1
+	`).Scan(&bID, &bTitle, &bMessage, &bBadge, &bCreatedAt); err == nil {
+		activeBroadcast = &WorkerBroadcastView{
+			ID:        bID,
+			Title:     bTitle,
+			Message:   bMessage,
+			Badge:     bBadge,
+			CreatedAt: bCreatedAt.Format("02 Jan 2006 15:04"),
+		}
+	}
+
 	data := struct {
 		Lang              string
 		Title             string
@@ -184,6 +213,8 @@ func (s *Server) HandleWorkerHome(w http.ResponseWriter, r *http.Request) {
 		CSRFToken         string
 		ActiveNav         string
 		User              UserSession
+		Success           string
+		Error             string
 		Balance           int64
 		TotalWage         int64
 		TotalReferral     int64
@@ -192,6 +223,7 @@ func (s *Server) HandleWorkerHome(w http.ResponseWriter, r *http.Request) {
 		ConnectedAccounts int64
 		TotalSent         int64
 		AvailableNumbers  int64
+		Broadcast         *WorkerBroadcastView
 		Accounts          []WorkerAccountSummaryView
 		Incomes           []CurrencyIncomeView
 		Activities        []WorkerActivityView
@@ -203,6 +235,8 @@ func (s *Server) HandleWorkerHome(w http.ResponseWriter, r *http.Request) {
 		CSRFToken:         getCSRF(r),
 		ActiveNav:         "home",
 		User:              user,
+		Success:           r.URL.Query().Get("success"),
+		Error:             r.URL.Query().Get("error"),
 		Balance:           balance,
 		TotalWage:         totalWage,
 		TotalReferral:     totalReferral,
@@ -211,6 +245,7 @@ func (s *Server) HandleWorkerHome(w http.ResponseWriter, r *http.Request) {
 		ConnectedAccounts: connectedAccounts,
 		TotalSent:         totalSent,
 		AvailableNumbers:  availableNumbers,
+		Broadcast:         activeBroadcast,
 		Accounts:          accounts,
 		Incomes:           incomes,
 		Activities:        activities,
@@ -786,4 +821,55 @@ func (s *Server) HandleWorkerSecurityPOST(w http.ResponseWriter, r *http.Request
 	_, _ = s.DB.Pool.Exec(r.Context(), "UPDATE users SET password_hash = $1 WHERE id = $2", newHash, user.ID)
 	s.logAudit(&user.ID, "change_password", "users", strconv.FormatInt(user.ID, 10), "password updated")
 	http.Redirect(w, r, target+sep+"success=Kata+sandi+berhasil+diperbarui", http.StatusSeeOther)
+}
+
+func (s *Server) HandleWorkerTicketPOST(w http.ResponseWriter, r *http.Request) {
+	user, ok := currentUser(r)
+	if !ok || user.Role != "worker" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	target := "/worker"
+	referer := r.Header.Get("Referer")
+	if referer != "" {
+		if refURL, err := url.Parse(referer); err == nil {
+			if (refURL.Host == "" || refURL.Host == r.Host) && strings.HasPrefix(refURL.Path, "/") && !strings.HasPrefix(refURL.Path, "//") {
+				target = refURL.RequestURI()
+			}
+		}
+	}
+	sep := "?"
+	if strings.Contains(target, "?") {
+		sep = "&"
+	}
+
+	category := strings.TrimSpace(r.FormValue("category"))
+	message := strings.TrimSpace(r.FormValue("message"))
+
+	if category == "" {
+		category = "Lainnya"
+	}
+	if len(message) < 5 {
+		http.Redirect(w, r, target+sep+"error=Pesan+laporan+terlalu+pendek+(minimal+5+karakter)", http.StatusSeeOther)
+		return
+	}
+	if len(message) > 2000 {
+		http.Redirect(w, r, target+sep+"error=Pesan+laporan+maksimal+2000+karakter", http.StatusSeeOther)
+		return
+	}
+
+	var ticketID int64
+	err := s.DB.Pool.QueryRow(r.Context(), `
+		INSERT INTO support_tickets (user_id, category, message, status)
+		VALUES ($1, $2, $3, 'open')
+		RETURNING id
+	`, user.ID, category, message).Scan(&ticketID)
+	if err != nil {
+		http.Redirect(w, r, target+sep+"error=Gagal+mengirim+laporan: "+err.Error(), http.StatusSeeOther)
+		return
+	}
+
+	s.logAudit(&user.ID, "submit_ticket", "support_tickets", strconv.FormatInt(ticketID, 10), category)
+	http.Redirect(w, r, target+sep+"success=Laporan+berhasil+dikirim+ke+tim+CS", http.StatusSeeOther)
 }

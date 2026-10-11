@@ -288,6 +288,10 @@
   "admin.search_placeholder": "按用户名或邮箱搜索工人...",
   "admin.search_btn": "搜索",
   "admin.campaign_delete_btn": "删除",
-  "admin.campaign_delete_confirm": "确定要删除此营销活动吗？活动下的所有目标号码将被清除。"
+  "admin.campaign_delete_confirm": "确定要删除此营销活动吗？活动下的所有目标号码将被清除。",
+  "campaign.delete_btn": "删除",
+  "campaign.delete_confirm": "确定要删除此营销活动吗？活动下的所有目标号码将被清除。",
+  "admin.tickets": "工单",
+  "admin.broadcasts": "广播"
 }
 
