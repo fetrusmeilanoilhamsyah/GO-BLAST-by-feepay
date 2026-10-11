@@ -9,7 +9,7 @@ SELECT setval('users_id_seq', (SELECT MAX(id) FROM users));
 
 INSERT INTO campaigns (id, name, status, button_mode, body, elements, created_by, created_at)
 VALUES
-(1, 'Campaign Dev 1', 'draf', 'kartu_link', 'Halo ini pesan tes FEEPAY', '{"link_web": true, "phone": false, "cs": true, "promo": false}', 1, CURRENT_TIMESTAMP);
+(1, 'Campaign Dev 1', 'draf', 'kartu_link', 'Halo ini pesan tes', '{"link_web": true, "phone": false, "cs": true, "promo": false}', 1, CURRENT_TIMESTAMP);
 
 SELECT setval('campaigns_id_seq', (SELECT MAX(id) FROM campaigns));
 
