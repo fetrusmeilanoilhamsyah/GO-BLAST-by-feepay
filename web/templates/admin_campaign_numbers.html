@@ -1,0 +1,47 @@
+{{define "content"}}
+{{ template "admin_nav" . }}
+<div style="max-width: 900px; margin: 0 auto; padding: 20px;">
+    <div style="margin-bottom: 20px;">
+        <a href="/admin/campaigns/{{.Campaign.ID}}" style="color: var(--color-muted); text-decoration: none; font-size: 14px;">&larr; Kembali ke detail campaign</a>
+        <h2 style="margin: 8px 0 4px 0;">{{ call .T "numbers.upload_title" }}</h2>
+        <div style="color: var(--color-muted); font-size: 14px;">Campaign: <strong>{{.Campaign.Name}}</strong></div>
+    </div>
+
+    <div style="background-color: var(--color-card); border-radius: 8px; padding: 24px; box-shadow: 0 4px 6px var(--color-shadow); border: 1px solid var(--color-border);">
+        <form method="POST" action="/admin/campaigns/{{.Campaign.ID}}/numbers/preview" enctype="multipart/form-data">
+            <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+
+            <div style="margin-bottom: 24px;">
+                <label style="display: block; font-weight: bold; margin-bottom: 8px; font-size: 14px;">
+                    {{ call .T "numbers.file_label" }}
+                </label>
+                <div style="font-size: 12px; color: var(--color-muted); margin-bottom: 8px;">
+                    Mendukung format file .csv, .txt, atau .xlsx (maksimal 5 MB).
+                </div>
+                <input type="file" name="file" accept=".csv,.txt,.xlsx" class="input" style="padding: 10px;">
+            </div>
+
+            <div style="display: flex; align-items: center; margin: 20px 0; text-align: center;">
+                <div style="flex: 1; border-bottom: 1px solid var(--color-border);"></div>
+                <span style="padding: 0 12px; color: var(--color-muted); font-size: 12px; text-transform: uppercase;">Atau</span>
+                <div style="flex: 1; border-bottom: 1px solid var(--color-border);"></div>
+            </div>
+
+            <div style="margin-bottom: 24px;">
+                <label style="display: block; font-weight: bold; margin-bottom: 8px; font-size: 14px;">
+                    {{ call .T "numbers.paste_label" }}
+                </label>
+                <div style="font-size: 12px; color: var(--color-muted); margin-bottom: 8px;">
+                    Format: satu nomor per baris (cth: <code>081234567890</code> atau <code>6281234567890,Budi</code>).
+                </div>
+                <textarea name="pasted" rows="8" class="input" placeholder="081234567890&#10;6281298765432,Nama Customer" style="font-family: monospace; font-size: 13px; line-height: 1.5;"></textarea>
+            </div>
+
+            <div style="display: flex; justify-content: flex-end; gap: 12px; border-top: 1px solid var(--color-border); padding-top: 20px;">
+                <a href="/admin/campaigns/{{.Campaign.ID}}" class="btn btn-secondary">Batal</a>
+                <button type="submit" class="btn btn-primary">{{ call .T "numbers.preview_btn" }}</button>
+            </div>
+        </form>
+    </div>
+</div>
+{{end}}

@@ -26,13 +26,13 @@ func (s *Server) HandleAdminCampaignNumbersGET(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	var status string
-	err = s.DB.Pool.QueryRow(r.Context(), "SELECT status FROM campaigns WHERE id = $1", campaignID).Scan(&status)
+	var c campaign.Campaign
+	err = s.DB.Pool.QueryRow(r.Context(), "SELECT id, name, status FROM campaigns WHERE id = $1", campaignID).Scan(&c.ID, &c.Name, &c.Status)
 	if err != nil {
 		http.Error(w, "Campaign not found", http.StatusNotFound)
 		return
 	}
-	if status != "draf" && status != "berjalan" {
+	if c.Status != "draf" && c.Status != "berjalan" {
 		http.Error(w, "Nomor hanya bisa ditambahkan ke campaign draf atau berjalan", http.StatusBadRequest)
 		return
 	}
@@ -42,26 +42,32 @@ func (s *Server) HandleAdminCampaignNumbersGET(w http.ResponseWriter, r *http.Re
 		lang = u.Language
 	}
 
-	// Get CSRF from cookie
-	csrfToken := ""
-	if c, err := r.Cookie("gb_csrf"); err == nil {
-		csrfToken = c.Value
+	data := struct {
+		ActiveNav string
+		Lang      string
+		Title     string
+		Theme     string
+		CSRFToken string
+		Campaign  campaign.Campaign
+		T         func(string) string
+	}{
+		ActiveNav: "campaigns",
+		Lang:      lang,
+		Title:     i18n.T(lang, "numbers.upload_title"),
+		Theme:     getTheme(r),
+		CSRFToken: getCSRF(r),
+		Campaign:  c,
+		T: func(key string) string {
+			return i18n.T(lang, key)
+		},
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Write([]byte(fmt.Sprintf(`
-		<h1>%s</h1>
-		<form method="post" action="/admin/campaigns/%d/numbers/preview" enctype="multipart/form-data">
-			<input type="hidden" name="csrf_token" value="%s">
-			<label>%s</label>
-			<input type="file" name="file" accept=".csv,.txt,.xlsx">
-			<br>
-			<label>%s</label>
-			<textarea name="pasted"></textarea>
-			<br>
-			<button type="submit">%s</button>
-		</form>
-	`, i18n.T(lang, "numbers.upload_title"), campaignID, csrfToken, i18n.T(lang, "numbers.file_label"), i18n.T(lang, "numbers.paste_label"), i18n.T(lang, "numbers.preview_btn"))))
+	if tmpl, ok := s.Tmpl["admin_campaign_numbers.html"]; ok {
+		tmpl.ExecuteTemplate(w, "base.html", data)
+	} else {
+		http.Error(w, "Template not found", http.StatusInternalServerError)
+	}
 }
 
 // HandleAdminCampaignNumbersPreview POST reads the file and shows preview
@@ -117,43 +123,40 @@ func (s *Server) HandleAdminCampaignNumbersPreview(w http.ResponseWriter, r *htt
 		lang = u.Language
 	}
 
-	var ccTable strings.Builder
-	if len(preview.Stats.CountryCodes) > 0 {
-		ccTable.WriteString("<div style='margin-top: 15px;'><h3>Rincian Kode Negara</h3><table border='1' cellpadding='5' style='border-collapse: collapse;'><thead><tr><th>Kode Negara</th><th>Jumlah</th></tr></thead><tbody>")
-		for cc, count := range preview.Stats.CountryCodes {
-			ccTable.WriteString(fmt.Sprintf("<tr><td>+%s</td><td>%d</td></tr>", cc, count))
-		}
-		ccTable.WriteString("</tbody></table></div>")
+	hasRejected := (preview.Stats.DupInFile + preview.Stats.DupInCampaign + preview.Stats.Invalid + preview.Stats.Ambiguous) > 0
+
+	previewData := struct {
+		ActiveNav   string
+		Lang        string
+		Title       string
+		Theme       string
+		CSRFToken   string
+		CampaignID  int64
+		PreviewID   string
+		Stats       campaign.UploadStats
+		HasRejected bool
+		T           func(string) string
+	}{
+		ActiveNav:   "campaigns",
+		Lang:        lang,
+		Title:       i18n.T(lang, "numbers.preview_title"),
+		Theme:       getTheme(r),
+		CSRFToken:   csrfToken,
+		CampaignID:  campaignID,
+		PreviewID:   preview.ID,
+		Stats:       preview.Stats,
+		HasRejected: hasRejected,
+		T: func(key string) string {
+			return i18n.T(lang, key)
+		},
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Write([]byte(fmt.Sprintf(`
-		<h1>%s</h1>
-		<p>%s: %d</p>
-		<p>%s: %d</p>
-		<p>%s: %d</p>
-		<p>%s: %d</p>
-		<p>%s: %d</p>
-		<p>%s: %d</p>
-		%s
-		<br>
-		<a href="/admin/campaigns/%d/numbers/rejected/%s">%s</a>
-		
-		<form method="post" action="/admin/campaigns/%d/numbers/confirm">
-			<input type="hidden" name="csrf_token" value="%s">
-			<input type="hidden" name="preview_id" value="%s">
-			<button type="submit">%s</button>
-		</form>
-	`, i18n.T(lang, "numbers.preview_title"),
-		i18n.T(lang, "numbers.total"), preview.Stats.Total,
-		i18n.T(lang, "numbers.accepted"), preview.Stats.Accepted,
-		i18n.T(lang, "numbers.dup_file"), preview.Stats.DupInFile,
-		i18n.T(lang, "numbers.dup_campaign"), preview.Stats.DupInCampaign,
-		i18n.T(lang, "numbers.invalid"), preview.Stats.Invalid,
-		i18n.T(lang, "numbers.ambiguous"), preview.Stats.Ambiguous,
-		ccTable.String(),
-		campaignID, preview.ID, i18n.T(lang, "numbers.download_rejected"),
-		campaignID, csrfToken, preview.ID, i18n.T(lang, "numbers.confirm_btn"))))
+	if tmpl, ok := s.Tmpl["admin_campaign_numbers_preview.html"]; ok {
+		tmpl.ExecuteTemplate(w, "base.html", previewData)
+	} else {
+		http.Error(w, "Template not found", http.StatusInternalServerError)
+	}
 }
 
 // HandleAdminCampaignNumbersConfirm POST confirm upload

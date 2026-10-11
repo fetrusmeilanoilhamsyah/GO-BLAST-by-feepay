@@ -1,0 +1,82 @@
+{{define "content"}}
+{{ template "admin_nav" . }}
+<div style="max-width: 900px; margin: 0 auto; padding: 20px;">
+    <div style="margin-bottom: 20px;">
+        <a href="/admin/campaigns/{{.CampaignID}}/numbers" style="color: var(--color-muted); text-decoration: none; font-size: 14px;">&larr; Upload Ulang / Kembali</a>
+        <h2 style="margin: 8px 0 4px 0;">{{ call .T "numbers.preview_title" }}</h2>
+        <div style="color: var(--color-muted); font-size: 14px;">Hasil validasi dan pembersihan nomor sebelum dimasukkan ke antrean.</div>
+    </div>
+
+    <!-- SUMMARY CARDS -->
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; margin-bottom: 24px;">
+        <div style="background-color: var(--color-card); padding: 16px; border-radius: 8px; border: 1px solid var(--color-border); text-align: center;">
+            <div style="font-size: 12px; color: var(--color-muted); margin-bottom: 4px;">{{ call .T "numbers.total" }}</div>
+            <div style="font-size: 22px; font-weight: bold; color: var(--color-text);">{{.Stats.Total}}</div>
+        </div>
+        <div style="background-color: var(--color-card); padding: 16px; border-radius: 8px; border: 1px solid var(--color-border); text-align: center;">
+            <div style="font-size: 12px; color: var(--color-muted); margin-bottom: 4px;">{{ call .T "numbers.accepted" }}</div>
+            <div style="font-size: 22px; font-weight: bold; color: var(--color-status-done);">{{.Stats.Accepted}}</div>
+        </div>
+        <div style="background-color: var(--color-card); padding: 16px; border-radius: 8px; border: 1px solid var(--color-border); text-align: center;">
+            <div style="font-size: 12px; color: var(--color-muted); margin-bottom: 4px;">{{ call .T "numbers.dup_file" }}</div>
+            <div style="font-size: 22px; font-weight: bold; color: var(--color-warning);">{{.Stats.DupInFile}}</div>
+        </div>
+        <div style="background-color: var(--color-card); padding: 16px; border-radius: 8px; border: 1px solid var(--color-border); text-align: center;">
+            <div style="font-size: 12px; color: var(--color-muted); margin-bottom: 4px;">{{ call .T "numbers.dup_campaign" }}</div>
+            <div style="font-size: 22px; font-weight: bold; color: var(--color-warning);">{{.Stats.DupInCampaign}}</div>
+        </div>
+        <div style="background-color: var(--color-card); padding: 16px; border-radius: 8px; border: 1px solid var(--color-border); text-align: center;">
+            <div style="font-size: 12px; color: var(--color-muted); margin-bottom: 4px;">{{ call .T "numbers.invalid" }}</div>
+            <div style="font-size: 22px; font-weight: bold; color: var(--color-danger);">{{.Stats.Invalid}}</div>
+        </div>
+        <div style="background-color: var(--color-card); padding: 16px; border-radius: 8px; border: 1px solid var(--color-border); text-align: center;">
+            <div style="font-size: 12px; color: var(--color-muted); margin-bottom: 4px;">{{ call .T "numbers.ambiguous" }}</div>
+            <div style="font-size: 22px; font-weight: bold; color: var(--color-muted);">{{.Stats.Ambiguous}}</div>
+        </div>
+    </div>
+
+    {{if .Stats.CountryCodes}}
+    <!-- COUNTRY CODE BREAKDOWN -->
+    <div style="background-color: var(--color-card); border-radius: 8px; padding: 20px; margin-bottom: 24px; border: 1px solid var(--color-border);">
+        <h3 style="margin-top: 0; margin-bottom: 12px; font-size: 15px;">Rincian Kode Negara</h3>
+        <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 13px;">
+            <thead>
+                <tr style="border-bottom: 1px solid var(--color-border); color: var(--color-muted);">
+                    <th style="padding: 8px 12px;">Kode Negara</th>
+                    <th style="padding: 8px 12px; text-align: right;">Jumlah Nomor</th>
+                </tr>
+            </thead>
+            <tbody>
+                {{range $cc, $count := .Stats.CountryCodes}}
+                <tr style="border-bottom: 1px solid var(--color-border);">
+                    <td style="padding: 8px 12px; font-weight: bold;">+{{$cc}}</td>
+                    <td style="padding: 8px 12px; text-align: right;">{{$count}}</td>
+                </tr>
+                {{end}}
+            </tbody>
+        </table>
+    </div>
+    {{end}}
+
+    <!-- ACTIONS -->
+    <div style="background-color: var(--color-card); border-radius: 8px; padding: 20px; border: 1px solid var(--color-border); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+        <div>
+            {{if .HasRejected}}
+            <a href="/admin/campaigns/{{.CampaignID}}/numbers/rejected/{{.PreviewID}}" class="btn btn-secondary" style="font-size: 13px;">
+                {{ call .T "numbers.download_rejected" }}
+            </a>
+            {{end}}
+        </div>
+        <div style="display: flex; gap: 10px; align-items: center;">
+            <a href="/admin/campaigns/{{.CampaignID}}/numbers" class="btn btn-secondary">Batal</a>
+            <form method="POST" action="/admin/campaigns/{{.CampaignID}}/numbers/confirm" style="margin: 0;">
+                <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+                <input type="hidden" name="preview_id" value="{{.PreviewID}}">
+                <button type="submit" class="btn btn-primary" {{if eq .Stats.Accepted 0}}disabled title="Tidak ada nomor valid yang dapat dimasukkan"{{end}}>
+                    {{ call .T "numbers.confirm_btn" }} ({{.Stats.Accepted}})
+                </button>
+            </form>
+        </div>
+    </div>
+</div>
+{{end}}

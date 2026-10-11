@@ -48,19 +48,22 @@ func NewServer(database *db.DB, env string, waMgr *wa.Manager, workCtrl WorkCont
 	}
 
 	adminPages := map[string]bool{
-		"admin_dashboard.html":       true,
-		"admin_settings.html":        true,
-		"admin_wallet.html":          true,
-		"admin_workers.html":         true,
-		"admin_campaigns.html":       true,
-		"admin_campaign_form.html":   true,
-		"admin_campaign_detail.html": true,
+		"admin_dashboard.html":                true,
+		"admin_settings.html":                 true,
+		"admin_wallet.html":                   true,
+		"admin_workers.html":                  true,
+		"admin_campaigns.html":                true,
+		"admin_campaign_form.html":            true,
+		"admin_campaign_detail.html":          true,
+		"admin_campaign_numbers.html":         true,
+		"admin_campaign_numbers_preview.html": true,
 	}
 
 	pages := []string{
 		"index.html", "login.html", "register.html",
 		"admin_dashboard.html", "admin_settings.html", "admin_wallet.html", "admin_workers.html",
 		"admin_campaigns.html", "admin_campaign_form.html", "admin_campaign_detail.html",
+		"admin_campaign_numbers.html", "admin_campaign_numbers_preview.html",
 		"worker_accounts.html", "worker_account_new.html",
 		"worker_home.html", "worker_withdrawals.html", "worker_referral.html",
 		"worker_history.html",
