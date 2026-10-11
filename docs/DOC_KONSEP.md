@@ -98,8 +98,8 @@ Admin bisa mengubah template kapan saja. Elemen berikut bisa dinyalakan atau dim
 
 **Tampilan harus rapi.** Pesan tidak boleh tampil sebagai teks dan link polos tanpa tata letak. Tiap campaign memilih satu dari dua mode:
 
-1. `tombol_asli`: tombol interaktif sungguhan (link web, telepon atau CS, claim promo), memakai `NativeFlowMessage` lewat Baileys/whatsmeow. **Temuan spike:** Baileys bisa mengirim gambar dengan teks (caption), tetapi tombol interaktif (native buttons) sudah tidak didukung oleh WhatsApp untuk nomor biasa/non-Cloud API. Di antarmuka admin, opsi `tombol_asli` dinonaktifkan (`disabled`) dengan label jujur. Pengujian Baileys yang sesungguhnya baru akan dilakukan pada Tahap 9.
-2. `kartu_link`: mode default dan andalan. Pesan berformat rapi (judul tebal, baris pendek, pemisah) dengan tautan yang memicu kartu preview Open Graph (OG tag). Aman dari sisi protokol dan tampil profesional.
+1. `tombol_asli`: tombol interaktif sungguhan (link web, telepon atau CS, claim promo), memakai `NativeFlowMessage` lewat whatsmeow. **Temuan spike:** tombol asli tidak muncul di Android dan iPhone (sudah diuji pemilik); kartu link menampilkan judul, deskripsi, domain tanpa gambar karena JPEG thumbnail kecil belum tersedia. Di antarmuka admin, opsi `tombol_asli` dinonaktifkan (`disabled`) dengan label jujur.
+2. `kartu_link`: mode default dan andalan. Pesan berformat rapi (judul tebal, baris pendek, pemisah). `kartu_link` dikirim sebagai pesan teks dengan data preview (judul, deskripsi, thumbnail JPEG kecil) yang disusun oleh server, karena aplikasi WhatsApp penerima tidak mengambil Open Graph sendiri. Aman dari sisi protokol dan tampil profesional.
 
 Penyebutan kata "FEEPAY" dan pengisian elemen CS bersifat opsional (tidak diwajibkan secara kaku saat penyimpanan campaign). Default form campaign baru adalah CS tidak aktif (`CSActive: false`).
 

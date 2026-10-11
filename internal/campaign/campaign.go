@@ -6,6 +6,9 @@ import (
 	"net/url"
 	"strings"
 	"time"
+	"unicode/utf8"
+
+	"goblast/internal/numbers"
 )
 
 const (
@@ -31,18 +34,18 @@ type Campaign struct {
 }
 
 type Elements struct {
-	CSActive      bool   `json:"cs_active"`
-	CSNumber      string `json:"cs_number"` // "link wa.me/<nomor>" or just URL
+	CSActive bool   `json:"cs_active"`
+	CSNumber string `json:"cs_number"` // "link wa.me/<nomor>" or just URL
 
 	LinkWebActive bool   `json:"link_web_active"`
 	LinkWebURL    string `json:"link_web_url"`
 
-	PhoneActive   bool   `json:"phone_active"`
-	PhoneNumber   string `json:"phone_number"` // E.164
+	PhoneActive bool   `json:"phone_active"`
+	PhoneNumber string `json:"phone_number"` // E.164
 
-	PromoActive   bool   `json:"promo_active"`
-	PromoCode     string `json:"promo_code"`
-	PromoURL      string `json:"promo_url"`
+	PromoActive bool   `json:"promo_active"`
+	PromoCode   string `json:"promo_code"`
+	PromoURL    string `json:"promo_url"`
 }
 
 type Button struct {
@@ -57,13 +60,22 @@ type Message struct {
 	Buttons   []Button
 }
 
-func ValidateTemplate(body string, mode string, elements Elements) error {
-	if len(body) == 0 {
+func ValidateTemplate(body string, mode string, elements Elements, defaultCC ...string) error {
+	if mode == ModeTombolAsli {
+		return errors.New("mode tombol_asli dinonaktifkan")
+	}
+	if mode != ModeKartuLink {
+		return errors.New("mode tidak valid")
+	}
+
+	runeCount := utf8.RuneCountInString(body)
+	if runeCount == 0 {
 		return errors.New("body pesan wajib diisi")
 	}
-	if len(body) > 1000 {
+	if runeCount > 1000 {
 		return errors.New("body pesan tidak boleh lebih dari 1000 karakter")
 	}
+
 	if elements.CSActive {
 		if elements.CSNumber == "" {
 			return errors.New("nomor/link CS wajib diisi")
@@ -88,6 +100,14 @@ func ValidateTemplate(body string, mode string, elements Elements) error {
 		if elements.PhoneNumber == "" {
 			return errors.New("nomor telepon harus diisi jika aktif")
 		}
+		cc := "62"
+		if len(defaultCC) > 0 && defaultCC[0] != "" {
+			cc = defaultCC[0]
+		}
+		_, status, _ := numbers.Normalize(elements.PhoneNumber, cc)
+		if status != "ok" {
+			return errors.New("nomor telepon tidak valid")
+		}
 	}
 
 	if elements.PromoActive {
@@ -97,10 +117,6 @@ func ValidateTemplate(body string, mode string, elements Elements) error {
 		if err := checkURL(elements.PromoURL); err != nil {
 			return fmt.Errorf("link promo tidak valid: %w", err)
 		}
-	}
-
-	if mode != ModeKartuLink && mode != ModeTombolAsli {
-		return errors.New("mode tidak valid")
 	}
 
 	return nil
@@ -114,6 +130,9 @@ func checkURL(u string) error {
 	if parsed.Scheme != "https" {
 		return errors.New("URL harus menggunakan https")
 	}
+	if parsed.Host == "" {
+		return errors.New("URL harus memiliki host yang valid")
+	}
 	return nil
 }
 
@@ -122,26 +141,30 @@ func Render(body string, imagePath string, elements Elements, mode string) Messa
 		ImagePath: imagePath,
 	}
 
-	csLink := elements.CSNumber
-	if !strings.HasPrefix(csLink, "http") {
-		csLink = "https://wa.me/" + csLink
+	var csLink string
+	if elements.CSActive && elements.CSNumber != "" {
+		csLink = elements.CSNumber
+		if !strings.HasPrefix(csLink, "http") {
+			csLink = "https://wa.me/" + csLink
+		}
 	}
 
 	if mode == ModeTombolAsli {
 		msg.Text = body
-		
-		if elements.LinkWebActive {
+
+		if elements.LinkWebActive && elements.LinkWebURL != "" {
 			msg.Buttons = append(msg.Buttons, Button{Type: "url", Text: "Kunjungi Web", Payload: elements.LinkWebURL})
 		}
-		if elements.PhoneActive {
+		if elements.PhoneActive && elements.PhoneNumber != "" {
 			msg.Buttons = append(msg.Buttons, Button{Type: "phone", Text: "Telepon", Payload: elements.PhoneNumber})
 		}
-		if elements.PromoActive {
+		if elements.PromoActive && elements.PromoCode != "" && elements.PromoURL != "" {
 			msg.Buttons = append(msg.Buttons, Button{Type: "copy", Text: "Salin Promo", Payload: elements.PromoCode})
 			msg.Buttons = append(msg.Buttons, Button{Type: "url", Text: "Gunakan Promo", Payload: elements.PromoURL})
 		}
-		
-		msg.Buttons = append(msg.Buttons, Button{Type: "url", Text: "Hubungi CS", Payload: csLink})
+		if elements.CSActive && csLink != "" {
+			msg.Buttons = append(msg.Buttons, Button{Type: "url", Text: "Hubungi CS", Payload: csLink})
+		}
 
 	} else if mode == ModeKartuLink {
 		lines := strings.Split(strings.ReplaceAll(body, "\r\n", "\n"), "\n")
@@ -150,24 +173,32 @@ func Render(body string, imagePath string, elements Elements, mode string) Messa
 				lines[0] = "*" + lines[0] + "*"
 			}
 		}
-		
+
 		var sb strings.Builder
 		sb.WriteString(strings.Join(lines, "\n"))
-		sb.WriteString("\n\n---\n")
-		
-		if elements.LinkWebActive {
-			sb.WriteString(fmt.Sprintf("Web: %s\n", elements.LinkWebURL))
+
+		hasElements := (elements.LinkWebActive && elements.LinkWebURL != "") ||
+			(elements.PromoActive && elements.PromoURL != "") ||
+			(elements.PhoneActive && elements.PhoneNumber != "") ||
+			(elements.CSActive && csLink != "")
+
+		if hasElements {
+			sb.WriteString("\n\n---\n")
+			if elements.LinkWebActive && elements.LinkWebURL != "" {
+				sb.WriteString(fmt.Sprintf("Web: %s\n", elements.LinkWebURL))
+			}
+			if elements.PromoActive && elements.PromoURL != "" {
+				sb.WriteString(fmt.Sprintf("Promo (%s): %s\n", elements.PromoCode, elements.PromoURL))
+			}
+			if elements.PhoneActive && elements.PhoneNumber != "" {
+				sb.WriteString(fmt.Sprintf("Telp: %s\n", elements.PhoneNumber))
+			}
+			if elements.CSActive && csLink != "" {
+				sb.WriteString(fmt.Sprintf("CS: %s\n", csLink))
+			}
 		}
-		if elements.PromoActive {
-			sb.WriteString(fmt.Sprintf("Promo (%s): %s\n", elements.PromoCode, elements.PromoURL))
-		}
-		if elements.PhoneActive {
-			sb.WriteString(fmt.Sprintf("Telp: %s\n", elements.PhoneNumber))
-		}
-		
-		sb.WriteString(fmt.Sprintf("CS: %s", csLink))
-		
-		msg.Text = sb.String()
+
+		msg.Text = strings.TrimRight(sb.String(), "\n")
 	}
 
 	return msg

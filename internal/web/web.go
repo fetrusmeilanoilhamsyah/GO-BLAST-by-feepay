@@ -24,7 +24,7 @@ func NewServer(database *db.DB, env string) (*Server, error) {
 
 	templates := make(map[string]*template.Template)
 
-	pages := []string{"index.html", "login.html", "register.html", "admin_campaigns.html", "admin_campaign_form.html"}
+	pages := []string{"index.html", "login.html", "register.html", "admin_campaigns.html", "admin_campaign_form.html", "admin_campaign_detail.html"}
 	for _, page := range pages {
 		tmpl, err := template.ParseFiles(base, filepath.Join("web", "templates", page))
 		if err != nil {
@@ -65,6 +65,9 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.Handle("GET /admin/campaigns", s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaigns, "admin")))
 	mux.Handle("GET /admin/campaigns/new", s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignNewGET, "admin")))
 	mux.Handle("POST /admin/campaigns/new", s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignNewPOST, "admin")))
+	mux.Handle("GET /admin/campaigns/{id}", s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignDetail, "admin")))
+	mux.Handle("POST /admin/campaigns/{id}/start", s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignStart, "admin")))
+	mux.Handle("POST /admin/campaigns/{id}/finish", s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignFinish, "admin")))
 	mux.Handle("GET /admin/campaigns/{id}/edit", s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignEditGET, "admin")))
 	mux.Handle("POST /admin/campaigns/{id}/edit", s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignEditPOST, "admin")))
 	mux.Handle("POST /admin/campaigns/preview", s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignPreview, "admin")))

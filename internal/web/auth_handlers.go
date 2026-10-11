@@ -208,12 +208,12 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleAdminHome(w http.ResponseWriter, r *http.Request) {
-	user := r.Context().Value(userContextKey).(UserSession)
+	user, _ := currentUser(r)
 	w.Write([]byte("Panel Admin - Tahap 12 akan mengisi halaman ini. Halo " + user.Email))
 }
 
 func (s *Server) handleWorkerHome(w http.ResponseWriter, r *http.Request) {
-	user := r.Context().Value(userContextKey).(UserSession)
+	user, _ := currentUser(r)
 	w.Write([]byte("Panel Pekerja - Tahap 11 akan mengisi halaman ini. Halo " + user.Email))
 }
 

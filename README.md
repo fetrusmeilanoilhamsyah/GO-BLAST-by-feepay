@@ -1,11 +1,11 @@
 # GO BLAST (oleh feepay)
 
-Aplikasi web blast pesan WhatsApp multi-pekerja dengan dukungan pelacakan kartu link (open graph simulation) dan rotasi nomor terdistribusi.
+Aplikasi web blast pesan WhatsApp multi-pekerja.
 
 ## Prasyarat
 
 - Go 1.27.x
-- PostgreSQL 16+
+- PostgreSQL 17
 
 ## Menjalankan Secara Lokal
 
@@ -22,7 +22,7 @@ Aplikasi web blast pesan WhatsApp multi-pekerja dengan dukungan pelacakan kartu 
 
 3. Buat akun admin pertama (opsional):
    ```bash
-   go run ./cmd/goblast create-admin admin@example.com
+   go run ./cmd/goblast createadmin email@example.com
    ```
 
 4. Jalankan aplikasi web:

@@ -4,12 +4,14 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"goblast/internal/campaign"
 	"goblast/internal/i18n"
@@ -37,14 +39,9 @@ func (s *Server) HandleAdminCampaigns(w http.ResponseWriter, r *http.Request) {
 		campaigns = append(campaigns, c)
 	}
 
-	var lang string
-	if u, ok := r.Context().Value(userContextKey).(UserSession); ok {
+	lang := "id"
+	if u, ok := currentUser(r); ok && u.Language != "" {
 		lang = u.Language
-	} else if uPtr, ok := r.Context().Value(userContextKey).(*UserSession); ok && uPtr != nil {
-		lang = uPtr.Language
-	}
-	if lang == "" {
-		lang = "id"
 	}
 
 	data := struct {
@@ -76,19 +73,14 @@ func (s *Server) HandleAdminCampaignNewGET(w http.ResponseWriter, r *http.Reques
 	if err == nil {
 		var val string
 		json.Unmarshal([]byte(settingVal), &val)
-		if val == campaign.ModeTombolAsli || val == campaign.ModeKartuLink {
+		if val == campaign.ModeKartuLink {
 			defaultMode = val
 		}
 	}
 
-	var lang string
-	if u, ok := r.Context().Value(userContextKey).(UserSession); ok {
+	lang := "id"
+	if u, ok := currentUser(r); ok && u.Language != "" {
 		lang = u.Language
-	} else if uPtr, ok := r.Context().Value(userContextKey).(*UserSession); ok && uPtr != nil {
-		lang = uPtr.Language
-	}
-	if lang == "" {
-		lang = "id"
 	}
 
 	csrfToken := getCSRF(r)
@@ -135,6 +127,11 @@ func (s *Server) HandleAdminCampaignNewPOST(w http.ResponseWriter, r *http.Reque
 	}
 
 	mode := r.FormValue("button_mode")
+	if mode == campaign.ModeTombolAsli {
+		http.Error(w, "mode tombol_asli dinonaktifkan", http.StatusBadRequest)
+		return
+	}
+
 	body := r.FormValue("body")
 
 	elements := campaign.Elements{
@@ -169,7 +166,12 @@ func (s *Server) HandleAdminCampaignNewPOST(w http.ResponseWriter, r *http.Reque
 			return
 		}
 		fileType := http.DetectContentType(buff)
-		if fileType != "image/jpeg" && fileType != "image/png" {
+		var ext string
+		if fileType == "image/jpeg" {
+			ext = ".jpg"
+		} else if fileType == "image/png" {
+			ext = ".png"
+		} else {
 			http.Error(w, "Hanya menerima gambar JPEG atau PNG", http.StatusBadRequest)
 			return
 		}
@@ -177,10 +179,10 @@ func (s *Server) HandleAdminCampaignNewPOST(w http.ResponseWriter, r *http.Reque
 
 		b := make([]byte, 16)
 		rand.Read(b)
-		filename := hex.EncodeToString(b) + filepath.Ext(header.Filename)
+		filename := hex.EncodeToString(b) + ext
 
 		os.MkdirAll("uploads", 0755)
-		fullPath := filepath.Join("uploads", filename)
+		fullPath := "uploads/" + filename
 		out, err := os.Create(fullPath)
 		if err != nil {
 			http.Error(w, "Gagal menyimpan file", http.StatusInternalServerError)
@@ -192,7 +194,7 @@ func (s *Server) HandleAdminCampaignNewPOST(w http.ResponseWriter, r *http.Reque
 	}
 
 	elementsJSON, _ := json.Marshal(elements)
-	user, _ := r.Context().Value(userContextKey).(UserSession)
+	user, _ := currentUser(r)
 	userID := user.ID
 
 	_, err = s.DB.Pool.Exec(r.Context(), `
@@ -234,14 +236,9 @@ func (s *Server) HandleAdminCampaignEditGET(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	var lang string
-	if u, ok := r.Context().Value(userContextKey).(UserSession); ok {
+	lang := "id"
+	if u, ok := currentUser(r); ok && u.Language != "" {
 		lang = u.Language
-	} else if uPtr, ok := r.Context().Value(userContextKey).(*UserSession); ok && uPtr != nil {
-		lang = uPtr.Language
-	}
-	if lang == "" {
-		lang = "id"
 	}
 
 	csrfToken := getCSRF(r)
@@ -297,6 +294,11 @@ func (s *Server) HandleAdminCampaignEditPOST(w http.ResponseWriter, r *http.Requ
 	}
 
 	mode := r.FormValue("button_mode")
+	if mode == campaign.ModeTombolAsli {
+		http.Error(w, "mode tombol_asli dinonaktifkan", http.StatusBadRequest)
+		return
+	}
+
 	body := r.FormValue("body")
 
 	elements := campaign.Elements{
@@ -335,7 +337,12 @@ func (s *Server) HandleAdminCampaignEditPOST(w http.ResponseWriter, r *http.Requ
 			return
 		}
 		fileType := http.DetectContentType(buff)
-		if fileType != "image/jpeg" && fileType != "image/png" {
+		var ext string
+		if fileType == "image/jpeg" {
+			ext = ".jpg"
+		} else if fileType == "image/png" {
+			ext = ".png"
+		} else {
 			http.Error(w, "Hanya menerima gambar JPEG atau PNG", http.StatusBadRequest)
 			return
 		}
@@ -343,10 +350,10 @@ func (s *Server) HandleAdminCampaignEditPOST(w http.ResponseWriter, r *http.Requ
 
 		b := make([]byte, 16)
 		rand.Read(b)
-		filename := hex.EncodeToString(b) + filepath.Ext(header.Filename)
+		filename := hex.EncodeToString(b) + ext
 
 		os.MkdirAll("uploads", 0755)
-		fullPath := filepath.Join("uploads", filename)
+		fullPath := "uploads/" + filename
 		out, err := os.Create(fullPath)
 		if err != nil {
 			http.Error(w, "Gagal menyimpan file", http.StatusInternalServerError)
@@ -383,6 +390,11 @@ func (s *Server) HandleAdminCampaignPreview(w http.ResponseWriter, r *http.Reque
 	}
 
 	mode := r.FormValue("button_mode")
+	if mode == campaign.ModeTombolAsli {
+		http.Error(w, "mode tombol_asli dinonaktifkan", http.StatusBadRequest)
+		return
+	}
+
 	body := r.FormValue("body")
 
 	elements := campaign.Elements{
@@ -402,20 +414,19 @@ func (s *Server) HandleAdminCampaignPreview(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	// Just use a dummy image path for preview if there is one uploaded previously, or just text.
-	// For actual preview during edit, maybe pass the existing image path.
 	imagePath := r.FormValue("existing_image_path")
+	if imagePath != "" {
+		if !strings.HasPrefix(imagePath, "uploads/") || strings.Contains(imagePath, "..") {
+			http.Error(w, "Image path tidak valid", http.StatusBadRequest)
+			return
+		}
+	}
 
 	msg := campaign.Render(body, imagePath, elements, mode)
 
-	var lang string
-	if u, ok := r.Context().Value(userContextKey).(UserSession); ok {
+	lang := "id"
+	if u, ok := currentUser(r); ok && u.Language != "" {
 		lang = u.Language
-	} else if uPtr, ok := r.Context().Value(userContextKey).(*UserSession); ok && uPtr != nil {
-		lang = uPtr.Language
-	}
-	if lang == "" {
-		lang = "id"
 	}
 
 	data := struct {
@@ -431,6 +442,164 @@ func (s *Server) HandleAdminCampaignPreview(w http.ResponseWriter, r *http.Reque
 	}
 
 	s.Tmpl["admin_campaign_preview.html"].Execute(w, data)
+}
+
+func (s *Server) HandleAdminCampaignDetail(w http.ResponseWriter, r *http.Request) {
+	idStr := r.PathValue("id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		http.Error(w, "ID tidak valid", http.StatusBadRequest)
+		return
+	}
+
+	var c campaign.Campaign
+	var elJSON string
+	var imgPath *string
+	err = s.DB.Pool.QueryRow(r.Context(), `
+		SELECT id, name, status, button_mode, body, image_path, elements, created_at, started_at, finished_at 
+		FROM campaigns WHERE id = $1
+	`, id).Scan(&c.ID, &c.Name, &c.Status, &c.ButtonMode, &c.Body, &imgPath, &elJSON, &c.CreatedAt, &c.StartedAt, &c.FinishedAt)
+
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+
+	if imgPath != nil {
+		c.ImagePath = *imgPath
+	}
+	json.Unmarshal([]byte(elJSON), &c.Elements)
+
+	// Fetch status counts
+	counts := map[string]int{
+		"tersedia":        0,
+		"dikirim":         0,
+		"terkirim":        0,
+		"tidak_terdaftar": 0,
+		"gagal":           0,
+	}
+
+	rows, err := s.DB.Pool.Query(r.Context(), `
+		SELECT status, COUNT(*) 
+		FROM campaign_numbers 
+		WHERE campaign_id = $1 
+		GROUP BY status
+	`, id)
+	if err == nil {
+		for rows.Next() {
+			var st string
+			var count int
+			if err := rows.Scan(&st, &count); err == nil {
+				counts[st] = count
+			}
+		}
+		rows.Close()
+	}
+
+	lang := "id"
+	if u, ok := currentUser(r); ok && u.Language != "" {
+		lang = u.Language
+	}
+
+	data := struct {
+		Lang      string
+		Title     string
+		Theme     string
+		CSRFToken string
+		Campaign  campaign.Campaign
+		Counts    map[string]int
+		T         func(string) string
+	}{
+		Lang:      lang,
+		Title:     c.Name + " - GO BLAST",
+		Theme:     getTheme(r),
+		CSRFToken: getCSRF(r),
+		Campaign:  c,
+		Counts:    counts,
+		T: func(key string) string {
+			return i18n.T(lang, key)
+		},
+	}
+
+	s.Tmpl["admin_campaign_detail.html"].ExecuteTemplate(w, "base.html", data)
+}
+
+func (s *Server) HandleAdminCampaignStart(w http.ResponseWriter, r *http.Request) {
+	idStr := r.PathValue("id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		http.Error(w, "ID tidak valid", http.StatusBadRequest)
+		return
+	}
+
+	var status string
+	err = s.DB.Pool.QueryRow(r.Context(), "SELECT status FROM campaigns WHERE id = $1 FOR UPDATE", id).Scan(&status)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+
+	if status != campaign.StatusDraf {
+		http.Error(w, "Campaign hanya bisa dimulai dari status draf", http.StatusBadRequest)
+		return
+	}
+
+	var availableCount int
+	err = s.DB.Pool.QueryRow(r.Context(), "SELECT COUNT(*) FROM campaign_numbers WHERE campaign_id = $1 AND status = 'tersedia'", id).Scan(&availableCount)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if availableCount < 1 {
+		http.Error(w, "Tidak ada nomor tersedia untuk memulai campaign", http.StatusBadRequest)
+		return
+	}
+
+	now := time.Now()
+	_, err = s.DB.Pool.Exec(r.Context(), "UPDATE campaigns SET status = 'berjalan', started_at = $1 WHERE id = $2", now, id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	user, _ := currentUser(r)
+	s.logAudit(&user.ID, "campaign_start", "campaign", strconv.FormatInt(id, 10), "")
+
+	http.Redirect(w, r, fmt.Sprintf("/admin/campaigns/%d", id), http.StatusSeeOther)
+}
+
+func (s *Server) HandleAdminCampaignFinish(w http.ResponseWriter, r *http.Request) {
+	idStr := r.PathValue("id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		http.Error(w, "ID tidak valid", http.StatusBadRequest)
+		return
+	}
+
+	var status string
+	err = s.DB.Pool.QueryRow(r.Context(), "SELECT status FROM campaigns WHERE id = $1 FOR UPDATE", id).Scan(&status)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+
+	if status != campaign.StatusBerjalan {
+		http.Error(w, "Campaign hanya bisa diselesaikan dari status berjalan", http.StatusBadRequest)
+		return
+	}
+
+	now := time.Now()
+	_, err = s.DB.Pool.Exec(r.Context(), "UPDATE campaigns SET status = 'selesai', finished_at = $1 WHERE id = $2", now, id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	user, _ := currentUser(r)
+	s.logAudit(&user.ID, "campaign_finish", "campaign", strconv.FormatInt(id, 10), "")
+
+	http.Redirect(w, r, fmt.Sprintf("/admin/campaigns/%d", id), http.StatusSeeOther)
 }
 
 func (s *Server) HandleServeUpload(w http.ResponseWriter, r *http.Request) {

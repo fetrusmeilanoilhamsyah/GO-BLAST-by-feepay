@@ -12,6 +12,7 @@ func TestValidateTemplate(t *testing.T) {
 		mode     string
 		elements Elements
 		wantErr  bool
+		errMsg   string
 	}{
 		{
 			name: "Valid kartu_link",
@@ -24,17 +25,18 @@ func TestValidateTemplate(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "Valid tombol_asli",
+			name: "Reject tombol_asli",
 			body: "Promo FEEPAY hari ini",
 			mode: ModeTombolAsli,
 			elements: Elements{
 				CSActive: true,
 				CSNumber: "6281234567890",
 			},
-			wantErr: false,
+			wantErr: true,
+			errMsg:  "mode tombol_asli dinonaktifkan",
 		},
 		{
-			name: "Missing FEEPAY (now valid)",
+			name: "Missing FEEPAY (valid)",
 			body: "Halo ini pesan biasa",
 			mode: ModeKartuLink,
 			elements: Elements{
@@ -44,7 +46,7 @@ func TestValidateTemplate(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "CS inactive (now valid)",
+			name: "CS inactive (valid)",
 			body: "FEEPAY promo",
 			mode: ModeKartuLink,
 			elements: Elements{
@@ -53,7 +55,7 @@ func TestValidateTemplate(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "Body too long",
+			name: "Body too long (byte vs rune check)",
 			body: "FEEPAY " + strings.Repeat("A", 1001),
 			mode: ModeKartuLink,
 			elements: Elements{
@@ -61,6 +63,26 @@ func TestValidateTemplate(t *testing.T) {
 				CSNumber: "62812",
 			},
 			wantErr: true,
+			errMsg:  "body pesan tidak boleh lebih dari 1000 karakter",
+		},
+		{
+			name: "Body exactly 1000 runes including multi-byte utf8",
+			body: strings.Repeat("日", 1000),
+			mode: ModeKartuLink,
+			elements: Elements{
+				CSActive: false,
+			},
+			wantErr: false,
+		},
+		{
+			name: "Body 1001 runes multi-byte utf8",
+			body: strings.Repeat("日", 1001),
+			mode: ModeKartuLink,
+			elements: Elements{
+				CSActive: false,
+			},
+			wantErr: true,
+			errMsg:  "body pesan tidak boleh lebih dari 1000 karakter",
 		},
 		{
 			name: "Invalid web link scheme",
@@ -73,6 +95,39 @@ func TestValidateTemplate(t *testing.T) {
 				LinkWebURL:    "http://example.com",
 			},
 			wantErr: true,
+		},
+		{
+			name: "URL empty host",
+			body: "FEEPAY",
+			mode: ModeKartuLink,
+			elements: Elements{
+				CSActive:      false,
+				LinkWebActive: true,
+				LinkWebURL:    "https://",
+			},
+			wantErr: true,
+			errMsg:  "URL harus memiliki host yang valid",
+		},
+		{
+			name: "Phone active valid E.164",
+			body: "FEEPAY",
+			mode: ModeKartuLink,
+			elements: Elements{
+				PhoneActive: true,
+				PhoneNumber: "081234567890",
+			},
+			wantErr: false,
+		},
+		{
+			name: "Phone active invalid number",
+			body: "FEEPAY",
+			mode: ModeKartuLink,
+			elements: Elements{
+				PhoneActive: true,
+				PhoneNumber: "123",
+			},
+			wantErr: true,
+			errMsg:  "nomor telepon tidak valid",
 		},
 		{
 			name: "Javascript URL",
@@ -99,16 +154,16 @@ func TestValidateTemplate(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name: "Valid all elements",
+			name: "Valid all elements for kartu_link",
 			body: "FEEPAY",
-			mode: ModeTombolAsli,
+			mode: ModeKartuLink,
 			elements: Elements{
 				CSActive:      true,
 				CSNumber:      "https://wa.me/62812",
 				LinkWebActive: true,
 				LinkWebURL:    "https://feepay.com",
 				PhoneActive:   true,
-				PhoneNumber:   "628111",
+				PhoneNumber:   "081234567890",
 				PromoActive:   true,
 				PromoCode:     "PROMO123",
 				PromoURL:      "https://feepay.com/promo",
@@ -122,6 +177,9 @@ func TestValidateTemplate(t *testing.T) {
 			err := ValidateTemplate(tt.body, tt.mode, tt.elements)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ValidateTemplate() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if tt.errMsg != "" && err != nil && !strings.Contains(err.Error(), tt.errMsg) {
+				t.Errorf("ValidateTemplate() error msg = %v, wantErrMsg contains %v", err, tt.errMsg)
 			}
 		})
 	}
@@ -140,7 +198,7 @@ func TestRender(t *testing.T) {
 		PromoURL:      "https://feepay.com/promo",
 	}
 
-	t.Run("Tombol Asli", func(t *testing.T) {
+	t.Run("Tombol Asli with CS", func(t *testing.T) {
 		msg := Render("Halo FEEPAY", "img.jpg", elements, ModeTombolAsli)
 		if msg.Text != "Halo FEEPAY" {
 			t.Errorf("Expected text 'Halo FEEPAY', got '%s'", msg.Text)
@@ -151,29 +209,9 @@ func TestRender(t *testing.T) {
 		if len(msg.Buttons) != 5 {
 			t.Errorf("Expected 5 buttons, got %d", len(msg.Buttons))
 		}
-		// web
-		if msg.Buttons[0].Type != "url" || msg.Buttons[0].Payload != "https://feepay.com" {
-			t.Errorf("Unexpected button 0: %+v", msg.Buttons[0])
-		}
-		// phone
-		if msg.Buttons[1].Type != "phone" || msg.Buttons[1].Payload != "628111" {
-			t.Errorf("Unexpected button 1: %+v", msg.Buttons[1])
-		}
-		// copy
-		if msg.Buttons[2].Type != "copy" || msg.Buttons[2].Payload != "PROMO123" {
-			t.Errorf("Unexpected button 2: %+v", msg.Buttons[2])
-		}
-		// promo url
-		if msg.Buttons[3].Type != "url" || msg.Buttons[3].Payload != "https://feepay.com/promo" {
-			t.Errorf("Unexpected button 3: %+v", msg.Buttons[3])
-		}
-		// cs
-		if msg.Buttons[4].Type != "url" || msg.Buttons[4].Payload != "https://wa.me/62812" {
-			t.Errorf("Unexpected button 4: %+v", msg.Buttons[4])
-		}
 	})
 
-	t.Run("Kartu Link", func(t *testing.T) {
+	t.Run("Kartu Link with CS", func(t *testing.T) {
 		msg := Render("Halo FEEPAY\nBaris kedua", "", elements, ModeKartuLink)
 		expected := "*Halo FEEPAY*\nBaris kedua\n\n---\nWeb: https://feepay.com\nPromo (PROMO123): https://feepay.com/promo\nTelp: 628111\nCS: https://wa.me/62812"
 		if msg.Text != expected {
@@ -181,6 +219,28 @@ func TestRender(t *testing.T) {
 		}
 		if len(msg.Buttons) != 0 {
 			t.Errorf("Expected 0 buttons for kartu_link, got %d", len(msg.Buttons))
+		}
+	})
+
+	t.Run("Render with CSActive false does not produce CS or wa.me", func(t *testing.T) {
+		noCSElements := elements
+		noCSElements.CSActive = false
+
+		// Kartu link test
+		msgKartu := Render("Halo FEEPAY\nBaris kedua", "", noCSElements, ModeKartuLink)
+		if strings.Contains(msgKartu.Text, "CS") {
+			t.Errorf("Kartu link should not contain 'CS' when CSActive is false. Got: %s", msgKartu.Text)
+		}
+		if strings.Contains(msgKartu.Text, "wa.me") {
+			t.Errorf("Kartu link should not contain 'wa.me' when CSActive is false. Got: %s", msgKartu.Text)
+		}
+
+		// Tombol asli test
+		msgTombol := Render("Halo FEEPAY", "", noCSElements, ModeTombolAsli)
+		for _, btn := range msgTombol.Buttons {
+			if strings.Contains(btn.Text, "CS") || strings.Contains(btn.Payload, "wa.me") {
+				t.Errorf("Tombol asli should not contain CS button when CSActive is false. Got: %+v", btn)
+			}
 		}
 	})
 }

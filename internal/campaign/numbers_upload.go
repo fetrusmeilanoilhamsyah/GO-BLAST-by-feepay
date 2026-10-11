@@ -7,9 +7,11 @@ import (
 	"encoding/csv"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -17,20 +19,28 @@ import (
 	"goblast/internal/numbers"
 )
 
+var previewIDRegex = regexp.MustCompile(`^[0-9a-f]{32}$`)
+
+func IsValidPreviewID(id string) bool {
+	return previewIDRegex.MatchString(id)
+}
+
 type UploadStats struct {
-	Total         int
-	Accepted      int
-	DupInFile     int
-	DupInCampaign int
-	Invalid       int
-	Ambiguous     int
+	Total         int            `json:"total"`
+	Accepted      int            `json:"accepted"`
+	DupInFile     int            `json:"dup_in_file"`
+	DupInCampaign int            `json:"dup_in_campaign"`
+	Invalid       int            `json:"invalid"`
+	Ambiguous     int            `json:"ambiguous"`
+	CountryCodes  map[string]int `json:"country_codes"`
 }
 
 type PreviewData struct {
-	ID        string      `json:"id"`
-	Filename  string      `json:"filename"`
-	Stats     UploadStats `json:"stats"`
-	CreatedAt time.Time   `json:"created_at"`
+	ID         string      `json:"id"`
+	CampaignID int64       `json:"campaign_id"`
+	Filename   string      `json:"filename"`
+	Stats      UploadStats `json:"stats"`
+	CreatedAt  time.Time   `json:"created_at"`
 }
 
 type RejectedRow struct {
@@ -60,7 +70,10 @@ func ProcessPreview(ctx context.Context, db *pgxpool.Pool, campaignID int64, raw
 		rows.Close()
 	}
 
-	stats := UploadStats{Total: len(rawNums)}
+	stats := UploadStats{
+		Total:        len(rawNums),
+		CountryCodes: make(map[string]int),
+	}
 	seenInFile := make(map[string]bool)
 
 	type ValidRow struct {
@@ -70,35 +83,36 @@ func ProcessPreview(ctx context.Context, db *pgxpool.Pool, campaignID int64, raw
 	var validNumbers []ValidRow
 	var rejected []RejectedRow
 
-	for _, raw := range rawNums {
-		e164, status, ccStr := numbers.Normalize(raw, defaultCC)
-		
+	for _, item := range rawNums {
+		e164, status, ccStr := numbers.Normalize(item.Raw, defaultCC, item.IsNumericXLSX)
+
 		if status == "tidak_valid" {
 			stats.Invalid++
-			rejected = append(rejected, RejectedRow{raw, "tidak_valid"})
+			rejected = append(rejected, RejectedRow{item.Raw, "tidak_valid"})
 			continue
 		}
 		if status == "ambigu" {
 			stats.Ambiguous++
-			rejected = append(rejected, RejectedRow{raw, "ambigu"})
+			rejected = append(rejected, RejectedRow{item.Raw, "ambigu"})
 			continue
 		}
-		
+
 		// ok
 		if seenInFile[e164] {
 			stats.DupInFile++
-			rejected = append(rejected, RejectedRow{raw, "dup_in_file"})
+			rejected = append(rejected, RejectedRow{item.Raw, "dup_in_file"})
 			continue
 		}
 		seenInFile[e164] = true
 
 		if existing[e164] {
 			stats.DupInCampaign++
-			rejected = append(rejected, RejectedRow{raw, "dup_in_campaign"})
+			rejected = append(rejected, RejectedRow{item.Raw, "dup_in_campaign"})
 			continue
 		}
 
 		stats.Accepted++
+		stats.CountryCodes[ccStr]++
 		validNumbers = append(validNumbers, ValidRow{Phone: e164, CC: ccStr})
 	}
 
@@ -106,33 +120,59 @@ func ProcessPreview(ctx context.Context, db *pgxpool.Pool, campaignID int64, raw
 	b := make([]byte, 16)
 	rand.Read(b)
 	previewID := hex.EncodeToString(b)
-
-	preview := PreviewData{
-		ID:        previewID,
-		Filename:  filename,
-		Stats:     stats,
-		CreatedAt: time.Now(),
+	if !IsValidPreviewID(previewID) {
+		return PreviewData{}, errors.New("gagal membuat preview ID yang valid")
 	}
 
-	// Save valid numbers to json
-	validBytes, _ := json.Marshal(validNumbers)
-	os.WriteFile(filepath.Join("data", "tmp", previewID+"_valid.json"), validBytes, 0644)
+	preview := PreviewData{
+		ID:         previewID,
+		CampaignID: campaignID,
+		Filename:   filename,
+		Stats:      stats,
+		CreatedAt:  time.Now(),
+	}
 
-	// Save metadata
-	metaBytes, _ := json.Marshal(preview)
-	os.WriteFile(filepath.Join("data", "tmp", previewID+"_meta.json"), metaBytes, 0644)
+	tmpDir := filepath.Join("data", "tmp")
+	if err := os.MkdirAll(tmpDir, 0755); err != nil {
+		return PreviewData{}, fmt.Errorf("gagal membuat direktori data/tmp: %w", err)
+	}
 
-	// Save rejected as CSV
+	// Save valid numbers to json (0600)
+	validBytes, err := json.Marshal(validNumbers)
+	if err != nil {
+		return PreviewData{}, err
+	}
+	if err := os.WriteFile(filepath.Join(tmpDir, previewID+"_valid.json"), validBytes, 0600); err != nil {
+		return PreviewData{}, fmt.Errorf("gagal menulis file valid.json: %w", err)
+	}
+
+	// Save metadata (0600)
+	metaBytes, err := json.Marshal(preview)
+	if err != nil {
+		return PreviewData{}, err
+	}
+	if err := os.WriteFile(filepath.Join(tmpDir, previewID+"_meta.json"), metaBytes, 0600); err != nil {
+		return PreviewData{}, fmt.Errorf("gagal menulis file meta.json: %w", err)
+	}
+
+	// Save rejected as CSV (0600)
 	if len(rejected) > 0 {
-		f, err := os.Create(filepath.Join("data", "tmp", previewID+"_rejected.csv"))
-		if err == nil {
-			cw := csv.NewWriter(f)
-			cw.Write([]string{"Nomor Asli", "Alasan Ditolak"})
-			for _, r := range rejected {
-				cw.Write([]string{r.RawNumber, r.Reason})
-			}
-			cw.Flush()
+		f, err := os.OpenFile(filepath.Join(tmpDir, previewID+"_rejected.csv"), os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+		if err != nil {
+			return PreviewData{}, fmt.Errorf("gagal membuat file rejected.csv: %w", err)
+		}
+		cw := csv.NewWriter(f)
+		cw.Write([]string{"Nomor Asli", "Alasan Ditolak"})
+		for _, r := range rejected {
+			cw.Write([]string{r.RawNumber, r.Reason})
+		}
+		cw.Flush()
+		if err := cw.Error(); err != nil {
 			f.Close()
+			return PreviewData{}, err
+		}
+		if err := f.Close(); err != nil {
+			return PreviewData{}, err
 		}
 	}
 
@@ -141,6 +181,10 @@ func ProcessPreview(ctx context.Context, db *pgxpool.Pool, campaignID int64, raw
 
 // ConfirmUpload inserts the valid numbers into the database.
 func ConfirmUpload(ctx context.Context, db *pgxpool.Pool, campaignID int64, userID int64, previewID string) error {
+	if !IsValidPreviewID(previewID) {
+		return errors.New("preview ID tidak valid")
+	}
+
 	metaPath := filepath.Join("data", "tmp", previewID+"_meta.json")
 	validPath := filepath.Join("data", "tmp", previewID+"_valid.json")
 
@@ -149,7 +193,12 @@ func ConfirmUpload(ctx context.Context, db *pgxpool.Pool, campaignID int64, user
 		return fmt.Errorf("preview tidak ditemukan atau sudah kedaluwarsa")
 	}
 	var preview PreviewData
-	json.Unmarshal(metaBytes, &preview)
+	if err := json.Unmarshal(metaBytes, &preview); err != nil {
+		return fmt.Errorf("metadata preview tidak valid: %w", err)
+	}
+	if preview.CampaignID != campaignID {
+		return errors.New("preview tidak cocok dengan campaign ini")
+	}
 
 	validBytes, err := os.ReadFile(validPath)
 	if err != nil {
@@ -160,7 +209,9 @@ func ConfirmUpload(ctx context.Context, db *pgxpool.Pool, campaignID int64, user
 		CC    string `json:"cc"`
 	}
 	var validNumbers []ValidRow
-	json.Unmarshal(validBytes, &validNumbers)
+	if err := json.Unmarshal(validBytes, &validNumbers); err != nil {
+		return fmt.Errorf("data valid tidak valid: %w", err)
+	}
 
 	tx, err := db.Begin(ctx)
 	if err != nil {
@@ -192,16 +243,13 @@ func ConfirmUpload(ctx context.Context, db *pgxpool.Pool, campaignID int64, user
 	// Bulk insert campaign_numbers
 	insertedCount := 0
 	if len(validNumbers) > 0 {
-		// Use copy from for faster insert, or unnest
-		// "ON CONFLICT DO NOTHING" requires INSERT ... ON CONFLICT
-		
 		phones := make([]string, len(validNumbers))
 		ccs := make([]string, len(validNumbers))
 		for i, v := range validNumbers {
 			phones[i] = v.Phone
 			ccs[i] = v.CC
 		}
-		
+
 		q := `
 			INSERT INTO campaign_numbers (campaign_id, batch_id, phone_e164, country_code, status)
 			SELECT $1, $2, t.phone, t.cc, 'tersedia'
@@ -210,25 +258,24 @@ func ConfirmUpload(ctx context.Context, db *pgxpool.Pool, campaignID int64, user
 			) t
 			ON CONFLICT (campaign_id, phone_e164) DO NOTHING
 		`
-		
+
 		res, err := tx.Exec(ctx, q, campaignID, batchID, phones, ccs)
 		if err != nil {
 			return fmt.Errorf("gagal memasukkan nomor: %w", err)
 		}
 		insertedCount = int(res.RowsAffected())
 	}
-	
+
 	// Audit log
-	// "siapa mengunggah, kapan, nama file, ringkasan hasil."
 	detailsJSON, _ := json.Marshal(map[string]interface{}{
-		"filename": preview.Filename,
-		"total": preview.Stats.Total,
-		"inserted": insertedCount,
+		"filename":    preview.Filename,
+		"total":       preview.Stats.Total,
+		"inserted":    insertedCount,
 		"dup_in_file": preview.Stats.DupInFile,
-		"invalid": preview.Stats.Invalid,
-		"ambiguous": preview.Stats.Ambiguous,
+		"invalid":     preview.Stats.Invalid,
+		"ambiguous":   preview.Stats.Ambiguous,
 	})
-	
+
 	_, err = tx.Exec(ctx, `
 		INSERT INTO audit_logs (actor_id, action, entity, entity_id, meta, ip)
 		VALUES ($1, 'upload_numbers', 'campaign', $2, $3, '')
@@ -240,11 +287,46 @@ func ConfirmUpload(ctx context.Context, db *pgxpool.Pool, campaignID int64, user
 	if err := tx.Commit(ctx); err != nil {
 		return err
 	}
-	
+
 	// Clean up temp files
 	os.Remove(metaPath)
 	os.Remove(validPath)
-	// We leave rejected.csv there for downloading, maybe cleaned up by a cron later
 
 	return nil
+}
+
+// CleanTmpFiles removes files in data/tmp older than maxAge.
+func CleanTmpFiles(maxAge time.Duration) {
+	tmpDir := filepath.Join("data", "tmp")
+	entries, err := os.ReadDir(tmpDir)
+	if err != nil {
+		return
+	}
+	cutoff := time.Now().Add(-maxAge)
+	for _, entry := range entries {
+		info, err := entry.Info()
+		if err != nil {
+			continue
+		}
+		if info.ModTime().Before(cutoff) {
+			_ = os.Remove(filepath.Join(tmpDir, entry.Name()))
+		}
+	}
+}
+
+// StartTmpCleaner starts a background goroutine that cleans data/tmp every hour.
+func StartTmpCleaner(ctx context.Context) {
+	CleanTmpFiles(24 * time.Hour)
+	go func() {
+		ticker := time.NewTicker(1 * time.Hour)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				CleanTmpFiles(24 * time.Hour)
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
 }

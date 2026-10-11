@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 
+	"goblast/internal/campaign"
 	"goblast/internal/config"
 	"goblast/internal/db"
 	"goblast/internal/i18n"
@@ -36,6 +37,8 @@ func main() {
 	}
 
 	// Normal startup
+	campaign.StartTmpCleaner(context.Background())
+
 	if err := i18n.Load("locales"); err != nil {
 		slog.Error("Failed to load i18n", "err", err)
 		os.Exit(1)

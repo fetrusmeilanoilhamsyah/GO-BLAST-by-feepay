@@ -145,6 +145,7 @@ Pemilik proyek sudah menyetujui daftar ini. Pustaka di luar daftar tidak boleh d
 | `github.com/xuri/excelize/v2` | Membaca file XLSX | Tahap 7 |
 | `go.mau.fi/whatsmeow` | Koneksi WhatsApp | Tahap 3 |
 | `github.com/skip2/go-qrcode` | Menggambar QR untuk pairing | Tahap 9 |
+| `golang.org/x/image` | Memperkecil gambar menjadi thumbnail kartu link | Tahap 9 |
 
 Tidak ada framework web, ORM, atau pustaka sesi. Router memakai `net/http`, SQL ditulis langsung dengan parameter.
 

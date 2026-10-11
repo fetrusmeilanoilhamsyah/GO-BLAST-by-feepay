@@ -77,8 +77,8 @@
 <body>
     <div class="bubble">
         {{if .ImagePath}}
-        <div class="image-placeholder">
-            {{ call .T "campaign.attached_image" }}
+        <div style="margin-bottom: 8px;">
+            <img src="/{{.ImagePath}}" alt="Attached Image" style="max-width: 100%; max-height: 300px; border-radius: 6px; display: block; object-fit: contain;">
         </div>
         {{end}}
 

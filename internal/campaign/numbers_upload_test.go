@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -15,7 +16,7 @@ import (
 func TestNumbersUpload(t *testing.T) {
 	// Change working directory to app root for the test
 	os.Chdir("../..")
-	
+
 	godotenv.Load() // Loads .env from root
 
 	dbURL := os.Getenv("DATABASE_URL")
@@ -30,12 +31,12 @@ func TestNumbersUpload(t *testing.T) {
 	defer pool.Close()
 
 	os.MkdirAll(filepath.Join("data", "tmp"), 0755)
-	
+
 	// Create user
 	var userID int64
 	randEmail := fmt.Sprintf("test%d@test.com", time.Now().UnixNano())
 	randRef := fmt.Sprintf("REF%d", time.Now().UnixNano())
-	
+
 	err = pool.QueryRow(context.Background(), "INSERT INTO users (email, password_hash, role, currency, referral_code, display_name) VALUES ($1, 'hash', 'admin', 'IDR', $2, 'Test Admin') RETURNING id", randEmail, randRef).Scan(&userID)
 	if err != nil {
 		t.Fatal("Failed to create user:", err)
@@ -56,13 +57,13 @@ func TestNumbersUpload(t *testing.T) {
 	}
 
 	csvData := []byte("nomor\n081234567890\n081234567890\n081234567891\nabc\n81234567891\n")
-	
+
 	// Test preview C1
 	preview, err := ProcessPreview(context.Background(), pool, c1, csvData, "test.csv", "62")
 	if err != nil {
 		t.Fatal(err)
 	}
-	
+
 	if preview.Stats.Total != 5 {
 		t.Errorf("Total = %d, want 5", preview.Stats.Total)
 	}
@@ -77,6 +78,24 @@ func TestNumbersUpload(t *testing.T) {
 	}
 	if preview.Stats.Accepted != 3 {
 		t.Errorf("Accepted = %d, want 3", preview.Stats.Accepted)
+	}
+	if preview.Stats.CountryCodes["62"] != 2 {
+		t.Errorf("CountryCodes[62] = %d, want 2", preview.Stats.CountryCodes["62"])
+	}
+	if preview.Stats.CountryCodes["81"] != 1 {
+		t.Errorf("CountryCodes[81] = %d, want 1", preview.Stats.CountryCodes["81"])
+	}
+
+	// Test invalid preview ID path traversal
+	errInvalidID := ConfirmUpload(context.Background(), pool, c1, userID, "../x")
+	if errInvalidID == nil {
+		t.Errorf("Expected error for invalid previewID '../x'")
+	}
+
+	// Test mismatched campaign ID binding
+	errMismatched := ConfirmUpload(context.Background(), pool, c2, userID, preview.ID)
+	if errMismatched == nil || !strings.Contains(errMismatched.Error(), "tidak cocok dengan campaign") {
+		t.Errorf("Expected error about mismatched campaign ID, got %v", errMismatched)
 	}
 
 	// Confirm C1
@@ -101,7 +120,7 @@ func TestNumbersUpload(t *testing.T) {
 	if preview2.Stats.Accepted != 1 {
 		t.Errorf("Accepted = %d, want 1", preview2.Stats.Accepted)
 	}
-	
+
 	err = ConfirmUpload(context.Background(), pool, c1, userID, preview2.ID)
 	if err != nil {
 		t.Fatal(err)

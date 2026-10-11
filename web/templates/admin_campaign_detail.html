@@ -1,0 +1,60 @@
+{{define "content"}}
+<div style="max-width: 900px; margin: 0 auto; padding: 20px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <div>
+            <a href="/admin/campaigns" style="color: var(--color-muted); text-decoration: none; font-size: 14px;">&larr; Kembali ke daftar campaign</a>
+            <h2 style="margin: 8px 0 0 0;">{{.Campaign.Name}}</h2>
+        </div>
+        <div>
+            <span style="padding: 6px 14px; border-radius: 20px; font-size: 14px; font-weight: bold; color: var(--color-on-primary); background-color: {{if eq .Campaign.Status "draf"}}var(--color-status-draft){{else if eq .Campaign.Status "berjalan"}}var(--color-status-running){{else}}var(--color-status-done){{end}};">
+                {{.Campaign.Status}}
+            </span>
+        </div>
+    </div>
+
+    <div style="background-color: var(--color-card); border-radius: 8px; padding: 20px; margin-bottom: 20px; box-shadow: 0 4px 6px var(--color-shadow);">
+        <h3 style="margin-top: 0; margin-bottom: 15px; border-bottom: 1px solid var(--color-border); padding-bottom: 10px;">Statistik Nomor</h3>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 15px; margin-bottom: 20px;">
+            <div style="background-color: var(--color-surface-muted); padding: 15px; border-radius: 6px; text-align: center;">
+                <div style="font-size: 13px; color: var(--color-muted); margin-bottom: 5px;">Tersedia</div>
+                <div style="font-size: 24px; font-weight: bold; color: var(--color-accent);">{{index .Counts "tersedia"}}</div>
+            </div>
+            <div style="background-color: var(--color-surface-muted); padding: 15px; border-radius: 6px; text-align: center;">
+                <div style="font-size: 13px; color: var(--color-muted); margin-bottom: 5px;">Dikirim</div>
+                <div style="font-size: 24px; font-weight: bold; color: var(--color-warning);">{{index .Counts "dikirim"}}</div>
+            </div>
+            <div style="background-color: var(--color-surface-muted); padding: 15px; border-radius: 6px; text-align: center;">
+                <div style="font-size: 13px; color: var(--color-muted); margin-bottom: 5px;">Terkirim</div>
+                <div style="font-size: 24px; font-weight: bold; color: var(--color-status-done);">{{index .Counts "terkirim"}}</div>
+            </div>
+            <div style="background-color: var(--color-surface-muted); padding: 15px; border-radius: 6px; text-align: center;">
+                <div style="font-size: 13px; color: var(--color-muted); margin-bottom: 5px;">Tidak Terdaftar</div>
+                <div style="font-size: 24px; font-weight: bold; color: var(--color-muted);">{{index .Counts "tidak_terdaftar"}}</div>
+            </div>
+            <div style="background-color: var(--color-surface-muted); padding: 15px; border-radius: 6px; text-align: center;">
+                <div style="font-size: 13px; color: var(--color-muted); margin-bottom: 5px;">Gagal</div>
+                <div style="font-size: 24px; font-weight: bold; color: var(--color-danger);">{{index .Counts "gagal"}}</div>
+            </div>
+        </div>
+
+        <div style="display: flex; gap: 10px; align-items: center; border-top: 1px solid var(--color-border); padding-top: 20px;">
+            {{if eq .Campaign.Status "draf"}}
+            <form method="post" action="/admin/campaigns/{{.Campaign.ID}}/start" style="margin: 0;">
+                <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+                <button type="submit" class="btn btn-primary" {{if lt (index .Counts "tersedia") 1}}disabled title="Tambahkan nomor terlebih dahulu"{{end}}>Mulai</button>
+            </form>
+            <a href="/admin/campaigns/{{.Campaign.ID}}/numbers" class="btn btn-secondary">Upload Nomor</a>
+            <a href="/admin/campaigns/{{.Campaign.ID}}/edit" class="btn btn-secondary">Edit Template</a>
+            {{else if eq .Campaign.Status "berjalan"}}
+            <form method="post" action="/admin/campaigns/{{.Campaign.ID}}/finish" style="margin: 0;">
+                <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+                <button type="submit" class="btn btn-danger">Selesai</button>
+            </form>
+            <a href="/admin/campaigns/{{.Campaign.ID}}/numbers" class="btn btn-secondary">Tambah Nomor</a>
+            {{else}}
+            <span style="color: var(--color-muted); font-size: 14px;">Campaign telah selesai.</span>
+            {{end}}
+        </div>
+    </div>
+</div>
+{{end}}

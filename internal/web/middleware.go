@@ -2,7 +2,9 @@ package web
 
 import (
 	"context"
+	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -25,6 +27,18 @@ type UserSession struct {
 	Email    string
 	Language string
 	Currency string
+}
+
+func currentUser(r *http.Request) (UserSession, bool) {
+	if val := r.Context().Value(userContextKey); val != nil {
+		if u, ok := val.(UserSession); ok {
+			return u, true
+		}
+		if uPtr, ok := val.(*UserSession); ok && uPtr != nil {
+			return *uPtr, true
+		}
+	}
+	return UserSession{}, false
 }
 
 type limiterStore struct {
@@ -66,7 +80,7 @@ func RateLimitLogin(next http.HandlerFunc) http.HandlerFunc {
 			key := ip + ":" + email
 
 			// 5 attempts per 15 minutes = 1 attempt per 3 minutes (0.0055/s)
-			// We can use rate.Every(3 * time.Minute) and burst 5.
+			// We can use rate.Every(15*time.Minute/5), 5 burst.
 			limiter := loginLimiter.getVisitor(key, rate.Every(15*time.Minute/5), 5)
 
 			if !limiter.Allow() {
@@ -97,14 +111,16 @@ func RateLimitRegister(next http.HandlerFunc) http.HandlerFunc {
 }
 
 func getIP(r *http.Request) string {
-	ip := r.Header.Get("X-Real-IP")
-	if ip == "" {
-		ip = r.Header.Get("X-Forwarded-For")
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		host = r.RemoteAddr
 	}
-	if ip == "" {
-		ip = r.RemoteAddr
+	if host == "127.0.0.1" || host == "::1" {
+		if realIP := strings.TrimSpace(r.Header.Get("X-Real-IP")); realIP != "" {
+			return realIP
+		}
 	}
-	return ip
+	return host
 }
 
 func (s *Server) RequireRole(next http.HandlerFunc, roles ...string) http.HandlerFunc {

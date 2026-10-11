@@ -31,21 +31,21 @@ func TestNormalize(t *testing.T) {
 		// Awalan 0
 		{"ID Awalan 0", idLocal, "62", idE164, "ok"},
 		{"ID Awalan 0 dengan spasi", "0 812 345 678", "62", "62812345678", "ok"}, // assume idLocal is 0812345678
-		
+
 		// Awalan + dan 00
 		{"ID Awalan +", "+" + idE164, "62", idE164, "ok"},
 		{"US Awalan +", "+" + usE164, "62", usE164, "ok"},
 		{"ID Awalan 00", "00" + idE164, "62", idE164, "ok"},
-		
+
 		// Tanpa awalan
 		{"ID Tanpa awalan, valid (diawali CC)", idE164, "62", idE164, "ok"},
 		{"ID Tanpa awalan, valid (diawali CC), dengan strip", "62-812-345", "62", "62812345", "ok"}, // might not match exact example, let's use exact
 		{"ID Tanpa awalan, diparse", idNoPrefix, "62", idNoPrefix, "ok"},
-		{"US Tanpa awalan, diparse", usE164, "62", usE164, "ok"}, 
-		
+		{"US Tanpa awalan, diparse", usE164, "62", usE164, "ok"},
+
 		// Karakter dihilangkan
 		{"Kurung dan spasi", "+62 (812) 345-678", "62", "62812345678", "ok"},
-		
+
 		// Tidak valid
 		{"Kosong", "", "62", "", "tidak_valid"},
 		{"Huruf saja", "abc", "62", "", "tidak_valid"},
@@ -73,27 +73,27 @@ func TestNormalizeFixed(t *testing.T) {
 		// 1. Awalan 0
 		{"Awalan 0", "081234567890", "62", "6281234567890", "ok"},
 		{"Awalan 0 dengan spasi", "0 812 345 678 90", "62", "6281234567890", "ok"},
-		
+
 		// 2. Awalan +
 		{"Awalan + ID", "+6281234567890", "62", "6281234567890", "ok"},
 		{"Awalan + US", "+14155552671", "62", "14155552671", "ok"},
-		
+
 		// 3. Awalan 00
 		{"Awalan 00 ID", "006281234567890", "62", "6281234567890", "ok"},
 		{"Awalan 00 US", "0014155552671", "62", "14155552671", "ok"},
-		
+
 		// 4. Tanpa awalan
 		{"Tanpa awalan, CC default valid", "6281234567890", "62", "6281234567890", "ok"},
 		{"Tanpa awalan, kehilangan 0 (jadi Japan)", "81234567890", "62", "81234567890", "ok"},
 		{"Tanpa awalan, CC beda (jadi US)", "14155552671", "62", "14155552671", "ok"},
 		{"Tanpa awalan, CC default valid spasi", "62 812 3456 7890", "62", "6281234567890", "ok"},
-		
+
 		// 5. Spasi, tanda hubung, titik, kurung
 		{"Format kompleks", "+62 (812) 345-678.90", "62", "6281234567890", "ok"},
 		{"Format titik saja", "081.234.567.890", "62", "6281234567890", "ok"},
 		{"Format kurung banyak", "(0)812(345)67890", "62", "6281234567890", "ok"},
 		{"Format internasional dengan strip", "+1-415-555-2671", "62", "14155552671", "ok"},
-		
+
 		// 6. Tidak valid
 		{"Kosong", "", "62", "", "tidak_valid"},
 		{"Spasi saja", "   ", "62", "", "tidak_valid"},
@@ -120,29 +120,30 @@ func TestNormalizeFixed(t *testing.T) {
 }
 
 func TestReadCSV(t *testing.T) {
-	// Dengan header "nomor"
-	csvData1 := `nama,nomor,umur
-Budi,081234567890,20
-Andi,081234567891,21
+	// Dengan header "nomor" dan jumlah kolom berbeda-beda (variable fields)
+	csvData1 := `nama,nomor,catatan
+Budi,081234567890,catatan tambahan
+Andi,081234567891
+Citra,081234567892,catatan,ekstra,kolom
 `
 	nums, err := Read(bytes.NewReader([]byte(csvData1)), "test.csv")
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("ReadCSV failed on variable column count: %v", err)
 	}
-	if len(nums) != 2 || nums[0] != "081234567890" || nums[1] != "081234567891" {
-		t.Errorf("Unexpected CSV result: %v", nums)
+	if len(nums) != 3 || nums[0].Raw != "081234567890" || nums[1].Raw != "081234567891" || nums[2].Raw != "081234567892" {
+		t.Errorf("Unexpected CSV result: %+v", nums)
 	}
 
 	// Tanpa header khusus, ambil kolom pertama
 	csvData2 := `081234567890,Budi
-081234567891,Andi
+081234567891,Andi,Tambahan
 `
 	nums2, err := Read(bytes.NewReader([]byte(csvData2)), "test2.csv")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(nums2) != 2 || nums2[0] != "081234567890" || nums2[1] != "081234567891" {
-		t.Errorf("Unexpected CSV result without header: %v", nums2)
+	if len(nums2) != 2 || nums2[0].Raw != "081234567890" || nums2[1].Raw != "081234567891" {
+		t.Errorf("Unexpected CSV result without header: %+v", nums2)
 	}
 }
 
@@ -152,8 +153,8 @@ func TestReadTXT(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(nums) != 3 || nums[0] != "081234567890" || nums[1] != "081234567891" || nums[2] != "081234567892" {
-		t.Errorf("Unexpected TXT result: %v", nums)
+	if len(nums) != 3 || nums[0].Raw != "081234567890" || nums[1].Raw != "081234567891" || nums[2].Raw != "081234567892" {
+		t.Errorf("Unexpected TXT result: %+v", nums)
 	}
 }
 
@@ -168,7 +169,54 @@ func TestReadXLSX(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(nums) != 2 || nums[0] != "081234567890" || nums[1] != "81234567891" {
-		t.Errorf("Unexpected XLSX result: %v", nums)
+	if len(nums) != 2 || nums[0].Raw != "081234567890" || nums[1].Raw != "81234567891" {
+		t.Errorf("Unexpected XLSX result: %+v", nums)
+	}
+	if nums[0].IsNumericXLSX != false {
+		t.Errorf("Expected cell A1 IsNumericXLSX = false, got true")
+	}
+	if nums[1].IsNumericXLSX != true {
+		t.Errorf("Expected cell A2 IsNumericXLSX = true, got false")
+	}
+}
+
+func TestNumericCellAmbiguityXLSX(t *testing.T) {
+	f := excelize.NewFile()
+	f.SetCellValue("Sheet1", "A1", "081234567890") // Text with leading 0
+	f.SetCellValue("Sheet1", "A2", 81234567891)    // Numeric without 0 (should be ambigu)
+	f.SetCellValue("Sheet1", "A3", 6281234567892)  // Numeric starting with defaultCC (should be ok)
+	var buf bytes.Buffer
+	f.Write(&buf)
+
+	items, err := ReadXLSX(buf.Bytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 3 {
+		t.Fatalf("Expected 3 items, got %d", len(items))
+	}
+
+	// 1. A1 text cell -> ok
+	_, stat1, _ := Normalize(items[0].Raw, "62", items[0].IsNumericXLSX)
+	if stat1 != "ok" {
+		t.Errorf("Item 0 status = %q, want 'ok'", stat1)
+	}
+
+	// 2. A2 numeric without leading 0 -> ambigu
+	_, stat2, _ := Normalize(items[1].Raw, "62", items[1].IsNumericXLSX)
+	if stat2 != "ambigu" {
+		t.Errorf("Item 1 status = %q, want 'ambigu'", stat2)
+	}
+
+	// 3. A3 numeric with defaultCC 62 -> ok
+	_, stat3, _ := Normalize(items[2].Raw, "62", items[2].IsNumericXLSX)
+	if stat3 != "ok" {
+		t.Errorf("Item 2 status = %q, want 'ok'", stat3)
+	}
+
+	// 4. Same number in CSV (not XLSX) -> ok (not ambigu)
+	_, statCSV, _ := Normalize("81234567891", "62", false)
+	if statCSV != "ok" {
+		t.Errorf("CSV status = %q, want 'ok'", statCSV)
 	}
 }

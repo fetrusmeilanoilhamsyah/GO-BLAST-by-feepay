@@ -37,14 +37,9 @@ func (s *Server) HandleAdminCampaignNumbersGET(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	var lang string
-	if u, ok := r.Context().Value(userContextKey).(UserSession); ok {
+	lang := "id"
+	if u, ok := currentUser(r); ok && u.Language != "" {
 		lang = u.Language
-	} else if uPtr, ok := r.Context().Value(userContextKey).(*UserSession); ok && uPtr != nil {
-		lang = uPtr.Language
-	}
-	if lang == "" {
-		lang = "id"
 	}
 
 	// Get CSRF from cookie
@@ -116,14 +111,18 @@ func (s *Server) HandleAdminCampaignNumbersPreview(w http.ResponseWriter, r *htt
 
 	csrfToken := r.FormValue("csrf_token")
 
-	var lang string
-	if u, ok := r.Context().Value(userContextKey).(UserSession); ok {
+	lang := "id"
+	if u, ok := currentUser(r); ok && u.Language != "" {
 		lang = u.Language
-	} else if uPtr, ok := r.Context().Value(userContextKey).(*UserSession); ok && uPtr != nil {
-		lang = uPtr.Language
 	}
-	if lang == "" {
-		lang = "id"
+
+	var ccTable strings.Builder
+	if len(preview.Stats.CountryCodes) > 0 {
+		ccTable.WriteString("<div style='margin-top: 15px;'><h3>Rincian Kode Negara</h3><table border='1' cellpadding='5' style='border-collapse: collapse;'><thead><tr><th>Kode Negara</th><th>Jumlah</th></tr></thead><tbody>")
+		for cc, count := range preview.Stats.CountryCodes {
+			ccTable.WriteString(fmt.Sprintf("<tr><td>+%s</td><td>%d</td></tr>", cc, count))
+		}
+		ccTable.WriteString("</tbody></table></div>")
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -135,6 +134,8 @@ func (s *Server) HandleAdminCampaignNumbersPreview(w http.ResponseWriter, r *htt
 		<p>%s: %d</p>
 		<p>%s: %d</p>
 		<p>%s: %d</p>
+		%s
+		<br>
 		<a href="/admin/campaigns/%d/numbers/rejected/%s">%s</a>
 		
 		<form method="post" action="/admin/campaigns/%d/numbers/confirm">
@@ -149,6 +150,7 @@ func (s *Server) HandleAdminCampaignNumbersPreview(w http.ResponseWriter, r *htt
 		i18n.T(lang, "numbers.dup_campaign"), preview.Stats.DupInCampaign,
 		i18n.T(lang, "numbers.invalid"), preview.Stats.Invalid,
 		i18n.T(lang, "numbers.ambiguous"), preview.Stats.Ambiguous,
+		ccTable.String(),
 		campaignID, preview.ID, i18n.T(lang, "numbers.download_rejected"),
 		campaignID, csrfToken, preview.ID, i18n.T(lang, "numbers.confirm_btn"))))
 }
@@ -156,24 +158,27 @@ func (s *Server) HandleAdminCampaignNumbersPreview(w http.ResponseWriter, r *htt
 // HandleAdminCampaignNumbersConfirm POST confirm upload
 func (s *Server) HandleAdminCampaignNumbersConfirm(w http.ResponseWriter, r *http.Request) {
 	idStr := r.PathValue("id")
-	campaignID, _ := strconv.ParseInt(idStr, 10, 64)
-
-	previewID := r.FormValue("preview_id")
-	if previewID == "" {
-		http.Error(w, "Preview ID missing", http.StatusBadRequest)
+	campaignID, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		http.Error(w, "ID campaign tidak valid", http.StatusBadRequest)
 		return
 	}
 
-	userSessionCtx := r.Context().Value(userContextKey)
-	if userSessionCtx == nil {
+	previewID := r.FormValue("preview_id")
+	if previewID == "" || !campaign.IsValidPreviewID(previewID) {
+		http.Error(w, "Preview ID tidak valid", http.StatusBadRequest)
+		return
+	}
+
+	user, ok := currentUser(r)
+	if !ok {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
-	userID := userSessionCtx.(UserSession).ID
 
-	err := campaign.ConfirmUpload(r.Context(), s.DB.Pool, campaignID, userID, previewID)
+	err = campaign.ConfirmUpload(r.Context(), s.DB.Pool, campaignID, user.ID, previewID)
 	if err != nil {
-		http.Error(w, "Gagal mengonfirmasi upload: "+err.Error(), http.StatusInternalServerError)
+		http.Error(w, "Gagal mengonfirmasi upload: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -183,18 +188,20 @@ func (s *Server) HandleAdminCampaignNumbersConfirm(w http.ResponseWriter, r *htt
 // HandleAdminCampaignNumbersRejected GET rejected list CSV
 func (s *Server) HandleAdminCampaignNumbersRejected(w http.ResponseWriter, r *http.Request) {
 	previewID := r.PathValue("previewId")
-	if previewID == "" {
-		http.Error(w, "Not found", http.StatusNotFound)
+	if previewID == "" || !campaign.IsValidPreviewID(previewID) {
+		http.Error(w, "Preview ID tidak valid", http.StatusBadRequest)
 		return
 	}
 
 	filePath := filepath.Join("data", "tmp", previewID+"_rejected.csv")
-	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+	data, err := os.ReadFile(filePath)
+	if err != nil {
 		http.Error(w, "File tidak ditemukan atau sudah dihapus", http.StatusNotFound)
 		return
 	}
+	_ = os.Remove(filePath)
 
 	w.Header().Set("Content-Type", "text/csv")
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"rejected_%s.csv\"", previewID))
-	http.ServeFile(w, r, filePath)
+	w.Write(data)
 }
