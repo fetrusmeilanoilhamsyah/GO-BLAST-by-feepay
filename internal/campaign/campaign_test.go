@@ -244,3 +244,65 @@ func TestRender(t *testing.T) {
 		}
 	})
 }
+
+func TestReplaceVariables(t *testing.T) {
+	t.Run("Substitusi dengan nama tersedia", func(t *testing.T) {
+		body := "Halo {nama}, promo FEEPAY untuk akun {usn}!"
+		vars := map[string]string{
+			"nama": "Budi Santoso",
+			"usn":  "budi99",
+		}
+		res := ReplaceVariables(body, vars)
+		expected := "Halo Budi Santoso, promo FEEPAY untuk akun budi99!"
+		if res != expected {
+			t.Errorf("Expected %q, got %q", expected, res)
+		}
+	})
+
+	t.Run("Substitusi dengan alias {name} dan {{nama}}", func(t *testing.T) {
+		body := "Halo {{name}}, id Anda: {id}."
+		vars := map[string]string{
+			"nama": "Agus",
+			"id":   "CUST-01",
+		}
+		res := ReplaceVariables(body, vars)
+		expected := "Halo Agus, id Anda: CUST-01."
+		if res != expected {
+			t.Errorf("Expected %q, got %q", expected, res)
+		}
+	})
+
+	t.Run("Fallback ketika variabel kosong", func(t *testing.T) {
+		body := "Halo {nama|Kak}, selamat datang!"
+		res := ReplaceVariables(body, nil)
+		expected := "Halo Kak, selamat datang!"
+		if res != expected {
+			t.Errorf("Expected %q, got %q", expected, res)
+		}
+
+		// Jika nama ada, fallback tidak dipakai
+		resWithVal := ReplaceVariables(body, map[string]string{"nama": "Siti"})
+		expectedWithVal := "Halo Siti, selamat datang!"
+		if resWithVal != expectedWithVal {
+			t.Errorf("Expected %q, got %q", expectedWithVal, resWithVal)
+		}
+	})
+
+	t.Run("Tanpa fallback dan variabel kosong (rapi tanpa spasi ganda)", func(t *testing.T) {
+		body := "Halo {nama}, promo hari ini siap!"
+		res := ReplaceVariables(body, map[string]string{})
+		expected := "Halo, promo hari ini siap!"
+		if res != expected {
+			t.Errorf("Expected %q, got %q", expected, res)
+		}
+	})
+
+	t.Run("RenderWithRecipient helper", func(t *testing.T) {
+		elements := Elements{}
+		msg := RenderWithRecipient("Halo {nama}\nBaris kedua", "", elements, ModeKartuLink, "Dewi")
+		if !strings.HasPrefix(msg.Text, "*Halo Dewi*") {
+			t.Errorf("RenderWithRecipient failed to format title with name: %s", msg.Text)
+		}
+	})
+}
+

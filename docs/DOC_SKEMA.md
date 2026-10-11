@@ -49,6 +49,8 @@ Riwayat unggahan file nomor.
 ### `campaign_numbers`
 Nomor tujuan per kampanye.
 - `phone_e164`: Nomor telepon dalam format internasional tanpa `+`.
+- `recipient_name`: Nama atau username/ID penerima (opsional, nullable).
+- `custom_data`: Atribut kustom JSONB tambahan (opsional, nullable).
 - `status`: `tersedia`, `dikirim`, `terkirim`, `tidak_terdaftar`, `gagal`.
 - `claimed_account_id`: Merujuk ke `wa_accounts(id)` saat sedang diproses.
 

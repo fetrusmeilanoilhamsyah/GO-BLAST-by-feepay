@@ -146,4 +146,37 @@ func TestNumbersUpload(t *testing.T) {
 	if count != 3 {
 		t.Errorf("C2 DB count = %d, want 3", count)
 	}
+
+	// Test upload with names and custom data
+	csvDataWithNames := []byte("nomor,nama\n081234567895,Budi Santoso\n081234567896\n")
+	previewNames, err := ProcessPreview(context.Background(), pool, c1, csvDataWithNames, "names.csv", "62")
+	if err != nil {
+		t.Fatalf("ProcessPreview with names failed: %v", err)
+	}
+	if previewNames.Stats.Accepted != 2 {
+		t.Fatalf("Accepted = %d, want 2", previewNames.Stats.Accepted)
+	}
+	err = ConfirmUpload(context.Background(), pool, c1, userID, previewNames.ID)
+	if err != nil {
+		t.Fatalf("ConfirmUpload with names failed: %v", err)
+	}
+
+	var recName *string
+	err = pool.QueryRow(context.Background(), "SELECT recipient_name FROM campaign_numbers WHERE campaign_id = $1 AND phone_e164 = '6281234567895'", c1).Scan(&recName)
+	if err != nil {
+		t.Fatalf("Failed to query recipient_name: %v", err)
+	}
+	if recName == nil || *recName != "Budi Santoso" {
+		t.Errorf("Expected recipient_name 'Budi Santoso', got %v", recName)
+	}
+
+	var nullName *string
+	err = pool.QueryRow(context.Background(), "SELECT recipient_name FROM campaign_numbers WHERE campaign_id = $1 AND phone_e164 = '6281234567896'", c1).Scan(&nullName)
+	if err != nil {
+		t.Fatalf("Failed to query recipient_name: %v", err)
+	}
+	if nullName != nil {
+		t.Errorf("Expected recipient_name to be NULL, got %v", *nullName)
+	}
 }
+

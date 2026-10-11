@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -136,7 +137,72 @@ func checkURL(u string) error {
 	return nil
 }
 
-func Render(body string, imagePath string, elements Elements, mode string) Message {
+var variableRegex = regexp.MustCompile(`\{\{?([a-zA-Z0-9_]+)(?:\|([^}]+))?\}?\}`)
+
+// ReplaceVariables substitutes template placeholders such as {nama}, {{name}}, {nama|Kak}, {usn}, {id}.
+// If a variable is found in vars, it is replaced with its value.
+// If a variable is missing or empty:
+// - If a fallback is provided ({nama|Kak}), the fallback is used ("Kak").
+// - If no fallback is provided, the placeholder is removed, and double spaces or spaces before punctuation are tidied up.
+func ReplaceVariables(body string, vars map[string]string) string {
+	lookup := make(map[string]string)
+	for k, v := range vars {
+		lookup[strings.ToLower(strings.TrimSpace(k))] = strings.TrimSpace(v)
+	}
+
+	// Aliases: if "nama" is provided, also set "name" and vice-versa
+	if val, ok := lookup["nama"]; ok && val != "" {
+		if _, hasName := lookup["name"]; !hasName {
+			lookup["name"] = val
+		}
+	} else if val, ok := lookup["name"]; ok && val != "" {
+		if _, hasNama := lookup["nama"]; !hasNama {
+			lookup["nama"] = val
+		}
+	}
+
+	replaced := variableRegex.ReplaceAllStringFunc(body, func(match string) string {
+		sub := variableRegex.FindStringSubmatch(match)
+		if len(sub) < 2 {
+			return match
+		}
+		varName := strings.ToLower(sub[1])
+		fallback := ""
+		if len(sub) >= 3 {
+			fallback = strings.TrimSpace(sub[2])
+		}
+
+		if val, ok := lookup[varName]; ok && val != "" {
+			return val
+		}
+		if fallback != "" {
+			return fallback
+		}
+		return ""
+	})
+
+	lines := strings.Split(replaced, "\n")
+	for i, l := range lines {
+		l = strings.ReplaceAll(l, " ,", ",")
+		l = strings.ReplaceAll(l, " .", ".")
+		l = strings.ReplaceAll(l, " !", "!")
+		l = strings.ReplaceAll(l, " ?", "?")
+		l = strings.ReplaceAll(l, " :", ":")
+		l = strings.ReplaceAll(l, " ;", ";")
+		for strings.Contains(l, "  ") {
+			l = strings.ReplaceAll(l, "  ", " ")
+		}
+		lines[i] = strings.TrimRight(l, " ")
+	}
+
+	return strings.Join(lines, "\n")
+}
+
+func Render(body string, imagePath string, elements Elements, mode string, recipientVars ...map[string]string) Message {
+	if len(recipientVars) > 0 && len(recipientVars[0]) > 0 {
+		body = ReplaceVariables(body, recipientVars[0])
+	}
+
 	msg := Message{
 		ImagePath: imagePath,
 	}
@@ -202,4 +268,8 @@ func Render(body string, imagePath string, elements Elements, mode string) Messa
 	}
 
 	return msg
+}
+
+func RenderWithRecipient(body string, imagePath string, elements Elements, mode string, recipientName string) Message {
+	return Render(body, imagePath, elements, mode, map[string]string{"nama": recipientName, "name": recipientName})
 }

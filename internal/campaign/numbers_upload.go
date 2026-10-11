@@ -77,8 +77,10 @@ func ProcessPreview(ctx context.Context, db *pgxpool.Pool, campaignID int64, raw
 	seenInFile := make(map[string]bool)
 
 	type ValidRow struct {
-		Phone string `json:"phone"`
-		CC    string `json:"cc"`
+		Phone      string            `json:"phone"`
+		CC         string            `json:"cc"`
+		Name       string            `json:"name,omitempty"`
+		CustomData map[string]string `json:"custom_data,omitempty"`
 	}
 	var validNumbers []ValidRow
 	var rejected []RejectedRow
@@ -113,7 +115,12 @@ func ProcessPreview(ctx context.Context, db *pgxpool.Pool, campaignID int64, raw
 
 		stats.Accepted++
 		stats.CountryCodes[ccStr]++
-		validNumbers = append(validNumbers, ValidRow{Phone: e164, CC: ccStr})
+		validNumbers = append(validNumbers, ValidRow{
+			Phone:      e164,
+			CC:         ccStr,
+			Name:       item.Name,
+			CustomData: item.CustomData,
+		})
 	}
 
 	// Generate ID
@@ -205,8 +212,10 @@ func ConfirmUpload(ctx context.Context, db *pgxpool.Pool, campaignID int64, user
 		return fmt.Errorf("data valid tidak ditemukan")
 	}
 	type ValidRow struct {
-		Phone string `json:"phone"`
-		CC    string `json:"cc"`
+		Phone      string            `json:"phone"`
+		CC         string            `json:"cc"`
+		Name       string            `json:"name,omitempty"`
+		CustomData map[string]string `json:"custom_data,omitempty"`
 	}
 	var validNumbers []ValidRow
 	if err := json.Unmarshal(validBytes, &validNumbers); err != nil {
@@ -245,21 +254,30 @@ func ConfirmUpload(ctx context.Context, db *pgxpool.Pool, campaignID int64, user
 	if len(validNumbers) > 0 {
 		phones := make([]string, len(validNumbers))
 		ccs := make([]string, len(validNumbers))
+		names := make([]string, len(validNumbers))
+		customs := make([]string, len(validNumbers))
 		for i, v := range validNumbers {
 			phones[i] = v.Phone
 			ccs[i] = v.CC
+			names[i] = v.Name
+			if len(v.CustomData) > 0 {
+				cb, _ := json.Marshal(v.CustomData)
+				customs[i] = string(cb)
+			} else {
+				customs[i] = ""
+			}
 		}
 
 		q := `
-			INSERT INTO campaign_numbers (campaign_id, batch_id, phone_e164, country_code, status)
-			SELECT $1, $2, t.phone, t.cc, 'tersedia'
+			INSERT INTO campaign_numbers (campaign_id, batch_id, phone_e164, country_code, recipient_name, custom_data, status)
+			SELECT $1, $2, t.phone, t.cc, NULLIF(t.name, ''), CASE WHEN t.custom = '' THEN NULL ELSE t.custom::jsonb END, 'tersedia'
 			FROM (
-				SELECT unnest($3::text[]) AS phone, unnest($4::text[]) AS cc
+				SELECT unnest($3::text[]) AS phone, unnest($4::text[]) AS cc, unnest($5::text[]) AS name, unnest($6::text[]) AS custom
 			) t
 			ON CONFLICT (campaign_id, phone_e164) DO NOTHING
 		`
 
-		res, err := tx.Exec(ctx, q, campaignID, batchID, phones, ccs)
+		res, err := tx.Exec(ctx, q, campaignID, batchID, phones, ccs, names, customs)
 		if err != nil {
 			return fmt.Errorf("gagal memasukkan nomor: %w", err)
 		}

@@ -160,4 +160,29 @@ func TestSchemaConstraints(t *testing.T) {
 			t.Fatal("expected error on withdrawal exceeding balance, got nil")
 		}
 	})
+
+	t.Run("e) kolom recipient_name dan custom_data bisa disimpan dan bernilai NULL saat kosong", func(t *testing.T) {
+		var cnID1, cnID2 int64
+		err := pool.QueryRow(ctx, "INSERT INTO campaign_numbers (campaign_id, batch_id, phone_e164, country_code, recipient_name, custom_data) VALUES ($1, $2, '62833', '62', 'Budi', '{\"usn\": \"budi99\"}'::jsonb) RETURNING id", campaign1ID, batchID).Scan(&cnID1)
+		if err != nil {
+			t.Fatalf("failed to insert with recipient_name and custom_data: %v", err)
+		}
+
+		err = pool.QueryRow(ctx, "INSERT INTO campaign_numbers (campaign_id, batch_id, phone_e164, country_code) VALUES ($1, $2, '62844', '62') RETURNING id", campaign1ID, batchID).Scan(&cnID2)
+		if err != nil {
+			t.Fatalf("failed to insert without recipient_name: %v", err)
+		}
+
+		var name1, name2 *string
+		pool.QueryRow(ctx, "SELECT recipient_name FROM campaign_numbers WHERE id = $1", cnID1).Scan(&name1)
+		pool.QueryRow(ctx, "SELECT recipient_name FROM campaign_numbers WHERE id = $2", cnID2).Scan(&name2)
+
+		if name1 == nil || *name1 != "Budi" {
+			t.Errorf("Expected name1 = 'Budi', got %v", name1)
+		}
+		if name2 != nil {
+			t.Errorf("Expected name2 = NULL, got %v", name2)
+		}
+	})
 }
+

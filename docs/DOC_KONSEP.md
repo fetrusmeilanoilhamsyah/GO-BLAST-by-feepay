@@ -84,6 +84,7 @@ Aturan keras: dalam satu campaign, satu nomor tidak boleh berstatus `terkirim` d
 - Saat upload, nomor diseragamkan dulu ke format baku internasional (E.164 tanpa tanda `+`, misal `62812...` untuk Indonesia atau `1415...` untuk Amerika) sebelum dicocokkan. Nomor dari negara mana pun bisa diproses selama kode negaranya valid. Kode negara disimpan bersama nomor.
 - Nomor yang ditulis berawalan `0` (format lokal) tidak membawa kode negara, jadi dianggap memakai kode negara default. Angka `0` di depan dibuang lalu diganti kode negara: `0812...` menjadi `62812...`, bukan `620812...`. Kode negara default adalah pengaturan di panel admin, nilai awalnya Indonesia (`62`).
 - Nomor yang duplikat di dalam file, atau sudah ada di campaign yang sama, dilewati dan dilaporkan ke admin.
+- **Fleksibilitas Data Penerima (Nomor Saja, Nama, Username / ID):** Sistem dirancang fleksibel dalam menerima data target. File upload mendukung nomor polos saja (tanpa nama), maupun nomor dengan data pelengkap seperti nama, username (USN), atau ID kustom (misal format `nomor,nama`, `nomor:nama`, atau multi-kolom CSV/XLSX). Sistem tidak boleh kaku mewajibkan adanya nama, namun siap menampung dan menyimpan atribut nama/ID jika disertakan.
 
 ## 8. Template pesan
 
@@ -95,6 +96,7 @@ Admin bisa mengubah template kapan saja. Elemen berikut bisa dinyalakan atau dim
 - Aksi CS (opsional, bawaan formulir: tidak aktif)
 - Aksi telepon (opsional)
 - Aksi claim promo (opsional)
+- Personalisasi / Variabel pesan (opsional, misal tag `{nama}`): Jika data nama/USN penerima tersedia, sistem mengisi variabel tersebut. Jika data penerima hanya berupa nomor polos (tanpa nama), sistem memiliki fallback yang aman (salam umum atau tanpa teks rusak), atau alternatif fallback otomatis ke PushName WhatsApp / mention `@`.
 
 **Tampilan harus rapi.** Pesan tidak boleh tampil sebagai teks dan link polos tanpa tata letak. Tiap campaign memilih satu dari dua mode:
 

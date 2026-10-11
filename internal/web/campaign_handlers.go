@@ -422,7 +422,18 @@ func (s *Server) HandleAdminCampaignPreview(w http.ResponseWriter, r *http.Reque
 		}
 	}
 
-	msg := campaign.Render(body, imagePath, elements, mode)
+	sampleVars := map[string]string{
+		"nama": "Budi",
+		"name": "Budi",
+		"usn":  "budi123",
+		"id":   "CUST-001",
+	}
+	if pName := r.FormValue("preview_name"); pName != "" {
+		sampleVars["nama"] = pName
+		sampleVars["name"] = pName
+	}
+
+	msg := campaign.Render(body, imagePath, elements, mode, sampleVars)
 
 	lang := "id"
 	if u, ok := currentUser(r); ok && u.Language != "" {

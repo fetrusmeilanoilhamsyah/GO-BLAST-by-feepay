@@ -19,6 +19,7 @@ Nomor tahap mengacu ke tabel "Daftar Tahap" di bawah.
 ## TODO / Perlu Keputusan
 - Terkait keputusan terbuka #4: Saat ini form pendaftaran pekerja tidak memuat pilihan mata uang. Kolom currency pada tabel `users` dibuat konstan `IDR` saat pendaftaran. Menunggu keputusan final pemilik proyek apakah mata uang dipilih saat pendaftaran.
 - **Tahap 12**: Cek dompet saat upload nomor ditunda ke Tahap 12 (jangan buat fungsi kosong sekarang).
+- **Fleksibilitas Data Penerima (Nomor Saja vs Nomor+Nama/USN/ID)**: Sistem harus fleksibel mendukung upload nomor polos tanpa nama, maupun nomor yang disertai nama/username/ID kustom (format `nomor,nama`, `nomor:nama`, kolom CSV/XLSX), serta template variabel seperti `{nama}` dengan fallback aman jika data kosong.
 
 ## Persiapan
 
@@ -88,6 +89,7 @@ Terbaru di atas. Agen menambah baris di sini setiap ada keputusan baru, dari pem
 
 | Tanggal | Keputusan | Alasan | Oleh |
 |---|---|---|---|
+| 2026-10-11 | Fleksibilitas data penerima: mendukung nomor polos, nomor+nama, serta atribut kustom (USN/ID) | Kebutuhan broadcast dinamis ke depan; template pesan mendukung variabel {nama} dengan fallback aman jika data kosong | pemilik |
 | 2026-10-11 | Restrukturisasi dokumen ke `docs/` dan arsip log Tahap 0-5 ke `docs/ARSIP_PROGRES.md` | Menjaga kebersihan root repo dan mempercepat pembacaan progres harian | agen dan pemilik |
 | 2026-10-11 | Opsi `tombol_asli` dinonaktifkan (`disabled`) dengan label jujur; `kartu_link` jadi mode utama | Temuan spike whatsmeow: native buttons tidak didukung WhatsApp untuk akun biasa/non-Cloud API | agen dan pemilik |
 | 2026-10-11 | Tema GO BLAST mengikuti pengaturan sistem (`prefers-color-scheme`) dan menyediakan pemilih manual via cookie Lax | Memenuhi kenyamanan pengguna mengikuti referensi go.dev tanpa pustaka eksternal | pemilik |
@@ -108,6 +110,7 @@ Terbaru di atas. Agen menambah baris di sini setiap ada keputusan baru, dari pem
 
 Hasil uji dan hal yang ditemukan saat bekerja (Tahap 0 - 5 diarsipkan di [ARSIP_PROGRES.md](ARSIP_PROGRES.md)). Terbaru di atas.
 
+- 2026-10-11: Variabel pesan & data penerima: Software checker/Wati membaca PushName profil WA, mention @JID, atau kolom CSV nama/ID. GO BLAST dirancang fleksibel agar bisa menerima nomor polos (tanpa nama) maupun nomor dengan atribut nama/USN/ID, dengan fallback aman saat data nama kosong.
 - 2026-10-11: Tema terang dan gelap diimplementasikan dengan rasio kontras WCAG 2.1 >= 4.5:1. Nilai danger pada mode gelap disesuaikan ke `#ff5252` (rasio 5.00:1) agar lulus standar aksesibilitas.
 - 2026-10-11: spike whatsmeow: native buttons tidak dirender oleh WhatsApp pada nomor biasa/non-Cloud API. Di form campaign, opsi `tombol_asli` dinonaktifkan (`disabled`) dengan label jujur.
 - 2026-10-11: Tema yang sebelumnya hanya gelap disesuaikan dengan preferensi sistem; template form dan campaign memakai variabel warna agar teks, input, dan border tetap kontras dalam mode terang.
@@ -116,6 +119,7 @@ Hasil uji dan hal yang ditemukan saat bekerja (Tahap 0 - 5 diarsipkan di [ARSIP_
 
 Terbaru di atas. Format: `tanggal: ringkasan satu baris` (Log Tahap 0 - 5 diarsipkan di [ARSIP_PROGRES.md](ARSIP_PROGRES.md)).
 
+- 2026-10-11: Implementasi fleksibilitas data penerima (nomor polos, nomor+nama, usn/id) dan template variabel ({nama}, {{name}}, fallback {nama|Kak}): migrasi 0005_recipient_data.sql, parser numbers.Read (TXT, CSV, XLSX), ReplaceVariables, dan update preview & bulk insert.
 - 2026-10-11: Koreksi Tahap 7 dan 8 selesai: validasi template (utf8 runes, host URL, normalisasi nomor), penolakan tombol_asli, render baris CS bersyarat, transisi status campaign (draf/berjalan/selesai), preview gambar & upload MIME, previewID regex, data/tmp 0600 & cleaner 24 jam, breakdown kode negara, deteksi sel numerik XLSX, CSV variable fields, currentUser helper, dan fix IP spoofing di getIP.
 - 2026-10-11: Perapian repo (Bagian A, A2, B, C): bersihkan file nyasar, pisah main.go, hapus emoji/simbol UI, label jujur tombol_asli, tema adaptif terang & gelap, restrukturisasi docs/.
 - 2026-10-11: Tema adaptif terang/gelap diimplementasikan melalui `prefers-color-scheme` sesuai keputusan pemilik.

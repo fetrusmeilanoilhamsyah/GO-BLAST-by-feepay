@@ -220,3 +220,114 @@ func TestNumericCellAmbiguityXLSX(t *testing.T) {
 		t.Errorf("CSV status = %q, want 'ok'", statCSV)
 	}
 }
+
+func TestRecipientParsing(t *testing.T) {
+	t.Run("TXT formats", func(t *testing.T) {
+		txtData := `081234567890
+081234567891,Budi Santoso
+081234567892:ijattjp
+081234567893 | ari421
+081234567894;Citra
+081234567895	Dewi Sartika
+081234567896,Eko,eko_usn,ID-123
+Siti Aminah,081234567897`
+
+		items, err := ReadTXT([]byte(txtData))
+		if err != nil {
+			t.Fatalf("ReadTXT failed: %v", err)
+		}
+		if len(items) != 8 {
+			t.Fatalf("Expected 8 items, got %d", len(items))
+		}
+
+		// 1. Pure number
+		if items[0].Raw != "081234567890" || items[0].Name != "" {
+			t.Errorf("Item 0: expected pure number without name, got raw=%q name=%q", items[0].Raw, items[0].Name)
+		}
+		// 2. Comma
+		if items[1].Raw != "081234567891" || items[1].Name != "Budi Santoso" {
+			t.Errorf("Item 1: raw=%q name=%q", items[1].Raw, items[1].Name)
+		}
+		// 3. Colon
+		if items[2].Raw != "081234567892" || items[2].Name != "ijattjp" {
+			t.Errorf("Item 2: raw=%q name=%q", items[2].Raw, items[2].Name)
+		}
+		// 4. Pipe
+		if items[3].Raw != "081234567893" || items[3].Name != "ari421" {
+			t.Errorf("Item 3: raw=%q name=%q", items[3].Raw, items[3].Name)
+		}
+		// 5. Semicolon
+		if items[4].Raw != "081234567894" || items[4].Name != "Citra" {
+			t.Errorf("Item 4: raw=%q name=%q", items[4].Raw, items[4].Name)
+		}
+		// 6. Tab
+		if items[5].Raw != "081234567895" || items[5].Name != "Dewi Sartika" {
+			t.Errorf("Item 5: raw=%q name=%q", items[5].Raw, items[5].Name)
+		}
+		// 7. Extra custom attributes
+		if items[6].Raw != "081234567896" || items[6].Name != "Eko" || items[6].CustomData["usn"] != "eko_usn" {
+			t.Errorf("Item 6: raw=%q name=%q custom=%+v", items[6].Raw, items[6].Name, items[6].CustomData)
+		}
+		// 8. Name first, number second
+		if items[7].Raw != "081234567897" || items[7].Name != "Siti Aminah" {
+			t.Errorf("Item 7: raw=%q name=%q", items[7].Raw, items[7].Name)
+		}
+	})
+
+	t.Run("CSV formats with and without header", func(t *testing.T) {
+		csvWithHeader := `nama,nomor,username
+Budi Santoso,081234567890,budi99
+Andi,081234567891,andi_usn
+`
+		items1, err := ReadCSV([]byte(csvWithHeader))
+		if err != nil {
+			t.Fatalf("ReadCSV failed: %v", err)
+		}
+		if len(items1) != 2 {
+			t.Fatalf("Expected 2 items, got %d", len(items1))
+		}
+		if items1[0].Raw != "081234567890" || items1[0].Name != "Budi Santoso" || items1[0].CustomData["username"] != "budi99" {
+			t.Errorf("Item 0 with header mismatch: %+v", items1[0])
+		}
+
+		csvWithoutHeader := `081234567890,Budi Santoso
+081234567891
+081234567892,Citra,citra123
+`
+		items2, err := ReadCSV([]byte(csvWithoutHeader))
+		if err != nil {
+			t.Fatalf("ReadCSV failed: %v", err)
+		}
+		if len(items2) != 3 {
+			t.Fatalf("Expected 3 items, got %d", len(items2))
+		}
+		if items2[0].Raw != "081234567890" || items2[0].Name != "Budi Santoso" {
+			t.Errorf("Item 0 mismatch: %+v", items2[0])
+		}
+		if items2[1].Raw != "081234567891" || items2[1].Name != "" {
+			t.Errorf("Item 1 mismatch: %+v", items2[1])
+		}
+		if items2[2].Raw != "081234567892" || items2[2].Name != "Citra" || items2[2].CustomData["usn"] != "citra123" {
+			t.Errorf("Item 2 mismatch: %+v", items2[2])
+		}
+	})
+
+	t.Run("XLSX with names", func(t *testing.T) {
+		f := excelize.NewFile()
+		f.SetCellValue("Sheet1", "A1", "nomor")
+		f.SetCellValue("Sheet1", "B1", "nama")
+		f.SetCellValue("Sheet1", "A2", "081234567890")
+		f.SetCellValue("Sheet1", "B2", "Budi Santoso")
+		var buf bytes.Buffer
+		f.Write(&buf)
+
+		items, err := ReadXLSX(buf.Bytes())
+		if err != nil {
+			t.Fatalf("ReadXLSX failed: %v", err)
+		}
+		if len(items) != 1 || items[0].Raw != "081234567890" || items[0].Name != "Budi Santoso" {
+			t.Errorf("Unexpected XLSX result: %+v", items)
+		}
+	})
+}
+
