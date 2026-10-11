@@ -764,7 +764,7 @@ func TestAdminCampaignDelete(t *testing.T) {
 	ctx := context.Background()
 	ctxAdmin := context.WithValue(context.Background(), userContextKey, UserSession{ID: adminID, Role: "admin", Language: "id"})
 
-	// 1. Create a draft campaign
+	// 1. Create a draft campaign with batches, numbers, and ledger entries
 	var draftID int64
 	err := pool.QueryRow(ctx, `
 		INSERT INTO campaigns (name, status, button_mode, body, elements, created_by)
@@ -775,7 +775,37 @@ func TestAdminCampaignDelete(t *testing.T) {
 		t.Fatalf("Failed to create draft campaign: %v", err)
 	}
 
-	// Delete draft campaign -> must succeed
+	var batchID int64
+	err = pool.QueryRow(ctx, `
+		INSERT INTO number_batches (campaign_id, filename, uploaded_by, total, accepted)
+		VALUES ($1, 'test.csv', $2, 1, 1)
+		RETURNING id
+	`, draftID, adminID).Scan(&batchID)
+	if err != nil {
+		t.Fatalf("Failed to create number batch: %v", err)
+	}
+
+	var numID int64
+	err = pool.QueryRow(ctx, `
+		INSERT INTO campaign_numbers (campaign_id, batch_id, phone_e164, country_code, status)
+		VALUES ($1, $2, '628111222333', '62', 'tersedia')
+		RETURNING id
+	`, draftID, batchID).Scan(&numID)
+	if err != nil {
+		t.Fatalf("Failed to create campaign number: %v", err)
+	}
+
+	var ledgerEntryID int64
+	err = pool.QueryRow(ctx, `
+		INSERT INTO ledger_entries (user_id, kind, currency, amount, campaign_number_id, note)
+		VALUES ($1, 'upah', 'IDR', 10, $2, 'test ledger linked')
+		RETURNING id
+	`, adminID, numID).Scan(&ledgerEntryID)
+	if err != nil {
+		t.Fatalf("Failed to insert linked ledger entry: %v", err)
+	}
+
+	// Delete draft campaign -> must succeed and remove batches, numbers, unlinking ledger
 	reqDel := httptest.NewRequest("POST", fmt.Sprintf("/admin/campaigns/%d/delete", draftID), nil)
 	reqDel.SetPathValue("id", fmt.Sprintf("%d", draftID))
 	reqDel = reqDel.WithContext(ctxAdmin)
@@ -783,13 +813,27 @@ func TestAdminCampaignDelete(t *testing.T) {
 	srv.HandleAdminCampaignDelete(rrDel, reqDel)
 
 	if rrDel.Code != http.StatusSeeOther {
-		t.Errorf("Expected 303 after deleting draft campaign, got %d", rrDel.Code)
+		t.Errorf("Expected 303 after deleting draft campaign, got %d: %s", rrDel.Code, rrDel.Body.String())
 	}
 
 	var count int
 	_ = pool.QueryRow(ctx, "SELECT COUNT(*) FROM campaigns WHERE id = $1", draftID).Scan(&count)
 	if count != 0 {
 		t.Errorf("Draft campaign was not deleted from DB!")
+	}
+	_ = pool.QueryRow(ctx, "SELECT COUNT(*) FROM number_batches WHERE campaign_id = $1", draftID).Scan(&count)
+	if count != 0 {
+		t.Errorf("Number batches were not deleted from DB!")
+	}
+	_ = pool.QueryRow(ctx, "SELECT COUNT(*) FROM campaign_numbers WHERE campaign_id = $1", draftID).Scan(&count)
+	if count != 0 {
+		t.Errorf("Campaign numbers were not deleted from DB!")
+	}
+
+	var unlinkedNumID *int64
+	_ = pool.QueryRow(ctx, "SELECT campaign_number_id FROM ledger_entries WHERE id = $1", ledgerEntryID).Scan(&unlinkedNumID)
+	if unlinkedNumID != nil {
+		t.Errorf("Expected ledger entry to have campaign_number_id unlinked (NULL), got %v", *unlinkedNumID)
 	}
 
 	// 2. Create a running campaign

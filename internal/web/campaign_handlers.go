@@ -675,7 +675,14 @@ func (s *Server) HandleAdminCampaignDelete(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	// 3. Delete campaign
+	// 3. Delete number batches to satisfy number_batches_campaign_id_fkey
+	_, err = tx.Exec(ctx, "DELETE FROM number_batches WHERE campaign_id = $1", id)
+	if err != nil {
+		http.Error(w, "Gagal menghapus batch nomor kampanye: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// 4. Delete campaign
 	_, err = tx.Exec(ctx, "DELETE FROM campaigns WHERE id = $1", id)
 	if err != nil {
 		http.Error(w, "Gagal menghapus kampanye: "+err.Error(), http.StatusInternalServerError)
