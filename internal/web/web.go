@@ -115,6 +115,7 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	// Tahap 11: Worker Panel
 	mux.Handle("GET /worker", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerHome, "worker")))
 	mux.Handle("POST /worker/profile", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerProfilePOST, "worker")))
+	mux.Handle("POST /worker/wallet", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerWalletPOST, "worker")))
 	mux.Handle("POST /worker/security", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerSecurityPOST, "worker")))
 	mux.Handle("GET /worker/withdrawals", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerWithdrawalsGET, "worker")))
 	mux.Handle("POST /worker/withdrawals", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerWithdrawalsPOST, "worker")))

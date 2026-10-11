@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"goblast/internal/auth"
+	"goblast/internal/withdraw"
 
 	"golang.org/x/time/rate"
 )
@@ -22,13 +23,43 @@ const (
 )
 
 type UserSession struct {
-	ID          int64
-	Role        string
-	Email       string
-	Username    string
-	DisplayName string
-	Language    string
-	Currency    string
+	ID                int64
+	Role              string
+	Email             string
+	Username          string
+	DisplayName       string
+	Language          string
+	Currency          string
+	PayoutMethod      string
+	PayoutAccountName string
+	PayoutDestMasked  string
+}
+
+// MaskDestination menyamarkan nomor rekening, nomor e-wallet, atau alamat crypto untuk privasi dan keamanan di UI.
+func MaskDestination(dest, method string) string {
+	dest = strings.TrimSpace(dest)
+	if dest == "" {
+		return ""
+	}
+	if method == "usdt_bep20" {
+		if len(dest) > 10 {
+			return dest[:6] + "..." + dest[len(dest)-4:]
+		}
+		return dest
+	}
+	if len(dest) <= 4 {
+		return dest
+	}
+	if len(dest) <= 8 {
+		return dest[:2] + strings.Repeat("*", len(dest)-4) + dest[len(dest)-2:]
+	}
+	prefixLen := 4
+	suffixLen := 4
+	maskLen := len(dest) - prefixLen - suffixLen
+	if maskLen < 3 {
+		maskLen = 3
+	}
+	return dest[:prefixLen] + strings.Repeat("*", maskLen) + dest[len(dest)-suffixLen:]
 }
 
 func currentUser(r *http.Request) (UserSession, bool) {
@@ -140,13 +171,28 @@ func (s *Server) RequireRole(next http.HandlerFunc, roles ...string) http.Handle
 
 		var user UserSession
 		var expiresAt time.Time
+		var payoutMethod, payoutDestEncrypted, payoutAccName *string
 
 		err = s.DB.Pool.QueryRow(context.Background(), `
-			SELECT u.id, u.role, u.email, COALESCE(u.username, ''), COALESCE(u.display_name, u.email), u.language, u.currency, ws.expires_at
+			SELECT u.id, u.role, u.email, COALESCE(u.username, ''), COALESCE(u.display_name, u.email), u.language, u.currency,
+			       u.payout_method, u.payout_dest_encrypted, u.payout_account_name, ws.expires_at
 			FROM web_sessions ws
 			JOIN users u ON u.id = ws.user_id
 			WHERE ws.token_hash = $1
-		`, hash).Scan(&user.ID, &user.Role, &user.Email, &user.Username, &user.DisplayName, &user.Language, &user.Currency, &expiresAt)
+		`, hash).Scan(&user.ID, &user.Role, &user.Email, &user.Username, &user.DisplayName, &user.Language, &user.Currency,
+			&payoutMethod, &payoutDestEncrypted, &payoutAccName, &expiresAt)
+
+		if payoutMethod != nil {
+			user.PayoutMethod = *payoutMethod
+		}
+		if payoutAccName != nil {
+			user.PayoutAccountName = *payoutAccName
+		}
+		if payoutDestEncrypted != nil && *payoutDestEncrypted != "" {
+			if dec, err := withdraw.DecryptDestination(*payoutDestEncrypted, s.EncryptionKey); err == nil {
+				user.PayoutDestMasked = MaskDestination(dec, user.PayoutMethod)
+			}
+		}
 
 		if err != nil || time.Now().After(expiresAt) {
 			// Clean up invalid cookie

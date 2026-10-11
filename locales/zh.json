@@ -156,5 +156,19 @@
   "worker.username_label": "用户名:",
   "worker.menu": "菜单",
   "auth.username": "用户名",
-  "auth.login_identifier": "用户名或邮箱"
+  "auth.login_identifier": "用户名或邮箱",
+  "worker.wallet_settings": "收款账户与钱包设置",
+  "worker.wallet_saved": "已保存的收款账户",
+  "worker.wallet_save_btn": "保存收款账户",
+  "worker.wallet_change_btn": "修改收款账户",
+  "worker.wallet_not_set": "尚未设置收款账户。",
+  "worker.wallet_set_prompt": "只需保存一次收款账户，即可一键快速提现，无需重复填写。",
+  "worker.quick_amount": "快捷金额",
+  "worker.withdraw_all": "全部提现",
+  "worker.method_seabank": "SeaBank",
+  "worker.method_bca": "BCA",
+  "worker.method_dana": "DANA",
+  "worker.method_usdt": "USDT (BEP20)",
+  "worker.account_number": "收款账号 / 钱包地址",
+  "worker.account_name": "收款人姓名"
 }

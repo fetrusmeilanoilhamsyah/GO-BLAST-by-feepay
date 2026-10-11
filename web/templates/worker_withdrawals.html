@@ -31,38 +31,80 @@
                 <p style="margin: 6px 0 0 0; font-size: 13px; color: var(--color-muted);">Mata uang akun: {{.User.Currency}}</p>
             </div>
 
-            <!-- FORM PENARIKAN -->
+            <!-- INFORMASI & FORM PENARIKAN -->
+            {{if .User.PayoutMethod}}
+            <!-- KARTU REKENING TUJUAN TERSIMPAN -->
+            <div class="card" style="margin: 0 0 24px 0; padding: 20px; border-left: 4px solid var(--color-primary);">
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+                    <div>
+                        <div style="font-size: 12px; font-weight: 600; text-transform: uppercase; color: var(--color-muted); margin-bottom: 4px;">
+                            {{ call .T "worker.wallet_saved" }}
+                        </div>
+                        <div style="font-size: 16px; font-weight: 700; color: var(--color-text);">
+                            <span class="badge badge-muted" style="text-transform: uppercase; margin-right: 6px;">{{.User.PayoutMethod}}</span>
+                            {{.User.PayoutDestMasked}}
+                        </div>
+                        {{if .User.PayoutAccountName}}
+                        <div style="font-size: 13px; color: var(--color-muted); margin-top: 2px;">
+                            a.n. {{.User.PayoutAccountName}}
+                        </div>
+                        {{end}}
+                    </div>
+                    <div>
+                        <button type="button" class="btn btn-secondary" onclick="toggleDrawer('drawer-left')" style="font-size: 13px; padding: 8px 14px; cursor: pointer;">
+                            {{ call .T "worker.wallet_change_btn" }}
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- FORM PENARIKAN CEPAT DENGAN CHIP NOMINAL -->
             <div class="card" style="margin: 0 0 24px 0; padding: 24px;">
-                <h3 style="margin-top: 0; margin-bottom: 16px; font-size: 18px;">{{ call .T "worker.withdraw_form_title" }}</h3>
-                <form method="POST" action="/worker/withdrawals">
+                <h3 style="margin-top: 0; margin-bottom: 8px; font-size: 18px;">{{ call .T "worker.withdraw_form_title" }}</h3>
+                <p style="margin: 0 0 16px 0; font-size: 13px; color: var(--color-muted);">Pilih salah satu nominal cepat di bawah atau ketik manual jumlah yang diinginkan.</p>
+
+                <form method="POST" action="/worker/withdrawals" id="form-fast-withdraw">
                     <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
 
-                    <div class="field">
+                    <!-- CHIPS PRESET NOMINAL -->
+                    <div style="margin-bottom: 16px;">
+                        <label style="font-weight: 600; font-size: 14px; display: block; margin-bottom: 6px;">
+                            {{ call .T "worker.quick_amount" }}:
+                        </label>
+                        <div class="chip-grid">
+                            {{if eq .User.Currency "IDR"}}
+                            <button type="button" class="chip-btn" onclick="setWithdrawAmount(10000, this)">10K</button>
+                            <button type="button" class="chip-btn" onclick="setWithdrawAmount(20000, this)">20K</button>
+                            <button type="button" class="chip-btn" onclick="setWithdrawAmount(30000, this)">30K</button>
+                            <button type="button" class="chip-btn" onclick="setWithdrawAmount(50000, this)">50K</button>
+                            <button type="button" class="chip-btn" onclick="setWithdrawAmount(100000, this)">100K</button>
+                            <button type="button" class="chip-btn" onclick="setWithdrawAmount(200000, this)">200K</button>
+                            <button type="button" class="chip-btn" onclick="setWithdrawAmount(500000, this)">500K</button>
+                            <button type="button" class="chip-btn" onclick="setWithdrawAmount(1000000, this)">1 Juta</button>
+                            {{if gt .Balance 0}}
+                            <button type="button" class="chip-btn" onclick="setWithdrawAmount({{.Balance}}, this)" style="grid-column: span 2;">{{ call .T "worker.withdraw_all" }}</button>
+                            {{end}}
+                            {{else}}
+                            <button type="button" class="chip-btn" onclick="setWithdrawAmount(1, this)">1 USDT</button>
+                            <button type="button" class="chip-btn" onclick="setWithdrawAmount(2, this)">2 USDT</button>
+                            <button type="button" class="chip-btn" onclick="setWithdrawAmount(5, this)">5 USDT</button>
+                            <button type="button" class="chip-btn" onclick="setWithdrawAmount(10, this)">10 USDT</button>
+                            <button type="button" class="chip-btn" onclick="setWithdrawAmount(20, this)">20 USDT</button>
+                            <button type="button" class="chip-btn" onclick="setWithdrawAmount(50, this)">50 USDT</button>
+                            <button type="button" class="chip-btn" onclick="setWithdrawAmount(100, this)">100 USDT</button>
+                            {{if gt .Balance 0}}
+                            <button type="button" class="chip-btn" onclick="setWithdrawAmount({{.Balance}}, this)">{{ call .T "worker.withdraw_all" }}</button>
+                            {{end}}
+                            {{end}}
+                        </div>
+                    </div>
+
+                    <div class="field" style="margin-bottom: 20px;">
                         <label for="withdraw-amount" style="font-weight: 600; font-size: 14px;">{{ call .T "worker.withdraw_amount" }} ({{.User.Currency}}):</label>
-                        <input type="number" id="withdraw-amount" name="amount" class="input" min="1" max="{{.Balance}}" required placeholder="Contoh: {{if eq .User.Currency "IDR"}}50000{{else}}10{{end}}">
+                        <input type="number" id="withdraw-amount" name="amount" class="input" min="1" max="{{.Balance}}" required placeholder="Pilih nominal di atas atau ketik manual">
                     </div>
 
-                    <div class="field">
-                        <label for="withdraw-method" style="font-weight: 600; font-size: 14px;">{{ call .T "worker.withdraw_method" }}:</label>
-                        <select id="withdraw-method" name="method" class="input" required>
-                            <option value="dana">DANA</option>
-                            <option value="seabank">Seabank</option>
-                            <option value="bank">Bank Lokal (BCA / Mandiri / BRI / BNI / Lainnya)</option>
-                            <option value="usdt_bep20">USDT (Jaringan BEP20)</option>
-                        </select>
-                    </div>
-
-                    <div class="field">
-                        <label for="withdraw-dest" style="font-weight: 600; font-size: 14px;">{{ call .T "worker.withdraw_dest" }}:</label>
-                        <input type="text" id="withdraw-dest" name="destination" class="input" required placeholder="Nomor rekening / nomor HP e-wallet / alamat wallet">
-                    </div>
-
-                    <div class="field">
-                        <label for="withdraw-name" style="font-weight: 600; font-size: 14px;">{{ call .T "worker.withdraw_name" }}:</label>
-                        <input type="text" id="withdraw-name" name="account_name" class="input" required placeholder="Nama lengkap pemilik rekening atau penerima">
-                    </div>
-
-                    <div style="background-color: var(--color-surface-muted); padding: 12px 16px; border-radius: 6px; margin-bottom: 20px; font-size: 13px; color: var(--color-muted); line-height: 1.5;">
+                    <div style="background-color: var(--color-surface-muted); padding: 12px 16px; border-radius: 6px; margin-bottom: 20px; font-size: 13px; color: var(--color-muted); line-height: 1.5; border: 1px solid var(--color-border);">
                         {{ call .T "worker.withdraw_notice" }}
                     </div>
 
@@ -71,6 +113,65 @@
                     </button>
                 </form>
             </div>
+            {{else}}
+            <!-- FORM ATUR REKENING JIKA BELUM ADA -->
+            <div class="card" style="margin: 0 0 24px 0; padding: 24px;">
+                <div style="background-color: var(--color-surface-muted); border-left: 4px solid var(--color-warning); padding: 14px 18px; margin-bottom: 20px; border-radius: 6px;">
+                    <div style="font-weight: 700; color: var(--color-text); margin-bottom: 4px;">{{ call .T "worker.wallet_not_set" }}</div>
+                    <div style="font-size: 13px; color: var(--color-muted); line-height: 1.5;">{{ call .T "worker.wallet_set_prompt" }}</div>
+                </div>
+
+                <h3 style="margin-top: 0; margin-bottom: 16px; font-size: 18px;">{{ call .T "worker.wallet_settings" }}</h3>
+                <form method="POST" action="/worker/wallet">
+                    <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+
+                    <div class="field" style="margin-bottom: 14px;">
+                        <label for="payout-method" style="font-weight: 600; font-size: 14px;">{{ call .T "worker.withdraw_method" }}:</label>
+                        <select id="payout-method" name="method" class="input" required>
+                            {{if eq .User.Currency "IDR"}}
+                            <option value="seabank">SeaBank</option>
+                            <option value="bca">BCA</option>
+                            <option value="dana">DANA</option>
+                            {{else}}
+                            <option value="usdt_bep20">USDT (BEP20)</option>
+                            {{end}}
+                        </select>
+                    </div>
+
+                    <div class="field" style="margin-bottom: 14px;">
+                        <label for="payout-dest" style="font-weight: 600; font-size: 14px;">{{ call .T "worker.account_number" }}:</label>
+                        <input type="text" id="payout-dest" name="destination" class="input" required placeholder="{{if eq .User.Currency "IDR"}}Nomor rekening / nomor HP DANA{{else}}0x... (Alamat BEP20){{end}}">
+                    </div>
+
+                    {{if eq .User.Currency "IDR"}}
+                    <div class="field" style="margin-bottom: 20px;">
+                        <label for="payout-name" style="font-weight: 600; font-size: 14px;">{{ call .T "worker.account_name" }}:</label>
+                        <input type="text" id="payout-name" name="account_name" class="input" required placeholder="Nama lengkap pemilik rekening atau akun">
+                    </div>
+                    {{end}}
+
+                    <button type="submit" class="btn btn-primary" style="padding: 12px 24px; font-weight: bold; cursor: pointer;">
+                        {{ call .T "worker.wallet_save_btn" }}
+                    </button>
+                </form>
+            </div>
+            {{end}}
+
+            <script>
+            function setWithdrawAmount(amt, btn) {
+                var input = document.getElementById('withdraw-amount');
+                if (input) {
+                    input.value = amt;
+                }
+                var buttons = document.querySelectorAll('.chip-btn');
+                buttons.forEach(function(b) {
+                    b.classList.remove('active');
+                });
+                if (btn) {
+                    btn.classList.add('active');
+                }
+            }
+            </script>
 
             <!-- RIWAYAT PENARIKAN -->
             <div class="card" style="margin: 0; padding: 24px;">

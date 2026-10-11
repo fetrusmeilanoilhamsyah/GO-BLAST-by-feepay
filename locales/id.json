@@ -155,5 +155,19 @@
   "worker.username_label": "Username:",
   "worker.menu": "Menu",
   "auth.username": "Username",
-  "auth.login_identifier": "Username atau Email"
+  "auth.login_identifier": "Username atau Email",
+  "worker.wallet_settings": "Pengaturan Rekening & Wallet",
+  "worker.wallet_saved": "Rekening / Wallet Tersimpan",
+  "worker.wallet_save_btn": "Simpan Rekening Tujuan",
+  "worker.wallet_change_btn": "Ubah Rekening",
+  "worker.wallet_not_set": "Rekening tujuan penarikan belum diatur.",
+  "worker.wallet_set_prompt": "Simpan rekening tujuan sekali untuk kemudahan penarikan cepat.",
+  "worker.quick_amount": "Pilihan Cepat Nominal",
+  "worker.withdraw_all": "Tarik Semua Saldo",
+  "worker.method_seabank": "SeaBank",
+  "worker.method_bca": "BCA",
+  "worker.method_dana": "DANA",
+  "worker.method_usdt": "USDT (BEP20)",
+  "worker.account_number": "Nomor Rekening / Akun / Wallet",
+  "worker.account_name": "Nama Pemilik Rekening"
 }

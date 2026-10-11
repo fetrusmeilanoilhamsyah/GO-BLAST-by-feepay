@@ -608,6 +608,41 @@ textarea.input {
   border: 1px solid var(--color-border);
 }
 
+/* Quick Nominal Chips */
+.chip-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(105px, 1fr));
+  gap: 10px;
+  margin-top: 8px;
+  margin-bottom: 16px;
+}
+
+.chip-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background-color: var(--color-surface-muted);
+  color: var(--color-text);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.chip-btn:hover {
+  border-color: var(--color-primary);
+}
+
+.chip-btn.active {
+  background-color: var(--color-primary);
+  color: var(--color-on-primary);
+  border-color: var(--color-primary);
+}
+
 /* Mobile Responsive */
 @media (max-width: 768px) {
   .worker-topbar {
@@ -623,7 +658,13 @@ textarea.input {
     grid-template-columns: 1fr;
     gap: 12px;
   }
+
+  .chip-grid {
+    grid-template-columns: repeat(auto-fill, minmax(85px, 1fr));
+    gap: 8px;
+  }
 }
+
 
 
 

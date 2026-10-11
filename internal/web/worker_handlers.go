@@ -163,6 +163,31 @@ func (s *Server) HandleWorkerWithdrawalsGET(w http.ResponseWriter, r *http.Reque
 	var balance int64
 	_ = s.DB.Pool.QueryRow(ctx, "SELECT user_balance($1, $2)", user.ID, user.Currency).Scan(&balance)
 
+	// Segarkan info wallet user dari DB jika ada
+	var dbMethod, dbDestEnc, dbAccName *string
+	if err := s.DB.Pool.QueryRow(ctx, `
+		SELECT payout_method, payout_dest_encrypted, payout_account_name
+		FROM users
+		WHERE id = $1
+	`, user.ID).Scan(&dbMethod, &dbDestEnc, &dbAccName); err == nil {
+		if dbMethod != nil {
+			user.PayoutMethod = *dbMethod
+		}
+		if dbAccName != nil {
+			user.PayoutAccountName = *dbAccName
+		}
+		if dbDestEnc != nil && *dbDestEnc != "" {
+			if dec, err := withdraw.DecryptDestination(*dbDestEnc, s.EncryptionKey); err == nil {
+				// Bila format dec memiliki " (Nama)", bersihkan untuk masking
+				cleanDest := dec
+				if idx := strings.Index(cleanDest, " ("); idx != -1 {
+					cleanDest = cleanDest[:idx]
+				}
+				user.PayoutDestMasked = MaskDestination(cleanDest, user.PayoutMethod)
+			}
+		}
+	}
+
 	// 2. Riwayat penarikan
 	rows, err := s.DB.Pool.Query(ctx, `
 		SELECT id, currency, amount, method, status, requested_at, processed_at
@@ -192,8 +217,8 @@ func (s *Server) HandleWorkerWithdrawalsGET(w http.ResponseWriter, r *http.Reque
 	}
 
 	errMsg := r.URL.Query().Get("error")
-	successMsg := ""
-	if r.URL.Query().Get("success") == "1" {
+	successMsg := r.URL.Query().Get("success")
+	if successMsg == "1" {
 		successMsg = i18n.T(lang, "worker.withdraw_success")
 	}
 
@@ -238,7 +263,7 @@ func (s *Server) HandleWorkerWithdrawalsPOST(w http.ResponseWriter, r *http.Requ
 
 	ctx := r.Context()
 	amountStr := strings.TrimSpace(r.FormValue("amount"))
-	method := strings.TrimSpace(r.FormValue("method"))
+	method := strings.ToLower(strings.TrimSpace(r.FormValue("method")))
 	dest := strings.TrimSpace(r.FormValue("destination"))
 	accountName := strings.TrimSpace(r.FormValue("account_name"))
 
@@ -248,17 +273,55 @@ func (s *Server) HandleWorkerWithdrawalsPOST(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	// Validasi method
-	switch method {
-	case "dana", "seabank", "bank", "usdt_bep20":
-	default:
-		http.Redirect(w, r, "/worker/withdrawals?error=Metode+penarikan+tidak+didukung", http.StatusSeeOther)
-		return
-	}
+	var payoutMethod string
+	var encryptedDest string
 
-	if dest == "" || accountName == "" {
-		http.Redirect(w, r, "/worker/withdrawals?error=Nomor+rekening+dan+nama+pemilik+wajib+diisi", http.StatusSeeOther)
-		return
+	// Jika dest diisi langsung di form (backward compatible / tes)
+	if dest != "" {
+		switch method {
+		case "dana", "seabank", "bca", "bank", "usdt_bep20":
+		default:
+			http.Redirect(w, r, "/worker/withdrawals?error=Metode+penarikan+tidak+didukung", http.StatusSeeOther)
+			return
+		}
+
+		if method != "usdt_bep20" && accountName == "" {
+			http.Redirect(w, r, "/worker/withdrawals?error=Nomor+rekening+dan+nama+pemilik+wajib+diisi", http.StatusSeeOther)
+			return
+		}
+
+		fullDest := dest
+		if accountName != "" {
+			fullDest = fmt.Sprintf("%s (%s)", dest, accountName)
+		}
+		enc, err := withdraw.EncryptDestination(fullDest, s.EncryptionKey)
+		if err != nil {
+			http.Redirect(w, r, "/worker/withdrawals?error=Gagal+mengenkripsi+data+tujuan", http.StatusSeeOther)
+			return
+		}
+		payoutMethod = method
+		encryptedDest = enc
+
+		// Simpan ke profil user agar selanjutnya tidak perlu isi ulang
+		_, _ = s.DB.Pool.Exec(ctx, `
+			UPDATE users
+			SET payout_method = $1, payout_dest_encrypted = $2, payout_account_name = $3
+			WHERE id = $4
+		`, method, enc, accountName, user.ID)
+	} else {
+		// Gunakan rekening yang sudah tersimpan di akun user
+		var dbMethod, dbDestEnc, dbAccName *string
+		err = s.DB.Pool.QueryRow(ctx, `
+			SELECT payout_method, payout_dest_encrypted, payout_account_name
+			FROM users
+			WHERE id = $1
+		`, user.ID).Scan(&dbMethod, &dbDestEnc, &dbAccName)
+		if err != nil || dbMethod == nil || dbDestEnc == nil || *dbMethod == "" || *dbDestEnc == "" {
+			http.Redirect(w, r, "/worker/withdrawals?error=Silakan+atur+rekening+atau+wallet+tujuan+di+pengaturan+akun+terlebih+dahulu", http.StatusSeeOther)
+			return
+		}
+		payoutMethod = *dbMethod
+		encryptedDest = *dbDestEnc
 	}
 
 	// Cek saldo
@@ -266,14 +329,6 @@ func (s *Server) HandleWorkerWithdrawalsPOST(w http.ResponseWriter, r *http.Requ
 	_ = s.DB.Pool.QueryRow(ctx, "SELECT user_balance($1, $2)", user.ID, user.Currency).Scan(&currentBalance)
 	if currentBalance < amount {
 		http.Redirect(w, r, "/worker/withdrawals?error=Saldo+Anda+tidak+mencukupi+untuk+penarikan+ini", http.StatusSeeOther)
-		return
-	}
-
-	// Enkripsi tujuan penarikan
-	fullDest := fmt.Sprintf("%s (%s)", dest, accountName)
-	encryptedDest, err := withdraw.EncryptDestination(fullDest, s.EncryptionKey)
-	if err != nil {
-		http.Redirect(w, r, "/worker/withdrawals?error=Gagal+mengenkripsi+data+tujuan", http.StatusSeeOther)
 		return
 	}
 
@@ -290,7 +345,7 @@ func (s *Server) HandleWorkerWithdrawalsPOST(w http.ResponseWriter, r *http.Requ
 		INSERT INTO withdrawals (user_id, currency, amount, method, destination_encrypted, status)
 		VALUES ($1, $2, $3, $4, $5, 'menunggu')
 		RETURNING id
-	`, user.ID, user.Currency, amount, method, encryptedDest).Scan(&withdrawalID)
+	`, user.ID, user.Currency, amount, payoutMethod, encryptedDest).Scan(&withdrawalID)
 	if err != nil {
 		http.Redirect(w, r, "/worker/withdrawals?error=Gagal+membuat+pengajuan+penarikan", http.StatusSeeOther)
 		return
@@ -312,8 +367,86 @@ func (s *Server) HandleWorkerWithdrawalsPOST(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	s.logAudit(&user.ID, "request_withdrawal", "withdrawals", strconv.FormatInt(withdrawalID, 10), fmt.Sprintf("%d %s", amount, user.Currency))
+	s.logAudit(&user.ID, "request_withdrawal", "withdrawals", strconv.FormatInt(withdrawalID, 10), fmt.Sprintf("%d %s (%s)", amount, user.Currency, payoutMethod))
 	http.Redirect(w, r, "/worker/withdrawals?success=1", http.StatusSeeOther)
+}
+
+func (s *Server) HandleWorkerWalletPOST(w http.ResponseWriter, r *http.Request) {
+	user, ok := currentUser(r)
+	if !ok {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+
+	target := "/worker"
+	referer := r.Header.Get("Referer")
+	if referer != "" {
+		if refURL, err := url.Parse(referer); err == nil {
+			if (refURL.Host == "" || refURL.Host == r.Host) && strings.HasPrefix(refURL.Path, "/") && !strings.HasPrefix(refURL.Path, "//") {
+				target = refURL.RequestURI()
+			}
+		}
+	}
+	sep := "?"
+	if strings.Contains(target, "?") {
+		sep = "&"
+	}
+
+	method := strings.ToLower(strings.TrimSpace(r.FormValue("method")))
+	destination := strings.TrimSpace(r.FormValue("destination"))
+	accountName := strings.TrimSpace(r.FormValue("account_name"))
+
+	switch method {
+	case "seabank", "bca", "dana":
+		if user.Currency == "USDT" {
+			http.Redirect(w, r, target+sep+"error=Mata+uang+akun+Anda+adalah+USDT.+Gunakan+metode+USDT.", http.StatusSeeOther)
+			return
+		}
+		if accountName == "" {
+			http.Redirect(w, r, target+sep+"error=Nama+pemilik+rekening+wajib+diisi", http.StatusSeeOther)
+			return
+		}
+	case "usdt_bep20":
+		if user.Currency == "IDR" {
+			http.Redirect(w, r, target+sep+"error=Mata+uang+akun+Anda+adalah+IDR.+Gunakan+metode+lokal+(SeaBank/BCA/DANA).", http.StatusSeeOther)
+			return
+		}
+		if accountName == "" {
+			accountName = "USDT BEP20"
+		}
+	default:
+		http.Redirect(w, r, target+sep+"error=Metode+penarikan+tidak+didukung", http.StatusSeeOther)
+		return
+	}
+
+	if len(destination) < 3 || len(destination) > 100 {
+		http.Redirect(w, r, target+sep+"error=Nomor+rekening+atau+alamat+wallet+tidak+valid", http.StatusSeeOther)
+		return
+	}
+
+	fullDest := destination
+	if accountName != "" && method != "usdt_bep20" {
+		fullDest = fmt.Sprintf("%s (%s)", destination, accountName)
+	}
+
+	encryptedDest, err := withdraw.EncryptDestination(fullDest, s.EncryptionKey)
+	if err != nil {
+		http.Redirect(w, r, target+sep+"error=Gagal+mengenkripsi+data+rekening", http.StatusSeeOther)
+		return
+	}
+
+	_, err = s.DB.Pool.Exec(r.Context(), `
+		UPDATE users
+		SET payout_method = $1, payout_dest_encrypted = $2, payout_account_name = $3
+		WHERE id = $4
+	`, method, encryptedDest, accountName, user.ID)
+	if err != nil {
+		http.Redirect(w, r, target+sep+"error=Gagal+menyimpan+pengaturan+rekening", http.StatusSeeOther)
+		return
+	}
+
+	s.logAudit(&user.ID, "update_payout_settings", "users", strconv.FormatInt(user.ID, 10), fmt.Sprintf("method: %s", method))
+	http.Redirect(w, r, target+sep+"success=Rekening+tujuan+penarikan+berhasil+disimpan", http.StatusSeeOther)
 }
 
 func (s *Server) HandleWorkerReferralGET(w http.ResponseWriter, r *http.Request) {

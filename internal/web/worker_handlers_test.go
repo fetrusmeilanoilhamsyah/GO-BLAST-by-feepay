@@ -204,6 +204,75 @@ func TestWorkerPanelFlows(t *testing.T) {
 				t.Errorf("Expected remaining balance 60000, got %d", remaining)
 			}
 		}
+
+		// 5. Penarikan 1-klik menggunakan wallet tersimpan tanpa mengetik ulang rekening
+		{
+			// Simpan wallet via HandleWorkerWalletPOST
+			walletForm := url.Values{
+				"method":       {"bca"},
+				"destination":  {"1234567890"},
+				"account_name": {"Pekerja Uji BCA"},
+			}
+			wReq := httptest.NewRequest("POST", "/worker/wallet", strings.NewReader(walletForm.Encode()))
+			wReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			wReq = withWorker(wReq)
+			wRR := httptest.NewRecorder()
+			srv.HandleWorkerWalletPOST(wRR, wReq)
+			if wRR.Code != http.StatusSeeOther || !strings.Contains(wRR.Header().Get("Location"), "success=") {
+				t.Errorf("Expected wallet save success redirect, got code %d, loc %s", wRR.Code, wRR.Header().Get("Location"))
+			}
+
+			// Lakukan penarikan instan 20,000 hanya dengan memilih nominal
+			form := url.Values{
+				"amount": {"20000"},
+			}
+			req := httptest.NewRequest("POST", "/worker/withdrawals", strings.NewReader(form.Encode()))
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			req = withWorker(req)
+			rr := httptest.NewRecorder()
+
+			srv.HandleWorkerWithdrawalsPOST(rr, req)
+			if rr.Code != http.StatusSeeOther || !strings.Contains(rr.Header().Get("Location"), "success=1") {
+				t.Errorf("Expected 1-click withdrawal redirect with success=1, got code %d, loc %s", rr.Code, rr.Header().Get("Location"))
+			}
+
+			// Sisa saldo sekarang 60,000 - 20,000 = 40,000
+			var remaining int64
+			_ = pool.QueryRow(context.Background(), "SELECT user_balance($1, 'IDR')", workerID).Scan(&remaining)
+			if remaining != 40000 {
+				t.Errorf("Expected remaining balance 40000, got %d", remaining)
+			}
+		}
+
+		// 6. Penarikan gagal jika wallet belum diatur dan user tidak mengisi tujuan
+		{
+			var freshWorkerID int64
+			_ = pool.QueryRow(context.Background(), `
+				INSERT INTO users (email, password_hash, role, display_name, language, currency, referral_code)
+				VALUES ($1, 'hash_pass', 'worker', 'Pekerja Kosong', 'id', 'IDR', $2)
+				RETURNING id
+			`, fmt.Sprintf("fresh_%d@example.com", time.Now().UnixNano()), fmt.Sprintf("RF_FRESH_%d", time.Now().UnixNano())).Scan(&freshWorkerID)
+
+			_, _ = pool.Exec(context.Background(), `
+				INSERT INTO ledger_entries (user_id, kind, currency, amount, note)
+				VALUES ($1, 'upah', 'IDR', 50000, 'Upah tes')
+			`, freshWorkerID)
+
+			freshSess := UserSession{
+				ID:       freshWorkerID,
+				Role:     "worker",
+				Currency: "IDR",
+			}
+			req := httptest.NewRequest("POST", "/worker/withdrawals", strings.NewReader(url.Values{"amount": {"10000"}}.Encode()))
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			req = req.WithContext(context.WithValue(req.Context(), userContextKey, freshSess))
+			rr := httptest.NewRecorder()
+
+			srv.HandleWorkerWithdrawalsPOST(rr, req)
+			if rr.Code != http.StatusSeeOther || !strings.Contains(rr.Header().Get("Location"), "error=") {
+				t.Errorf("Expected error redirect when wallet is not configured, got code %d, loc %s", rr.Code, rr.Header().Get("Location"))
+			}
+		}
 	})
 
 	t.Run("HandleWorkerReferralGET rendering", func(t *testing.T) {
