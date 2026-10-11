@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -392,6 +393,140 @@ func TestWorkerPanelFlows(t *testing.T) {
 		_ = pool.QueryRow(context.Background(), "SELECT language FROM users WHERE id = $1", workerID).Scan(&userLang)
 		if userLang != "en" {
 			t.Errorf("Expected language in DB to be 'en', got %q", userLang)
+		}
+	})
+
+	t.Run("HandleWorkerHistoryGET rendering and pagination", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/worker/history?page=1", nil)
+		req = withWorker(req)
+		rr := httptest.NewRecorder()
+
+		srv.HandleWorkerHistoryGET(rr, req)
+		if rr.Code != http.StatusOK {
+			t.Errorf("Expected 200, got %d", rr.Code)
+		}
+		body := rr.Body.String()
+		if !strings.Contains(body, "Riwayat Pengiriman Pesan") && !strings.Contains(body, "Sent Message History") {
+			t.Errorf("Expected body to contain history title")
+		}
+	})
+
+	t.Run("Worker pages do not leak customer phone numbers", func(t *testing.T) {
+		// Fiktif nomor customer tes (bukan nomor asli, 100% fiktif)
+		dummyCustomerPhone := "6289998887771"
+
+		var campID int64
+		_ = pool.QueryRow(context.Background(), `
+			INSERT INTO campaigns (name, button_mode, status)
+			VALUES ('Campaign Uji Privasi', 'kartu_link', 'berjalan')
+			RETURNING id
+		`).Scan(&campID)
+
+		if campID > 0 {
+			var numID int64
+			_ = pool.QueryRow(context.Background(), `
+				INSERT INTO campaign_numbers (campaign_id, phone_e164, status)
+				VALUES ($1, $2, 'terkirim')
+				RETURNING id
+			`, campID, dummyCustomerPhone).Scan(&numID)
+
+			if numID > 0 {
+				_, _ = pool.Exec(context.Background(), `
+					INSERT INTO ledger_entries (user_id, kind, currency, amount, campaign_number_id, note)
+					VALUES ($1, 'upah', 'IDR', 100, $2, 'upah pesan terkirim')
+					ON CONFLICT (campaign_number_id) WHERE kind = 'upah' DO NOTHING
+				`, workerID, numID)
+			}
+		}
+
+		endpoints := []string{"/worker", "/worker/history", "/worker/withdrawals", "/worker/referral"}
+		for _, ep := range endpoints {
+			req := httptest.NewRequest("GET", ep, nil)
+			req = withWorker(req)
+			rr := httptest.NewRecorder()
+
+			switch ep {
+			case "/worker":
+				srv.HandleWorkerHome(rr, req)
+			case "/worker/history":
+				srv.HandleWorkerHistoryGET(rr, req)
+			case "/worker/withdrawals":
+				srv.HandleWorkerWithdrawalsGET(rr, req)
+			case "/worker/referral":
+				srv.HandleWorkerReferralGET(rr, req)
+			}
+
+			if strings.Contains(rr.Body.String(), dummyCustomerPhone) {
+				t.Errorf("SECURITY LEAK: Customer phone number leaked in response of %s", ep)
+			}
+		}
+	})
+
+	t.Run("Worker A cannot view or modify Worker B account", func(t *testing.T) {
+		// Buat worker B
+		var workerBID int64
+		_ = pool.QueryRow(context.Background(), `
+			INSERT INTO users (email, password_hash, role, display_name, language, currency, referral_code)
+			VALUES ($1, 'hash_b', 'worker', 'Pekerja B', 'id', 'IDR', $2)
+			RETURNING id
+		`, fmt.Sprintf("worker_b_%d@example.com", time.Now().UnixNano()), fmt.Sprintf("RFB%d", time.Now().UnixNano())).Scan(&workerBID)
+
+		// Buat wa_account milik Worker B
+		var accBID int64
+		_ = pool.QueryRow(context.Background(), `
+			INSERT INTO wa_accounts (worker_id, label, speed, status)
+			VALUES ($1, 'WA Milik B', 'medium', 'terhubung')
+			RETURNING id
+		`, workerBID).Scan(&accBID)
+
+		if accBID > 0 {
+			// Worker A mencoba mengakses status akun milik Worker B -> harus 404
+			reqStatus := httptest.NewRequest("GET", fmt.Sprintf("/worker/accounts/%d/status", accBID), nil)
+			reqStatus.SetPathValue("id", strconv.FormatInt(accBID, 10))
+			reqStatus = withWorker(reqStatus)
+			rrStatus := httptest.NewRecorder()
+			srv.HandleWorkerAccountStatus(rrStatus, reqStatus)
+
+			if rrStatus.Code != http.StatusNotFound && rrStatus.Code != http.StatusForbidden {
+				t.Errorf("Expected 404/403 when Worker A views Worker B's account status, got %d", rrStatus.Code)
+			}
+
+			// Worker A mencoba menghapus akun milik Worker B -> akun B tidak boleh terhapus
+			reqDel := httptest.NewRequest("POST", fmt.Sprintf("/worker/accounts/%d/delete", accBID), nil)
+			reqDel.SetPathValue("id", strconv.FormatInt(accBID, 10))
+			reqDel = withWorker(reqDel)
+			rrDel := httptest.NewRecorder()
+			srv.HandleWorkerAccountDelete(rrDel, reqDel)
+
+			var countB int
+			_ = pool.QueryRow(context.Background(), "SELECT COUNT(*) FROM wa_accounts WHERE id = $1 AND worker_id = $2", accBID, workerBID).Scan(&countB)
+			if countB != 1 {
+				t.Errorf("SECURITY IDOR: Worker A managed to delete Worker B's account!")
+			}
+		}
+	})
+
+	t.Run("Risk notice and translations present in all 3 languages", func(t *testing.T) {
+		langs := []string{"id", "en", "zh"}
+		keys := []string{
+			"nav.history",
+			"worker.available_numbers_aggregate",
+			"worker.risk_title",
+			"worker.risk_banned_desc",
+			"worker.risk_privacy_desc",
+			"worker.risk_agree_checkbox",
+			"worker.speed_fast_warning",
+			"worker.referral_pending_notice",
+			"worker.history_title",
+		}
+
+		for _, l := range langs {
+			for _, k := range keys {
+				val := i18n.T(l, k)
+				if val == "" || val == k {
+					t.Errorf("Missing translation for key %q in language %q", k, l)
+				}
+			}
 		}
 	})
 }

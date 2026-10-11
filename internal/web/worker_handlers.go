@@ -32,6 +32,28 @@ type WorkerWithdrawalView struct {
 	ProcessedAt string
 }
 
+type WorkerAccountSummaryView struct {
+	ID        int64
+	Label     string
+	Speed     string
+	Status    string
+	CreatedAt string
+}
+
+type WorkerHistoryView struct {
+	SentDate     string
+	CampaignName string
+	MessageCount int64
+	TotalWage    int64
+	Currency     string
+}
+
+type CurrencyIncomeView struct {
+	Currency  string
+	TotalWage int64
+	Balance   int64
+}
+
 func (s *Server) HandleWorkerHome(w http.ResponseWriter, r *http.Request) {
 	user, ok := currentUser(r)
 	if !ok {
@@ -106,6 +128,50 @@ func (s *Server) HandleWorkerHome(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// 8. Sisa nomor tersedia (angka agregat sistem)
+	var availableNumbers int64
+	_ = s.DB.Pool.QueryRow(ctx, "SELECT COUNT(*) FROM campaign_numbers WHERE status = 'tersedia'").Scan(&availableNumbers)
+
+	// 9. Daftar akun WhatsApp milik pekerja
+	var accounts []WorkerAccountSummaryView
+	accRows, err := s.DB.Pool.Query(ctx, `
+		SELECT id, label, speed, status, created_at
+		FROM wa_accounts
+		WHERE worker_id = $1
+		ORDER BY id ASC
+	`, user.ID)
+	if err == nil {
+		defer accRows.Close()
+		for accRows.Next() {
+			var acc WorkerAccountSummaryView
+			var t time.Time
+			if err := accRows.Scan(&acc.ID, &acc.Label, &acc.Speed, &acc.Status, &t); err == nil {
+				acc.CreatedAt = t.Format("02 Jan 2006")
+				accounts = append(accounts, acc)
+			}
+		}
+	}
+
+	// 10. Ringkasan penghasilan per mata uang
+	var incomes []CurrencyIncomeView
+	incRows, err := s.DB.Pool.Query(ctx, `
+		SELECT currency, COALESCE(SUM(amount), 0)
+		FROM ledger_entries
+		WHERE user_id = $1 AND kind = 'upah'
+		GROUP BY currency
+		ORDER BY currency ASC
+	`, user.ID)
+	if err == nil {
+		defer incRows.Close()
+		for incRows.Next() {
+			var inc CurrencyIncomeView
+			if err := incRows.Scan(&inc.Currency, &inc.TotalWage); err == nil {
+				_ = s.DB.Pool.QueryRow(ctx, "SELECT user_balance($1, $2)", user.ID, inc.Currency).Scan(&inc.Balance)
+				incomes = append(incomes, inc)
+			}
+		}
+	}
+
 	data := struct {
 		Lang              string
 		Title             string
@@ -120,6 +186,9 @@ func (s *Server) HandleWorkerHome(w http.ResponseWriter, r *http.Request) {
 		TotalAccounts     int64
 		ConnectedAccounts int64
 		TotalSent         int64
+		AvailableNumbers  int64
+		Accounts          []WorkerAccountSummaryView
+		Incomes           []CurrencyIncomeView
 		Activities        []WorkerActivityView
 		T                 func(string) string
 	}{
@@ -136,6 +205,9 @@ func (s *Server) HandleWorkerHome(w http.ResponseWriter, r *http.Request) {
 		TotalAccounts:     totalAccounts,
 		ConnectedAccounts: connectedAccounts,
 		TotalSent:         totalSent,
+		AvailableNumbers:  availableNumbers,
+		Accounts:          accounts,
+		Incomes:           incomes,
 		Activities:        activities,
 		T: func(key string) string {
 			return i18n.T(lang, key)
@@ -144,6 +216,99 @@ func (s *Server) HandleWorkerHome(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_ = s.Tmpl["worker_home.html"].ExecuteTemplate(w, "base.html", data)
+}
+
+func (s *Server) HandleWorkerHistoryGET(w http.ResponseWriter, r *http.Request) {
+	user, ok := currentUser(r)
+	if !ok {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+
+	ctx := r.Context()
+	lang := user.Language
+	if lang == "" {
+		lang = "id"
+	}
+
+	pageStr := r.URL.Query().Get("page")
+	page, err := strconv.Atoi(pageStr)
+	if err != nil || page < 1 {
+		page = 1
+	}
+	limit := 20
+	offset := (page - 1) * limit
+
+	// Query riwayat agregat per tanggal & kampanye
+	// CATATAN KEAMANAN & PRIVASI: Tidak ada kolom nomor telepon customer yang diseleksi sama sekali
+	rows, err := s.DB.Pool.Query(ctx, `
+		SELECT 
+			DATE(le.created_at) as sent_date,
+			COALESCE(c.name, 'Kampanye #' || COALESCE(c.id::text, '1')) as campaign_name,
+			COUNT(le.id) as message_count,
+			SUM(le.amount) as total_wage,
+			le.currency
+		FROM ledger_entries le
+		LEFT JOIN campaign_numbers cn ON le.campaign_number_id = cn.id
+		LEFT JOIN campaigns c ON cn.campaign_id = c.id
+		WHERE le.user_id = $1 AND le.kind = 'upah'
+		GROUP BY DATE(le.created_at), c.id, c.name, le.currency
+		ORDER BY sent_date DESC
+		LIMIT $2 OFFSET $3
+	`, user.ID, limit+1, offset)
+
+	var historyItems []WorkerHistoryView
+	hasMore := false
+	if err == nil {
+		defer rows.Close()
+		count := 0
+		for rows.Next() {
+			count++
+			if count > limit {
+				hasMore = true
+				break
+			}
+			var item WorkerHistoryView
+			var d time.Time
+			if err := rows.Scan(&d, &item.CampaignName, &item.MessageCount, &item.TotalWage, &item.Currency); err == nil {
+				item.SentDate = d.Format("02 Jan 2006")
+				historyItems = append(historyItems, item)
+			}
+		}
+	}
+
+	data := struct {
+		Lang         string
+		Title        string
+		Theme        string
+		CSRFToken    string
+		ActiveNav    string
+		User         UserSession
+		HistoryItems []WorkerHistoryView
+		Page         int
+		PrevPage     int
+		NextPage     int
+		HasMore      bool
+		T            func(string) string
+	}{
+		Lang:         lang,
+		Title:        i18n.T(lang, "nav.history"),
+		Theme:        getTheme(r),
+		CSRFToken:    getCSRF(r),
+		ActiveNav:    "history",
+		User:         user,
+		HistoryItems: historyItems,
+		Page:         page,
+		PrevPage:     page - 1,
+		NextPage:     page + 1,
+		HasMore:      hasMore,
+		T: func(key string) string {
+			return i18n.T(lang, key)
+		},
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_ = s.Tmpl["worker_history.html"].ExecuteTemplate(w, "base.html", data)
 }
 
 func (s *Server) HandleWorkerWithdrawalsGET(w http.ResponseWriter, r *http.Request) {

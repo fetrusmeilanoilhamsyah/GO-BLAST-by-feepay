@@ -178,6 +178,24 @@
             <!-- ERROR BANNER (JIKA ADA) -->
             <div id="modal-error" style="display: none; background-color: var(--color-surface-muted); color: var(--color-danger); border-left: 4px solid var(--color-danger); padding: 10px 14px; margin-bottom: 16px; border-radius: 4px; font-size: 13px;"></div>
 
+            <!-- STEP 0: PENJELASAN RISIKO & PRIVASI (WAJIB DICENTANG SEBELUM SAMBUNG AKUN PERTAMA) -->
+            <div id="modal-step-risk" style="display: none; text-align: left;">
+                <div style="font-size: 15px; font-weight: 700; color: var(--color-text); margin-bottom: 8px;">
+                    {{ call .T "worker.risk_title" }}
+                </div>
+                <div style="background-color: var(--color-surface-muted); border: 1px solid var(--color-border); border-radius: 6px; padding: 14px; margin-bottom: 14px; font-size: 13px; line-height: 1.6; color: var(--color-text);">
+                    <p style="margin: 0 0 10px 0;">{{ call .T "worker.risk_banned_desc" }}</p>
+                    <p style="margin: 0;">{{ call .T "worker.risk_privacy_desc" }}</p>
+                </div>
+                <label style="display: flex; align-items: flex-start; gap: 10px; cursor: pointer; font-size: 13px; color: var(--color-text); margin-bottom: 18px; user-select: none;">
+                    <input type="checkbox" id="risk-agreement-check" onchange="toggleRiskButton(this.checked)" style="margin-top: 2px;">
+                    <span>{{ call .T "worker.risk_agree_checkbox" }}</span>
+                </label>
+                <button type="button" id="btn-proceed-pairing" onclick="proceedToPairing()" disabled class="btn btn-primary" style="width: 100%; padding: 10px; font-weight: bold; font-size: 14px; cursor: pointer;">
+                    Lanjutkan &rarr;
+                </button>
+            </div>
+
             <!-- STEP 1: PILIH METODE (QR ATAU PAIRING) -->
             <div id="modal-step-link">
                 <!-- TAB SWITCHER -->
@@ -265,12 +283,15 @@
 
                     <div style="margin-bottom: 20px;">
                         <label for="modal-account-speed" style="display: block; font-weight: bold; font-size: 13px; margin-bottom: 6px;">Kecepatan Pengiriman</label>
-                        <select id="modal-account-speed" style="width: 100%; padding: 8px 12px; border: 1px solid var(--color-border); border-radius: 4px; background-color: var(--color-input-bg); color: var(--color-input-text); box-sizing: border-box; font-size: 14px;">
+                        <select id="modal-account-speed" onchange="checkModalSpeedWarning(this.value)" style="width: 100%; padding: 8px 12px; border: 1px solid var(--color-border); border-radius: 4px; background-color: var(--color-input-bg); color: var(--color-input-text); box-sizing: border-box; font-size: 14px;">
                             <option value="medium" selected>Medium (sedang - bawaan)</option>
                             <option value="slow">Slow (santai)</option>
                             <option value="over_slow">Over Slow (sangat santai)</option>
                             <option value="fast">Fast (cepat)</option>
                         </select>
+                        <div id="speed-fast-warning" style="display: none; background-color: var(--color-surface-muted); border-left: 4px solid var(--color-warning); color: var(--color-warning); padding: 8px 12px; margin-top: 8px; font-size: 12px; border-radius: 4px; line-height: 1.4;">
+                            {{ call .T "worker.speed_fast_warning" }}
+                        </div>
                         <span style="display: block; font-size: 11px; color: var(--color-muted); margin-top: 4px;">Kecepatan dapat diubah kapan saja setelahnya.</span>
                     </div>
 
@@ -299,14 +320,42 @@
     let pollInterval = null;
     let currentModalTab = 'qr';
 
+    function toggleRiskButton(checked) {
+        const btn = document.getElementById('btn-proceed-pairing');
+        if (btn) btn.disabled = !checked;
+    }
+
+    function proceedToPairing() {
+        localStorage.setItem('gb_risk_agreed', '1');
+        document.getElementById('modal-step-risk').style.display = 'none';
+        document.getElementById('modal-step-link').style.display = 'block';
+        initAccountSession();
+    }
+
+    function checkModalSpeedWarning(val) {
+        const w = document.getElementById('speed-fast-warning');
+        if (w) w.style.display = (val === 'fast') ? 'block' : 'none';
+    }
+
     function openAddAccountModal(targetID) {
         const modal = document.getElementById('modal-add-account');
         modal.style.display = 'flex';
-        document.getElementById('modal-step-link').style.display = 'block';
         document.getElementById('modal-step-settings').style.display = 'none';
         document.getElementById('modal-error').style.display = 'none';
         document.getElementById('btn-cancel-account').style.display = 'inline-block';
         
+        const hasAgreedRisk = (localStorage.getItem('gb_risk_agreed') === '1') || ({{len .Accounts}} > 0) || (!!targetID);
+        if (!hasAgreedRisk) {
+            document.getElementById('modal-step-risk').style.display = 'block';
+            document.getElementById('modal-step-link').style.display = 'none';
+            const chk = document.getElementById('risk-agreement-check');
+            if (chk) chk.checked = false;
+            toggleRiskButton(false);
+            return;
+        }
+
+        document.getElementById('modal-step-risk').style.display = 'none';
+        document.getElementById('modal-step-link').style.display = 'block';
         switchModalTab('qr');
         initAccountSession(targetID);
     }

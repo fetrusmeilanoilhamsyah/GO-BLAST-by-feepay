@@ -1,0 +1,71 @@
+{{define "content"}}
+<div class="worker-layout">
+    {{ template "worker_nav" . }}
+
+    <main class="worker-content">
+        <div class="worker-page-header">
+            <div>
+                <h1 class="worker-page-title">{{ call .T "worker.history_title" }}</h1>
+                <p style="margin: 4px 0 0 0; color: var(--color-muted); font-size: 14px;">{{ call .T "worker.history_desc" }}</p>
+            </div>
+        </div>
+
+        <!-- TABEL RIWAYAT PENGIRIMAN PESAN -->
+        <div class="card" style="margin: 0; padding: 24px;">
+            <div class="responsive-table-container">
+                <table class="responsive-table">
+                    <thead>
+                        <tr>
+                            <th>{{ call .T "worker.history_date" }}</th>
+                            <th>{{ call .T "worker.history_campaign" }}</th>
+                            <th style="text-align: right;">{{ call .T "worker.history_sent_count" }}</th>
+                            <th style="text-align: right;">{{ call .T "worker.history_earned" }}</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {{range .HistoryItems}}
+                        <tr>
+                            <td style="font-size: 13px; color: var(--color-muted); white-space: nowrap;">{{.SentDate}}</td>
+                            <td style="font-weight: 600; color: var(--color-text);">{{.CampaignName}}</td>
+                            <td style="text-align: right; font-weight: 600;">{{.MessageCount}} pesan</td>
+                            <td style="text-align: right; font-weight: bold; color: var(--color-text);">
+                                {{if eq .Currency "IDR"}}Rp {{.TotalWage}}{{else}}{{.TotalWage}} USDT{{end}}
+                            </td>
+                        </tr>
+                        {{else}}
+                        <tr>
+                            <td colspan="4" style="text-align: center; padding: 36px 16px; color: var(--color-muted); font-size: 14px;">
+                                {{ call $.T "worker.history_no_data" }}
+                            </td>
+                        </tr>
+                        {{end}}
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- PAGINASI -->
+            {{if or (gt .Page 1) .HasMore}}
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--color-border); flex-wrap: wrap; gap: 10px;">
+                <div>
+                    {{if gt .Page 1}}
+                    <a href="/worker/history?page={{.PrevPage}}" class="btn btn-secondary" style="padding: 6px 14px; font-size: 13px; text-decoration: none;">
+                        &larr; {{ call .T "worker.history_prev" }}
+                    </a>
+                    {{end}}
+                </div>
+                <div style="font-size: 13px; color: var(--color-muted); font-weight: 600;">
+                    {{ call .T "worker.history_page" }} {{.Page}}
+                </div>
+                <div>
+                    {{if .HasMore}}
+                    <a href="/worker/history?page={{.NextPage}}" class="btn btn-secondary" style="padding: 6px 14px; font-size: 13px; text-decoration: none;">
+                        {{ call .T "worker.history_next" }} &rarr;
+                    </a>
+                    {{end}}
+                </div>
+            </div>
+            {{end}}
+        </div>
+    </main>
+</div>
+{{end}}

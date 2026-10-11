@@ -35,6 +35,7 @@ func NewServer(database *db.DB, env string, waMgr ...*wa.Manager) (*Server, erro
 		"worker_account_new.html": true,
 		"worker_withdrawals.html": true,
 		"worker_referral.html":    true,
+		"worker_history.html":     true,
 	}
 
 	pages := []string{
@@ -42,6 +43,7 @@ func NewServer(database *db.DB, env string, waMgr ...*wa.Manager) (*Server, erro
 		"admin_campaigns.html", "admin_campaign_form.html", "admin_campaign_detail.html",
 		"worker_accounts.html", "worker_account_new.html",
 		"worker_home.html", "worker_withdrawals.html", "worker_referral.html",
+		"worker_history.html",
 	}
 	for _, page := range pages {
 		var tmpl *template.Template
@@ -120,6 +122,7 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.Handle("GET /worker/withdrawals", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerWithdrawalsGET, "worker")))
 	mux.Handle("POST /worker/withdrawals", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerWithdrawalsPOST, "worker")))
 	mux.Handle("GET /worker/referral", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerReferralGET, "worker")))
+	mux.Handle("GET /worker/history", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerHistoryGET, "worker")))
 
 	// Tahap 9
 	mux.Handle("GET /worker/accounts", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerAccounts, "worker")))

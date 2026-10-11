@@ -49,6 +49,54 @@
                         <a href="/worker/accounts" style="font-size: 13px; font-weight: bold; color: var(--color-link); text-decoration: none;">Kelola Akun &gt;</a>
                     </div>
                 </div>
+
+                <!-- SISA NOMOR TERSEDIA (AGREGAT SISTEM) -->
+                <div class="stat-card">
+                    <div class="stat-label">{{ call .T "worker.available_numbers_aggregate" }}</div>
+                    <div class="stat-value">
+                        {{.AvailableNumbers}} <span style="font-size: 14px; font-weight: normal; color: var(--color-muted);">Nomor</span>
+                    </div>
+                    <p style="margin: 6px 0 0 0; font-size: 12px; color: var(--color-muted);">{{ call .T "worker.available_numbers_sub" }}</p>
+                </div>
+            </div>
+
+            <!-- AKUN WHATSAPP SAYA -->
+            <div class="card" style="margin: 0 0 24px 0; padding: 20px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+                    <h3 style="margin: 0; font-size: 16px;">{{ call .T "wa.accounts_title" }}</h3>
+                    <a href="/worker/accounts" style="font-size: 13px; color: var(--color-link); text-decoration: none; font-weight: 600;">Lihat Semua &gt;</a>
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 8px;">
+                    {{range .Accounts}}
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; background-color: var(--color-surface-muted); border: 1px solid var(--color-border); border-radius: 6px; flex-wrap: wrap; gap: 8px;">
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <span style="font-weight: 700; font-size: 14px;">{{.Label}}</span>
+                            <span style="font-size: 11px; color: var(--color-muted); text-transform: uppercase;">{{.Speed}}</span>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            {{if eq .Status "terhubung"}}
+                            <span class="badge badge-success">{{ call $.T "wa.connected" }}</span>
+                            {{else if eq .Status "menunggu_scan"}}
+                            <span class="badge badge-warning">{{ call $.T "wa.waiting_scan" }}</span>
+                            {{else if eq .Status "antre"}}
+                            <span class="badge badge-muted">{{ call $.T "wa.queued" }}</span>
+                            {{else if eq .Status "terputus"}}
+                            <span class="badge badge-danger">{{ call $.T "wa.disconnected" }}</span>
+                            {{else}}
+                            <span class="badge badge-muted">{{ call $.T "wa.stopped" }}</span>
+                            {{end}}
+                            <a href="/worker/accounts" class="btn btn-secondary" style="padding: 4px 10px; font-size: 12px; text-decoration: none;">Atur</a>
+                        </div>
+                    </div>
+                    {{else}}
+                    <div style="text-align: center; padding: 20px; color: var(--color-muted); font-size: 13px;">
+                        {{ call .T "wa.empty_accounts" }}
+                        <div style="margin-top: 10px;">
+                            <a href="/worker/accounts" class="btn btn-primary" style="padding: 6px 14px; font-size: 13px; text-decoration: none;">+ {{ call .T "wa.add_account" }}</a>
+                        </div>
+                    </div>
+                    {{end}}
+                </div>
             </div>
 
             <!-- MENU AKSI CEPAT -->
@@ -56,6 +104,7 @@
                 <h3 style="margin-top: 0; margin-bottom: 14px; font-size: 16px;">{{ call .T "worker.quick_actions" }}</h3>
                 <div style="display: flex; gap: 12px; flex-wrap: wrap;">
                     <a href="/worker/accounts" class="btn btn-primary" style="padding: 10px 18px; font-size: 14px;">+ {{ call .T "worker.action_add_wa" }}</a>
+                    <a href="/worker/history" class="btn btn-secondary" style="padding: 10px 18px; font-size: 14px;">{{ call .T "nav.history" }}</a>
                     <a href="/worker/withdrawals" class="btn btn-secondary" style="padding: 10px 18px; font-size: 14px;">{{ call .T "worker.action_withdraw" }}</a>
                     <a href="/worker/referral" class="btn btn-secondary" style="padding: 10px 18px; font-size: 14px;">{{ call .T "worker.action_referral" }}</a>
                 </div>

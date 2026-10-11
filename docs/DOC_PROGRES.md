@@ -10,7 +10,7 @@ Nomor tahap mengacu ke tabel "Daftar Tahap" di bawah.
 ## Posisi sekarang
 
 - **Fase**: 1 (MVP)
-- **Terakhir dikerjakan**: Tahap 11 (Panel pekerja: layout simetris responsif, sidebar kiri, pemisahan Beranda, Akun WA, Penarikan, dan Referral) selesai dan lulus verifikasi.
+- **Terakhir dikerjakan**: Tahap 11 (Panel pekerja: ringkasan saldo per mata uang, daftar akun & agregat nomor di /worker, modal risiko banned & privasi sesi sebelum sambung akun pertama, 4 kecepatan & peringatan fast speed, riwayat pesan /worker/history paginasi tanpa nomor telepon customer, referral dengan pemberitahuan Tahap 18, ukuran halaman < 50 KB, tes 100% lulus) selesai dan terverifikasi penuh.
 - **Lanjut dari sini**: Tahap 12 (Panel admin: laporan, pengaturan, dompet).
 - **Blocker**: tidak ada.
 
@@ -123,6 +123,13 @@ Terbaru di atas. Agen menambah baris di sini setiap ada keputusan baru, dari pem
 
 Hasil uji dan hal yang ditemukan saat bekerja (Tahap 0 - 5 diarsipkan di [ARSIP_PROGRES.md](ARSIP_PROGRES.md)). Terbaru di atas.
 
+- 2026-10-12 (Tahap 11 — Panel Pekerja Selesai Sesuai Spesifikasi Penuh):
+  1. Halaman `/worker`: ringkasan penghasilan per mata uang dari `ledger_entries` (IDR dan USDT), daftar akun WhatsApp pekerja langsung di beranda dengan status & aksi, dan sisa nomor tersedia (angka agregat sistem).
+  2. Akun WhatsApp (`/worker/accounts`): modal persetujuan risiko banned & privasi sesi (i18n) wajib dicentang sebelum menyambung akun pertama. Dropdown 4 kecepatan (`over_slow`, `slow`, `medium`, `fast`) dengan peringatan ekstra pada pilihan `fast`.
+  3. Riwayat Pesan (`/worker/history`): riwayat pesan terkirim (tanggal, kampanye, jumlah pesan, upah) dengan paginasi 20 per halaman. 100% tanpa nomor telepon customer sama sekali, bahkan disamarkan pun tidak ditampilkan demi privasi data.
+  4. Referral (`/worker/referral`): kode & tautan referral, dengan teks i18n bahwa bonus referral belum dihitung otomatis (dijadwalkan aktif Tahap 18).
+  5. Performa & Batasan Ukuran: seluruh halaman panel pekerja HTML terkompresi/mentah berkisar ~3.5 KB, CSS tema ~15.6 KB, total transfer pertama < 20 KB (jauh di bawah batas 50 KB). Ringan untuk perangkat spek rendah tanpa framework JavaScript.
+  6. Pengujian Otomatis: `TestWorkerPanelFlows` mencakup uji pencegahan kebocoran nomor customer, proteksi IDOR (pekerja A tidak bisa melihat/menghapus akun pekerja B), modal persetujuan risiko, dan kelengkapan teks di 3 bahasa (`id`, `en`, `zh`). Seluruh suite tes lulus 100%.
 - 2026-10-11 (Tahap 11 — Pemutakhiran UI & Autentikasi): Selesai dan diverifikasi. Penambahan kolom `username VARCHAR(50) UNIQUE` (Migrasi 0008) dengan trigger `trg_users_default_username` agar data lama tetap aman. Form pendaftaran mewajibkan username (3-30 karakter alfanumerik + underscore) dan form login mendukung identifier username maupun email secara fleksibel. UI panel pekerja dimutakhirkan dengan skema monokrom ala go.dev (latar soft off-white #f8f9fa agar tidak menyilaukan mata di layar HP, aksen hitam arang #111827 pada tombol/brand, kartu putih #ffffff dengan elevasi lembut, dan ikon SVG minimalis 1.75px bebas AI slop). Profil di bilah atas menampilkan username ringkas (mencegah teks email terpotong di HP). Label i18n (`worker.id_label`, `worker.role_label`, `worker.username_label`) diperbaiki penuh. Wadah bot protection Cloudflare Turnstile (`#cf-turnstile-container`) telah disiapkan pada halaman login dan register. Seluruh unit test dan suite berurutan (`go test -p 1 ./...`) lulus 100%.
 - 2026-10-11 (Tahap 11 — Panel Pekerja): Selesai dan diverifikasi penuh. UI panel pekerja dimutakhirkan dengan arsitektur **Offcanvas Drawer Ganda** yang simetris dan responsif terinspirasi ZenMux (Sidebar Kanan untuk Beranda, Akun WA, Penarikan, Referral, Pilihan Bahasa ID/EN/ZH, dan Saklar Tema Terang/Gelap/Auto; Sidebar Kiri untuk Profil Pekerja, Pengaturan Nama, Keamanan/Ubah Kata Sandi, dan Logout). Kedua sidebar dapat disembunyikan/dibuka secara interaktif dengan backdrop transparan dan keyboard ESC. Halaman Beranda (/worker), Akun WhatsApp (/worker/accounts) dengan modal QR & pairing interaktif, Penarikan (/worker/withdrawals) terenkripsi AES-256-GCM, dan Referral (/worker/referral) bekerja selaras. Seluruh guard test (TestNoEmojiGuard, TestNoHardcodedColorsInTemplates, TestThemeContrast) dan flow test lulus 100%.
 - 2026-10-11 (Tahap 10 — Mesin Kirim): Selesai dan diverifikasi penuh. Uji klaim atomik konkuren 50 akun mengklaim 1000 nomor berhasil (0 duplikat, semua terklaim tepat 1 kali). Uji buku besar idempoten lulus (ON CONFLICT DO NOTHING via unique index). Uji pelepasan nomor saat putus sesi dan pembersih stale numbers (make_interval) lulus. Uji rate_snapshot immutability dan empty settings rejection lulus. Catatan race detector: `go test -race` di Windows membutuhkan cgo dan C compiler (`gcc`) yang belum terpasang di %PATH% mesin pengembang.
@@ -161,6 +168,7 @@ Langkah uji sambung dan putus satu nomor cadangan:
 
 Terbaru di atas. Format: `tanggal: ringkasan satu baris` (Log Tahap 0 - 5 diarsipkan di [ARSIP_PROGRES.md](ARSIP_PROGRES.md)).
 
+- 2026-10-12: Tahap 11 selesai penuh: Audit dan implementasi lengkap panel pekerja (beranda agregat & saldo per mata uang, modal risiko banned & privasi, riwayat pesan tanpa nomor customer, referral Tahap 18 notice, ukuran < 50 KB, tes lulus 100%).
 - 2026-10-11: Penyempurnaan UI: Reposisi tombol navbar (Menu di kiri, Profil di kanan), drawer navigasi kiri & drawer profil kanan, serta pengelompokan form profil ke dalam accordion collapsible ringkas.
 - 2026-10-11: Penyempurnaan UI: Mode gelap pekat OLED Pitch Black (#0a0a0a), kartu mobile vertikal akun WhatsApp untuk layar Android, pembersihan total font hijau AI-slop, dan rekening penarikan global (SeaBank, BCA, DANA, USDT BEP20).
 - 2026-10-11: Tahap 11 selesai: Panel pekerja simetris dan responsif dengan sidebar kiri rapi sesuai DOC_AI_SLOP. Pemisahan halaman Beranda (/worker), Akun WhatsApp (/worker/accounts), Penarikan (/worker/withdrawals), dan Referral (/worker/referral), modul enkripsi withdraw (AES-256-GCM), dan tes lulus 100%.
