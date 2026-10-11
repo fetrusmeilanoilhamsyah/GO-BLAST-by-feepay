@@ -85,6 +85,7 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 
 	mux.Handle("/", s.CSRFMiddleware(http.HandlerFunc(s.handleIndex)))
 	mux.Handle("POST /theme", s.CSRFMiddleware(http.HandlerFunc(s.HandleThemePOST)))
+	mux.Handle("POST /language", s.CSRFMiddleware(http.HandlerFunc(s.HandleLanguagePOST)))
 	mux.Handle("/login", s.CSRFMiddleware(RateLimitLogin(s.handleLogin)))
 	mux.Handle("/register", s.CSRFMiddleware(RateLimitRegister(s.handleRegister)))
 
@@ -112,6 +113,8 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 
 	// Tahap 11: Worker Panel
 	mux.Handle("GET /worker", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerHome, "worker")))
+	mux.Handle("POST /worker/profile", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerProfilePOST, "worker")))
+	mux.Handle("POST /worker/security", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerSecurityPOST, "worker")))
 	mux.Handle("GET /worker/withdrawals", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerWithdrawalsGET, "worker")))
 	mux.Handle("POST /worker/withdrawals", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerWithdrawalsPOST, "worker")))
 	mux.Handle("GET /worker/referral", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerReferralGET, "worker")))
@@ -243,6 +246,37 @@ func (s *Server) HandleThemePOST(w http.ResponseWriter, r *http.Request) {
 			Secure:   secure,
 			SameSite: http.SameSiteLaxMode,
 		})
+	}
+
+	target := "/"
+	referer := r.Header.Get("Referer")
+	if referer != "" {
+		if refURL, err := url.Parse(referer); err == nil {
+			if (refURL.Host == "" || refURL.Host == r.Host) && strings.HasPrefix(refURL.Path, "/") && !strings.HasPrefix(refURL.Path, "//") {
+				target = refURL.RequestURI()
+			}
+		}
+	}
+
+	http.Redirect(w, r, target, http.StatusSeeOther)
+}
+
+func (s *Server) HandleLanguagePOST(w http.ResponseWriter, r *http.Request) {
+	lang := validateLang(r.FormValue("lang"))
+
+	secure := s.Env != "dev"
+	http.SetCookie(w, &http.Cookie{
+		Name:     "lang",
+		Value:    lang,
+		Path:     "/",
+		Expires:  time.Now().Add(30 * 24 * time.Hour),
+		HttpOnly: true,
+		Secure:   secure,
+		SameSite: http.SameSiteLaxMode,
+	})
+
+	if user, ok := currentUser(r); ok {
+		_, _ = s.DB.Pool.Exec(r.Context(), "UPDATE users SET language = $1 WHERE id = $2", lang, user.ID)
 	}
 
 	target := "/"

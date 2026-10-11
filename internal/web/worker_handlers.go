@@ -3,10 +3,12 @@ package web
 import (
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
 
+	"goblast/internal/auth"
 	"goblast/internal/i18n"
 	"goblast/internal/withdraw"
 )
@@ -404,4 +406,89 @@ func (s *Server) HandleWorkerReferralGET(w http.ResponseWriter, r *http.Request)
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_ = s.Tmpl["worker_referral.html"].ExecuteTemplate(w, "base.html", data)
+}
+
+func (s *Server) HandleWorkerProfilePOST(w http.ResponseWriter, r *http.Request) {
+	user, ok := currentUser(r)
+	if !ok {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+
+	name := strings.TrimSpace(r.FormValue("display_name"))
+	if len(name) > 0 && len(name) <= 100 {
+		_, _ = s.DB.Pool.Exec(r.Context(), "UPDATE users SET display_name = $1 WHERE id = $2", name, user.ID)
+		s.logAudit(&user.ID, "update_profile", "users", strconv.FormatInt(user.ID, 10), "display name updated")
+	}
+
+	target := "/worker"
+	referer := r.Header.Get("Referer")
+	if referer != "" {
+		if refURL, err := url.Parse(referer); err == nil {
+			if (refURL.Host == "" || refURL.Host == r.Host) && strings.HasPrefix(refURL.Path, "/") && !strings.HasPrefix(refURL.Path, "//") {
+				target = refURL.RequestURI()
+			}
+		}
+	}
+
+	http.Redirect(w, r, target, http.StatusSeeOther)
+}
+
+func (s *Server) HandleWorkerSecurityPOST(w http.ResponseWriter, r *http.Request) {
+	user, ok := currentUser(r)
+	if !ok {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+
+	oldPass := r.FormValue("old_password")
+	newPass := r.FormValue("new_password")
+	confirmPass := r.FormValue("confirm_password")
+
+	target := "/worker"
+	referer := r.Header.Get("Referer")
+	if referer != "" {
+		if refURL, err := url.Parse(referer); err == nil {
+			if (refURL.Host == "" || refURL.Host == r.Host) && strings.HasPrefix(refURL.Path, "/") && !strings.HasPrefix(refURL.Path, "//") {
+				target = refURL.RequestURI()
+			}
+		}
+	}
+
+	sep := "?"
+	if strings.Contains(target, "?") {
+		sep = "&"
+	}
+
+	if len(newPass) < 10 {
+		http.Redirect(w, r, target+sep+"error=Kata+sandi+baru+minimal+10+karakter", http.StatusSeeOther)
+		return
+	}
+	if newPass != confirmPass {
+		http.Redirect(w, r, target+sep+"error=Konfirmasi+kata+sandi+tidak+cocok", http.StatusSeeOther)
+		return
+	}
+
+	var currentHash string
+	err := s.DB.Pool.QueryRow(r.Context(), "SELECT password_hash FROM users WHERE id = $1", user.ID).Scan(&currentHash)
+	if err != nil {
+		http.Redirect(w, r, target+sep+"error=Gagal+mengambil+data+pengguna", http.StatusSeeOther)
+		return
+	}
+
+	match, err := auth.VerifyPassword(oldPass, currentHash)
+	if err != nil || !match {
+		http.Redirect(w, r, target+sep+"error=Kata+sandi+lama+salah", http.StatusSeeOther)
+		return
+	}
+
+	newHash, err := auth.HashPassword(newPass)
+	if err != nil {
+		http.Redirect(w, r, target+sep+"error=Gagal+memproses+kata+sandi+baru", http.StatusSeeOther)
+		return
+	}
+
+	_, _ = s.DB.Pool.Exec(r.Context(), "UPDATE users SET password_hash = $1 WHERE id = $2", newHash, user.ID)
+	s.logAudit(&user.ID, "change_password", "users", strconv.FormatInt(user.ID, 10), "password updated")
+	http.Redirect(w, r, target+sep+"success=Kata+sandi+berhasil+diperbarui", http.StatusSeeOther)
 }

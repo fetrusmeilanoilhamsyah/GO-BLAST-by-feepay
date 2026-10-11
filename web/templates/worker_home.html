@@ -2,8 +2,7 @@
 <div class="worker-layout">
     {{ template "worker_nav" . }}
 
-    <main class="worker-main">
-        <div class="worker-content">
+    <main class="worker-content">
             <div class="worker-page-header">
                 <div>
                     <h1 class="worker-page-title">{{ call .T "worker.greeting" }}, {{ .User.DisplayName }}</h1>
@@ -116,7 +115,6 @@
                     </table>
                 </div>
             </div>
-        </div>
     </main>
 </div>
 {{end}}

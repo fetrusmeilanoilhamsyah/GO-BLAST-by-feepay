@@ -13,6 +13,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
+	"goblast/internal/auth"
 	"goblast/internal/db"
 	"goblast/internal/i18n"
 )
@@ -220,6 +221,108 @@ func TestWorkerPanelFlows(t *testing.T) {
 		}
 		if !strings.Contains(body, "register?ref="+refCode) {
 			t.Errorf("Expected body to contain referral link with refCode")
+		}
+	})
+
+	t.Run("HandleWorkerProfilePOST updates display_name", func(t *testing.T) {
+		form := url.Values{"display_name": {"Pekerja Hebat"}}
+		req := httptest.NewRequest("POST", "/worker/profile", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req = withWorker(req)
+		rr := httptest.NewRecorder()
+
+		srv.HandleWorkerProfilePOST(rr, req)
+		if rr.Code != http.StatusSeeOther {
+			t.Errorf("Expected redirect 303, got %d", rr.Code)
+		}
+
+		var updatedName string
+		_ = pool.QueryRow(context.Background(), "SELECT display_name FROM users WHERE id = $1", workerID).Scan(&updatedName)
+		if updatedName != "Pekerja Hebat" {
+			t.Errorf("Expected display_name 'Pekerja Hebat', got %q", updatedName)
+		}
+	})
+
+	t.Run("HandleWorkerSecurityPOST validation and update", func(t *testing.T) {
+		// Wrong old password
+		{
+			form := url.Values{
+				"old_password":     {"WrongPass123!"},
+				"new_password":     {"NewPass12345!"},
+				"confirm_password": {"NewPass12345!"},
+			}
+			req := httptest.NewRequest("POST", "/worker/security", strings.NewReader(form.Encode()))
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			req = withWorker(req)
+			rr := httptest.NewRecorder()
+
+			srv.HandleWorkerSecurityPOST(rr, req)
+			if rr.Code != http.StatusSeeOther || !strings.Contains(rr.Header().Get("Location"), "error=") {
+				t.Errorf("Expected redirect with error for wrong old password, got code %d, loc %s", rr.Code, rr.Header().Get("Location"))
+			}
+		}
+
+		// Valid password update
+		{
+			// First, set a known password hash for worker
+			knownHash, _ := auth.HashPassword("OldSecretPass123!")
+			_, _ = pool.Exec(context.Background(), "UPDATE users SET password_hash = $1 WHERE id = $2", knownHash, workerID)
+
+			form := url.Values{
+				"old_password":     {"OldSecretPass123!"},
+				"new_password":     {"NewBrandSecret123!"},
+				"confirm_password": {"NewBrandSecret123!"},
+			}
+			req := httptest.NewRequest("POST", "/worker/security", strings.NewReader(form.Encode()))
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			req = withWorker(req)
+			rr := httptest.NewRecorder()
+
+			srv.HandleWorkerSecurityPOST(rr, req)
+			if rr.Code != http.StatusSeeOther || !strings.Contains(rr.Header().Get("Location"), "success=") {
+				t.Errorf("Expected redirect with success, got code %d, loc %s", rr.Code, rr.Header().Get("Location"))
+			}
+
+			// Verify new password verifies against db hash
+			var newHashInDB string
+			_ = pool.QueryRow(context.Background(), "SELECT password_hash FROM users WHERE id = $1", workerID).Scan(&newHashInDB)
+			match, err := auth.VerifyPassword("NewBrandSecret123!", newHashInDB)
+			if err != nil || !match {
+				t.Errorf("Expected new password to verify against hash in DB, match=%v, err=%v", match, err)
+			}
+		}
+	})
+
+	t.Run("HandleLanguagePOST updates cookie and user preference", func(t *testing.T) {
+		form := url.Values{"lang": {"en"}}
+		req := httptest.NewRequest("POST", "/language", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req = withWorker(req)
+		rr := httptest.NewRecorder()
+
+		srv.HandleLanguagePOST(rr, req)
+		if rr.Code != http.StatusSeeOther {
+			t.Errorf("Expected 303, got %d", rr.Code)
+		}
+
+		// Verify cookie set
+		cookies := rr.Result().Cookies()
+		foundLang := false
+		for _, c := range cookies {
+			if c.Name == "lang" && c.Value == "en" {
+				foundLang = true
+				break
+			}
+		}
+		if !foundLang {
+			t.Errorf("Expected lang cookie set to 'en', got cookies: %v", cookies)
+		}
+
+		// Verify DB user language updated
+		var userLang string
+		_ = pool.QueryRow(context.Background(), "SELECT language FROM users WHERE id = $1", workerID).Scan(&userLang)
+		if userLang != "en" {
+			t.Errorf("Expected language in DB to be 'en', got %q", userLang)
 		}
 	})
 }
