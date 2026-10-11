@@ -135,5 +135,21 @@
   "worker.referral_copied": "链接已复制到剪贴板！",
   "worker.referral_friends_count": "已邀请好友人数",
   "worker.referral_history_title": "推荐奖励明细",
-  "worker.referral_no_history": "暂无推荐奖励记录。"
+  "worker.referral_no_history": "暂无推荐奖励记录。",
+  "worker.account_info": "账户信息",
+  "worker.profile_settings": "个人资料设置",
+  "worker.display_name": "显示名称:",
+  "worker.update_profile": "更新个人资料",
+  "worker.account_security": "账户安全",
+  "worker.current_password": "当前密码:",
+  "worker.new_password": "新密码:",
+  "worker.confirm_new_password": "确认新密码:",
+  "worker.min_password_hint": "至少10个字符",
+  "worker.change_password": "修改密码",
+  "worker.main_nav": "主导航",
+  "worker.language_title": "语言",
+  "worker.theme_title": "外观模式",
+  "worker.devices": "设备",
+  "worker.currency_label": "货币:",
+  "worker.menu": "菜单"
 }

@@ -135,5 +135,21 @@
   "worker.referral_copied": "Link copied to clipboard!",
   "worker.referral_friends_count": "Friends Joined",
   "worker.referral_history_title": "Referral Bonus History",
-  "worker.referral_no_history": "No referral bonuses yet."
+  "worker.referral_no_history": "No referral bonuses yet.",
+  "worker.account_info": "Account Information",
+  "worker.profile_settings": "Profile Settings",
+  "worker.display_name": "Display Name:",
+  "worker.update_profile": "Update Profile",
+  "worker.account_security": "Account Security",
+  "worker.current_password": "Current Password:",
+  "worker.new_password": "New Password:",
+  "worker.confirm_new_password": "Confirm New Password:",
+  "worker.min_password_hint": "Minimum 10 characters",
+  "worker.change_password": "Change Password",
+  "worker.main_nav": "Main Navigation",
+  "worker.language_title": "Language",
+  "worker.theme_title": "Appearance",
+  "worker.devices": "Devices",
+  "worker.currency_label": "Currency:",
+  "worker.menu": "Menu"
 }

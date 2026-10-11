@@ -157,6 +157,10 @@ func (s *Server) RequireRole(next http.HandlerFunc, roles ...string) http.Handle
 			return
 		}
 
+		if lCookie, err := r.Cookie("lang"); err == nil && lCookie.Value != "" {
+			user.Language = validateLang(lCookie.Value)
+		}
+
 		roleAllowed := false
 		for _, role := range roles {
 			if user.Role == role {

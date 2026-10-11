@@ -134,5 +134,21 @@
   "worker.referral_copied": "Tautan berhasil disalin!",
   "worker.referral_friends_count": "Rekan Bergabung",
   "worker.referral_history_title": "Riwayat Bonus Referral",
-  "worker.referral_no_history": "Belum ada catatan bonus referral."
+  "worker.referral_no_history": "Belum ada catatan bonus referral.",
+  "worker.account_info": "Informasi Akun",
+  "worker.profile_settings": "Pengaturan Profil",
+  "worker.display_name": "Nama Tampilan:",
+  "worker.update_profile": "Perbarui Profil",
+  "worker.account_security": "Keamanan Akun",
+  "worker.current_password": "Kata Sandi Saat Ini:",
+  "worker.new_password": "Kata Sandi Baru:",
+  "worker.confirm_new_password": "Ulangi Kata Sandi Baru:",
+  "worker.min_password_hint": "Minimal 10 karakter",
+  "worker.change_password": "Ganti Kata Sandi",
+  "worker.main_nav": "Navigasi Utama",
+  "worker.language_title": "Bahasa",
+  "worker.theme_title": "Mode Tampilan",
+  "worker.devices": "Perangkat",
+  "worker.currency_label": "Mata Uang:",
+  "worker.menu": "Menu"
 }

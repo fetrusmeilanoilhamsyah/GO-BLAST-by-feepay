@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"goblast/internal/auth"
 	"goblast/internal/db"
 	"goblast/internal/i18n"
 	"goblast/internal/wa"
@@ -277,6 +278,13 @@ func (s *Server) HandleLanguagePOST(w http.ResponseWriter, r *http.Request) {
 
 	if user, ok := currentUser(r); ok {
 		_, _ = s.DB.Pool.Exec(r.Context(), "UPDATE users SET language = $1 WHERE id = $2", lang, user.ID)
+	} else if cookie, err := r.Cookie("gb_session"); err == nil && cookie.Value != "" {
+		hash := auth.HashSessionToken(cookie.Value)
+		_, _ = s.DB.Pool.Exec(r.Context(), `
+			UPDATE users SET language = $1
+			FROM web_sessions ws
+			WHERE ws.user_id = users.id AND ws.token_hash = $2
+		`, lang, hash)
 	}
 
 	target := "/"
