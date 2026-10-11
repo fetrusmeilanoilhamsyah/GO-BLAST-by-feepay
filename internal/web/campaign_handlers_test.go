@@ -18,7 +18,11 @@ import (
 )
 
 func TestCampaignHandlers(t *testing.T) {
-	os.Chdir("../..")
+	root := findProjectRoot(t)
+	cwd, _ := os.Getwd()
+	_ = os.Chdir(root)
+	defer os.Chdir(cwd)
+
 	godotenv.Load()
 
 	dbURL := os.Getenv("DATABASE_URL")
@@ -38,7 +42,10 @@ func TestCampaignHandlers(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	s, _ := NewServer(&db.DB{Pool: pool}, "test", nil, nil)
+	s, err := NewServer(&db.DB{Pool: pool}, "test", nil, nil)
+	if err != nil {
+		t.Fatalf("Failed to create server: %v", err)
+	}
 
 	withUser := func(h http.HandlerFunc) http.HandlerFunc {
 		return func(w http.ResponseWriter, r *http.Request) {

@@ -17,6 +17,7 @@ Nomor tahap mengacu ke tabel "Daftar Tahap" di bawah.
 ---
 
 ## TODO / Perlu Keputusan
+- **Pembersihan Akun WA Batal**: Keputusan tetap pemilik: jika pekerja membuka modal tambah akun baru lalu membatalkan (klik Batal, tombol silang X, klik backdrop modal, atau tekan ESC) sebelum sesi berhasil terhubung, baris antrean sementara di database langsung dibersihkan otomatis via endpoint delete agar tidak membebani server dan tidak menggantung di tabel dengan status `menunggu_scan` atau `terputus`.
 - **Uji manual pengiriman nyata (Tahap 10)**: Uji manual pengiriman nyata (dua akun cadangan, satu database kecil) menunggu pemilik, dan jangan menandai Tahap 10 Selesai berdasarkan tes dengan FakeSender saja.
 - Terkait keputusan terbuka #1: Definisi "terkirim" DeliveryLevel saat ini bernilai "server_ack" (centang satu). Menunggu konfirmasi apakah perlu centang dua.
 - Terkait keputusan terbuka #4: Saat ini form pendaftaran pekerja tidak memuat pilihan mata uang. Kolom currency pada tabel `users` dibuat konstan `IDR` saat pendaftaran. Menunggu keputusan final pemilik proyek apakah mata uang dipilih saat pendaftaran.
@@ -181,6 +182,7 @@ Langkah uji sambung dan putus satu nomor cadangan:
 
 Terbaru di atas. Format: `tanggal: ringkasan satu baris` (Log Tahap 0 - 5 diarsipkan di [ARSIP_PROGRES.md](ARSIP_PROGRES.md)).
 
+- 2026-10-12: Perbaikan siklus hidup akun WA: otomatis bersihkan antrean sementara saat user batal/tutup modal tambah akun agar tidak menggantung di DB, perbaiki fallback tombol aksi di tabel desktop & mobile agar akun terputus/berhenti selalu bisa disambung kembali atau dihapus dengan aman, unclaim campaign_numbers sebelum hapus akun, dan perbarui binary goblast.exe.
 - 2026-10-12: Tahap 10b selesai: Engine.IsRunning, WorkController interface di web, rute start & stop kerja pekerja, tampilan status kerja & stop_reason serta tombol di /worker/accounts dan /worker tiga bahasa, graceful shutdown (timeouts + SIGINT/SIGTERM 15s), tes lulus 100%. Status Tahap 10 diubah ke Sebagian menunggu uji manual pengiriman nyata oleh pemilik.
 - 2026-10-12: Koreksi Tahap 10 selesai: migrasi 0010, satuan rate_wage mikro-USDT, pengaman uang & pesan, thumbnail in-memory cache, batas harian Asia/Jakarta, dan 8 DB test baru lulus 100%.
 - 2026-10-12: UI Akun WhatsApp: Tambahkan kartu ringkasan Database Nomor Tersedia (Sistem) dan Akun Terhubung di halaman /worker/accounts.

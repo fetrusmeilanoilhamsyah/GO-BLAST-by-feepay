@@ -359,10 +359,29 @@ func (s *Server) HandleWorkerAccountDelete(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	isJSON := strings.Contains(r.Header.Get("Accept"), "application/json") || r.FormValue("format") == "json"
+
+	var delErr error
 	if s.WaManager != nil {
-		_ = s.WaManager.Delete(r.Context(), id, user.ID)
+		delErr = s.WaManager.Delete(r.Context(), id, user.ID)
 	} else {
-		_, _ = s.DB.Pool.Exec(r.Context(), `DELETE FROM wa_accounts WHERE id = $1 AND worker_id = $2`, id, user.ID)
+		_, _ = s.DB.Pool.Exec(r.Context(), `UPDATE campaign_numbers SET claimed_account_id = NULL WHERE claimed_account_id = $1`, id)
+		_, delErr = s.DB.Pool.Exec(r.Context(), `DELETE FROM wa_accounts WHERE id = $1 AND worker_id = $2`, id, user.ID)
+	}
+
+	if isJSON {
+		w.Header().Set("Content-Type", "application/json")
+		if delErr != nil {
+			json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": delErr.Error()})
+		} else {
+			json.NewEncoder(w).Encode(map[string]interface{}{"ok": true})
+		}
+		return
+	}
+
+	if delErr != nil {
+		http.Redirect(w, r, fmt.Sprintf("/worker/accounts?error=%s", urlQueryEscape(delErr.Error())), http.StatusSeeOther)
+		return
 	}
 
 	http.Redirect(w, r, "/worker/accounts", http.StatusSeeOther)

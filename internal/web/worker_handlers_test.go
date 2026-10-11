@@ -134,6 +134,57 @@ func TestWorkerPanelFlows(t *testing.T) {
 		}
 	})
 
+	t.Run("HandleWorkerAccounts rendering", func(t *testing.T) {
+		// insert test accounts with different status
+		var acc1, acc2, acc3 int64
+		_ = pool.QueryRow(context.Background(), `INSERT INTO wa_accounts (worker_id, label, jid_hash, speed, status) VALUES ($1, 'WA Scan', 'h1', 'medium', 'menunggu_scan') RETURNING id`, workerID).Scan(&acc1)
+		_ = pool.QueryRow(context.Background(), `INSERT INTO wa_accounts (worker_id, label, jid_hash, speed, status) VALUES ($1, 'WA Terhubung', 'h2', 'medium', 'terhubung') RETURNING id`, workerID).Scan(&acc2)
+		_ = pool.QueryRow(context.Background(), `INSERT INTO wa_accounts (worker_id, label, jid_hash, speed, status) VALUES ($1, 'WA Terputus', 'h3', 'medium', 'terputus') RETURNING id`, workerID).Scan(&acc3)
+
+		req := httptest.NewRequest("GET", "/worker/accounts", nil)
+		req = withWorker(req)
+		rr := httptest.NewRecorder()
+
+		srv.HandleWorkerAccounts(rr, req)
+		if rr.Code != http.StatusOK {
+			t.Fatalf("Expected 200, got %d", rr.Code)
+		}
+		body := rr.Body.String()
+		if !strings.Contains(body, "WA Terputus") {
+			t.Errorf("Expected body to contain WA Terputus")
+		}
+		if !strings.Contains(body, fmt.Sprintf("/worker/accounts/%d/delete", acc3)) {
+			t.Errorf("Expected body to contain delete form for acc3")
+		}
+		if !strings.Contains(body, fmt.Sprintf("openAddAccountModal(%d)", acc3)) && !strings.Contains(body, fmt.Sprintf("openAddAccountModal( %d )", acc3)) {
+			t.Errorf("Expected body to contain reconnect button for acc3")
+		}
+		if !strings.Contains(body, fmt.Sprintf("/worker/accounts/%d/delete", acc1)) {
+			t.Errorf("Expected body to contain delete form for acc1 (menunggu_scan)")
+		}
+
+		// Test: Worker deletes pending account via JSON (seperti saat batal tambah akun di modal)
+		delReq := httptest.NewRequest("POST", fmt.Sprintf("/worker/accounts/%d/delete", acc1), nil)
+		delReq.SetPathValue("id", strconv.FormatInt(acc1, 10))
+		delReq.Header.Set("Accept", "application/json")
+		delReq = withWorker(delReq)
+		delRR := httptest.NewRecorder()
+
+		srv.HandleWorkerAccountDelete(delRR, delReq)
+		if delRR.Code != http.StatusOK {
+			t.Errorf("Expected 200 for JSON delete, got %d", delRR.Code)
+		}
+		if !strings.Contains(delRR.Body.String(), `"ok":true`) {
+			t.Errorf("Expected JSON response with ok:true, got %s", delRR.Body.String())
+		}
+
+		var countAcc1 int
+		_ = pool.QueryRow(context.Background(), "SELECT COUNT(*) FROM wa_accounts WHERE id = $1", acc1).Scan(&countAcc1)
+		if countAcc1 != 0 {
+			t.Errorf("Pending account was not deleted from DB")
+		}
+	})
+
 	t.Run("HandleWorkerWithdrawalsGET rendering", func(t *testing.T) {
 		req := httptest.NewRequest("GET", "/worker/withdrawals", nil)
 		req = withWorker(req)

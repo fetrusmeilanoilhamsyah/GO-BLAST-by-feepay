@@ -538,6 +538,7 @@ func (m *Manager) Delete(ctx context.Context, accountID, callerWorkerID int64) e
 	}
 	m.removeSession(accountID)
 	m.releaseNumbers(ctx, accountID)
+	_, _ = m.db.Pool.Exec(ctx, `UPDATE campaign_numbers SET claimed_account_id = NULL WHERE claimed_account_id = $1`, accountID)
 	_, err := m.db.Pool.Exec(ctx, `DELETE FROM wa_accounts WHERE id = $1`, accountID)
 	return err
 }

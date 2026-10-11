@@ -13,9 +13,31 @@ import (
 	"github.com/joho/godotenv"
 )
 
+func findProjectRoot(t *testing.T) string {
+	t.Helper()
+	dir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Failed to get working directory: %v", err)
+	}
+	for {
+		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+			return dir
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+	t.Fatalf("Could not find project root (go.mod)")
+	return ""
+}
+
 func TestNumbersUpload(t *testing.T) {
-	// Change working directory to app root for the test
-	os.Chdir("../..")
+	root := findProjectRoot(t)
+	cwd, _ := os.Getwd()
+	_ = os.Chdir(root)
+	defer os.Chdir(cwd)
 
 	godotenv.Load() // Loads .env from root
 
