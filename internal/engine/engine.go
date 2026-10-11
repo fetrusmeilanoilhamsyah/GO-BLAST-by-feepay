@@ -371,7 +371,7 @@ func (e *Engine) runWorker(ctx context.Context, accountID, workerID int64, curre
 			if errors.Is(sendErr, context.DeadlineExceeded) || sendCtx.Err() == context.DeadlineExceeded {
 				// Error batas waktu dianggap hasil tidak pasti: nomor menjadi gagal dan tidak dicoba ulang
 				_, _ = e.db.Pool.Exec(ctx,
-					`UPDATE campaign_numbers SET status = 'gagal', last_error = 'hasil_tidak_pasti' WHERE id = $1`,
+					`UPDATE campaign_numbers SET status = 'gagal', sent_at = now(), last_error = 'hasil_tidak_pasti' WHERE id = $1`,
 					claimed.ID,
 				)
 				_, _ = e.CheckAndCompleteCampaign(ctx, claimed.CampaignID)
@@ -381,7 +381,7 @@ func (e *Engine) runWorker(ctx context.Context, accountID, workerID int64, curre
 			} else {
 				// Error lain tidak pasti: nomor menjadi gagal dan tidak dicoba ulang
 				_, _ = e.db.Pool.Exec(ctx,
-					`UPDATE campaign_numbers SET status = 'gagal', last_error = $1 WHERE id = $2`,
+					`UPDATE campaign_numbers SET status = 'gagal', sent_at = now(), last_error = $1 WHERE id = $2`,
 					sendErr.Error(), claimed.ID,
 				)
 				_, _ = e.CheckAndCompleteCampaign(ctx, claimed.CampaignID)
@@ -485,7 +485,7 @@ func (e *Engine) RecordWithRetry(ctx context.Context, numberID, workerID int64, 
 	failCtx, failCancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer failCancel()
 	_, _ = e.db.Pool.Exec(failCtx,
-		`UPDATE campaign_numbers SET status = 'gagal', last_error = 'terkirim_tidak_tercatat' WHERE id = $1`,
+		`UPDATE campaign_numbers SET status = 'gagal', sent_at = now(), last_error = 'terkirim_tidak_tercatat' WHERE id = $1`,
 		numberID,
 	)
 	slog.Error("engine: gagal menulis buku besar setelah 3 kali coba ulang, nomor ditandai gagal", "number_id", numberID, "err", lastErr)
@@ -537,7 +537,7 @@ func (e *Engine) HandleSendFailure(ctx context.Context, accountID, numberID int6
 	if attempts >= maxAttempts {
 		// Sudah mencapai batas percobaan: gagal final
 		_, _ = e.db.Pool.Exec(ctx,
-			`UPDATE campaign_numbers SET status = 'gagal', last_error = $1 WHERE id = $2`,
+			`UPDATE campaign_numbers SET status = 'gagal', sent_at = now(), last_error = $1 WHERE id = $2`,
 			errMsg, numberID,
 		)
 		var cid int64

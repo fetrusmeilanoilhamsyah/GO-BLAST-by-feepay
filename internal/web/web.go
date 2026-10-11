@@ -34,6 +34,7 @@ type Server struct {
 func NewServer(database *db.DB, env string, waMgr *wa.Manager, workCtrl WorkController) (*Server, error) {
 	base := filepath.Join("web", "templates", "base.html")
 	workerNav := filepath.Join("web", "templates", "worker_nav.html")
+	adminNav := filepath.Join("web", "templates", "admin_nav.html")
 
 	templates := make(map[string]*template.Template)
 
@@ -46,8 +47,19 @@ func NewServer(database *db.DB, env string, waMgr *wa.Manager, workCtrl WorkCont
 		"worker_history.html":     true,
 	}
 
+	adminPages := map[string]bool{
+		"admin_dashboard.html":       true,
+		"admin_settings.html":        true,
+		"admin_wallet.html":          true,
+		"admin_workers.html":         true,
+		"admin_campaigns.html":       true,
+		"admin_campaign_form.html":   true,
+		"admin_campaign_detail.html": true,
+	}
+
 	pages := []string{
 		"index.html", "login.html", "register.html",
+		"admin_dashboard.html", "admin_settings.html", "admin_wallet.html", "admin_workers.html",
 		"admin_campaigns.html", "admin_campaign_form.html", "admin_campaign_detail.html",
 		"worker_accounts.html", "worker_account_new.html",
 		"worker_home.html", "worker_withdrawals.html", "worker_referral.html",
@@ -59,6 +71,8 @@ func NewServer(database *db.DB, env string, waMgr *wa.Manager, workCtrl WorkCont
 		pagePath := filepath.Join("web", "templates", page)
 		if workerPages[page] {
 			tmpl, err = template.ParseFiles(base, workerNav, pagePath)
+		} else if adminPages[page] {
+			tmpl, err = template.ParseFiles(base, adminNav, pagePath)
 		} else {
 			tmpl, err = template.ParseFiles(base, pagePath)
 		}
@@ -97,7 +111,18 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.Handle("/register", s.CSRFMiddleware(RateLimitRegister(s.handleRegister)))
 
 	mux.Handle("/logout", s.CSRFMiddleware(s.RequireRole(s.handleLogout, "admin", "worker")))
-	mux.Handle("/admin", s.CSRFMiddleware(s.RequireRole(s.handleAdminHome, "admin")))
+	// Tahap 12: Admin Dashboard, Settings, Wallet, Workers
+	mux.Handle("GET /admin", s.CSRFMiddleware(s.RequireRole(s.HandleAdminHome, "admin")))
+	mux.Handle("GET /admin/api/stats", s.RequireRole(s.HandleAdminAPIStats, "admin"))
+	mux.Handle("GET /admin/settings", s.CSRFMiddleware(s.RequireRole(s.HandleAdminSettingsGET, "admin")))
+	mux.Handle("POST /admin/settings", s.CSRFMiddleware(s.RequireRole(s.HandleAdminSettingsPOST, "admin")))
+	mux.Handle("GET /admin/wallet", s.CSRFMiddleware(s.RequireRole(s.HandleAdminWalletGET, "admin")))
+	mux.Handle("POST /admin/wallet", s.CSRFMiddleware(s.RequireRole(s.HandleAdminWalletTopupPOST, "admin")))
+	mux.Handle("POST /admin/wallet/topup", s.CSRFMiddleware(s.RequireRole(s.HandleAdminWalletTopupPOST, "admin")))
+	mux.Handle("GET /admin/workers", s.CSRFMiddleware(s.RequireRole(s.HandleAdminWorkers, "admin")))
+	mux.Handle("POST /admin/workers/{id}/disable", s.CSRFMiddleware(s.RequireRole(s.HandleAdminWorkerDisablePOST, "admin")))
+	mux.Handle("POST /admin/workers/{id}/enable", s.CSRFMiddleware(s.RequireRole(s.HandleAdminWorkerEnablePOST, "admin")))
+	mux.Handle("/admin/", s.CSRFMiddleware(s.RequireRole(func(w http.ResponseWriter, r *http.Request) { http.NotFound(w, r) }, "admin")))
 
 	// Tahap 8
 	mux.Handle("GET /admin/campaigns", s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaigns, "admin")))

@@ -49,6 +49,7 @@ func (s *Server) HandleAdminCampaigns(w http.ResponseWriter, r *http.Request) {
 		Title     string
 		Theme     string
 		CSRFToken string
+		ActiveNav string
 		Campaigns []campaign.Campaign
 		T         func(string) string
 	}{
@@ -56,6 +57,7 @@ func (s *Server) HandleAdminCampaigns(w http.ResponseWriter, r *http.Request) {
 		Title:     "Campaigns - GO BLAST",
 		Theme:     getTheme(r),
 		CSRFToken: getCSRF(r),
+		ActiveNav: "campaigns",
 		Campaigns: campaigns,
 		T: func(key string) string {
 			return i18n.T(lang, key)
@@ -90,6 +92,7 @@ func (s *Server) HandleAdminCampaignNewGET(w http.ResponseWriter, r *http.Reques
 		Title       string
 		Theme       string
 		CSRFToken   string
+		ActiveNav   string
 		Campaign    campaign.Campaign
 		DefaultMode string
 		T           func(string) string
@@ -98,6 +101,7 @@ func (s *Server) HandleAdminCampaignNewGET(w http.ResponseWriter, r *http.Reques
 		Title:     "Buat Campaign Baru - GO BLAST",
 		Theme:     getTheme(r),
 		CSRFToken: csrfToken,
+		ActiveNav: "campaigns",
 		Campaign: campaign.Campaign{
 			Elements: campaign.Elements{
 				CSActive: false,
@@ -248,6 +252,7 @@ func (s *Server) HandleAdminCampaignEditGET(w http.ResponseWriter, r *http.Reque
 		Title     string
 		Theme     string
 		CSRFToken string
+		ActiveNav string
 		Campaign  campaign.Campaign
 		T         func(string) string
 	}{
@@ -255,6 +260,7 @@ func (s *Server) HandleAdminCampaignEditGET(w http.ResponseWriter, r *http.Reque
 		Title:     "Edit Campaign - GO BLAST",
 		Theme:     getTheme(r),
 		CSRFToken: csrfToken,
+		ActiveNav: "campaigns",
 		Campaign:  c,
 		T: func(key string) string {
 			return i18n.T(lang, key)
@@ -517,6 +523,7 @@ func (s *Server) HandleAdminCampaignDetail(w http.ResponseWriter, r *http.Reques
 		Title     string
 		Theme     string
 		CSRFToken string
+		ActiveNav string
 		Campaign  campaign.Campaign
 		Counts    map[string]int
 		T         func(string) string
@@ -525,6 +532,7 @@ func (s *Server) HandleAdminCampaignDetail(w http.ResponseWriter, r *http.Reques
 		Title:     c.Name + " - GO BLAST",
 		Theme:     getTheme(r),
 		CSRFToken: getCSRF(r),
+		ActiveNav: "campaigns",
 		Campaign:  c,
 		Counts:    counts,
 		T: func(key string) string {

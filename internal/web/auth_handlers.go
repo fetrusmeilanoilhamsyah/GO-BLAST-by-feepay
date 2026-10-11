@@ -227,11 +227,6 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/login", http.StatusSeeOther)
 }
 
-func (s *Server) handleAdminHome(w http.ResponseWriter, r *http.Request) {
-	user, _ := currentUser(r)
-	w.Write([]byte("Panel Admin - Tahap 12 akan mengisi halaman ini. Halo " + user.Email))
-}
-
 func (s *Server) handleWorkerHome(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/worker/accounts", http.StatusSeeOther)
 }

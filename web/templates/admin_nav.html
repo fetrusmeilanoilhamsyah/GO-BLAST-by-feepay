@@ -1,0 +1,48 @@
+{{define "admin_nav"}}
+<header style="background-color: var(--color-card); border-bottom: 1px solid var(--color-border); position: sticky; top: 0; z-index: 100;">
+    <div style="max-width: 1200px; margin: 0 auto; padding: 12px 20px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
+        <!-- Brand & Nav Links -->
+        <div style="display: flex; align-items: center; gap: 24px; flex-wrap: wrap;">
+            <a href="/admin" style="display: inline-flex; align-items: baseline; gap: 6px; text-decoration: none; color: var(--color-text);">
+                <span style="font-size: 18px; font-weight: 800; letter-spacing: -0.02em;">{{ call .T "app.name" }}</span>
+                <span style="font-size: 11px; color: var(--color-muted); font-weight: 500;">{{ call .T "app.tagline" }}</span>
+                <span class="badge badge-muted" style="font-size: 10px; margin-left: 4px;">{{ call .T "admin.role" }}</span>
+            </a>
+
+            <nav style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                <a href="/admin" class="btn btn-secondary{{if eq .ActiveNav "dashboard"}} btn-primary{{end}}" style="padding: 6px 12px; font-size: 13px; text-decoration: none;">
+                    {{ call .T "admin.dashboard" }}
+                </a>
+                <a href="/admin/campaigns" class="btn btn-secondary{{if eq .ActiveNav "campaigns"}} btn-primary{{end}}" style="padding: 6px 12px; font-size: 13px; text-decoration: none;">
+                    {{ call .T "admin.campaigns" }}
+                </a>
+                <a href="/admin/workers" class="btn btn-secondary{{if eq .ActiveNav "workers"}} btn-primary{{end}}" style="padding: 6px 12px; font-size: 13px; text-decoration: none;">
+                    {{ call .T "admin.workers" }}
+                </a>
+                <a href="/admin/wallet" class="btn btn-secondary{{if eq .ActiveNav "wallet"}} btn-primary{{end}}" style="padding: 6px 12px; font-size: 13px; text-decoration: none;">
+                    {{ call .T "admin.wallet" }}
+                </a>
+                <a href="/admin/settings" class="btn btn-secondary{{if eq .ActiveNav "settings"}} btn-primary{{end}}" style="padding: 6px 12px; font-size: 13px; text-decoration: none;">
+                    {{ call .T "admin.settings" }}
+                </a>
+            </nav>
+        </div>
+
+        <!-- Controls: Language & Logout -->
+        <div style="display: flex; align-items: center; gap: 12px;">
+            <form method="POST" action="/language" style="display: inline-flex; align-items: center; margin: 0;">
+                <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+                <select name="lang" onchange="this.form.submit()" style="padding: 4px 8px; border: 1px solid var(--color-border); border-radius: 6px; background-color: var(--color-input-bg); color: var(--color-input-text); font-size: 12px;">
+                    <option value="id"{{if eq .Lang "id"}} selected{{end}}>ID</option>
+                    <option value="en"{{if eq .Lang "en"}} selected{{end}}>EN</option>
+                    <option value="zh"{{if eq .Lang "zh"}} selected{{end}}>ZH</option>
+                </select>
+            </form>
+
+            <a href="/logout" class="btn btn-secondary" style="padding: 5px 12px; font-size: 12px; color: var(--color-danger); border-color: var(--color-border); text-decoration: none;">
+                {{ call .T "common.logout" }}
+            </a>
+        </div>
+    </div>
+</header>
+{{end}}

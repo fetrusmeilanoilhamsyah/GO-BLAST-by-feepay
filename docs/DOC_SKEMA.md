@@ -96,3 +96,6 @@ Catatan aktivitas (audit trail).
 - `idx_web_sessions_user_id`: Mempercepat pencarian dan penghapusan semua sesi milik satu pengguna.
 - `idx_wa_accounts_worker_status`: Mempercepat penghitungan dan validasi batas akun aktif per pekerja.
 - `idx_wa_accounts_status`: Mempercepat pemantauan status seluruh akun dan total batas sesi aktif sistem.
+- `idx_campaign_numbers_sent_at`: (Migrasi 0011) Mempercepat query laporan tren harian 14 hari di dashboard admin (`sent_at >= $1`).
+- `idx_wallet_entries_currency`: (Migrasi 0011) Mempercepat kalkulasi saldo dompet admin per mata uang (`currency, created_at`) dan riwayat isi ulang.
+

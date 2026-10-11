@@ -127,16 +127,18 @@ func TestNoEmojiGuard(t *testing.T) {
 func TestCampaignFormTombolAsliDisabled(t *testing.T) {
 	root := findProjectRoot(t)
 	base := filepath.Join(root, "web", "templates", "base.html")
+	nav := filepath.Join(root, "web", "templates", "admin_nav.html")
 	form := filepath.Join(root, "web", "templates", "admin_campaign_form.html")
 
 	_ = i18n.Load(filepath.Join(root, "locales"))
 
-	tmpl, err := template.ParseFiles(base, form)
+	tmpl, err := template.ParseFiles(base, nav, form)
 	if err != nil {
 		t.Fatalf("Failed to parse campaign form template: %v", err)
 	}
 
 	data := struct {
+		ActiveNav   string
 		Lang        string
 		Title       string
 		Theme       string
@@ -145,6 +147,7 @@ func TestCampaignFormTombolAsliDisabled(t *testing.T) {
 		DefaultMode string
 		T           func(string) string
 	}{
+		ActiveNav: "campaigns",
 		Lang:      "id",
 		Title:     "Buat Campaign Baru",
 		Theme:     "",

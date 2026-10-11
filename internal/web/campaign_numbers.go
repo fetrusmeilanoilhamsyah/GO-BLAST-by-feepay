@@ -98,9 +98,10 @@ func (s *Server) HandleAdminCampaignNumbersPreview(w http.ResponseWriter, r *htt
 	}
 
 	defaultCC := "62"
-	_ = s.DB.Pool.QueryRow(r.Context(), "SELECT value->>'default_country_code' FROM settings WHERE key = 'app_settings'").Scan(&defaultCC)
-	if defaultCC == "" {
-		defaultCC = "62"
+	var ccRaw string
+	err = s.DB.Pool.QueryRow(r.Context(), "SELECT value#>>'{}' FROM settings WHERE key = 'default_country_code'").Scan(&ccRaw)
+	if err == nil && strings.TrimSpace(ccRaw) != "" {
+		defaultCC = strings.Trim(strings.TrimSpace(ccRaw), `"`)
 	}
 
 	preview, err := campaign.ProcessPreview(r.Context(), s.DB.Pool, campaignID, rawData, filename, defaultCC)

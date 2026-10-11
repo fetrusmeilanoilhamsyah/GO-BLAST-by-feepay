@@ -1,0 +1,239 @@
+{{define "content"}}
+{{ template "admin_nav" . }}
+
+<main style="max-width: 1200px; margin: 0 auto; padding: 24px 20px;">
+    <!-- Header -->
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 12px;">
+        <div>
+            <h1 style="font-size: 24px; font-weight: 700; margin: 0; color: var(--color-text);">{{ call .T "admin.dashboard_title" }}</h1>
+            <p style="font-size: 13px; color: var(--color-muted); margin: 4px 0 0 0;">{{ call .T "admin.live_indicator" }}</p>
+        </div>
+        <div>
+            <span class="badge badge-muted" id="last-updated">{{.Stats.UpdatedAt}}</span>
+        </div>
+    </div>
+
+    <!-- 1. Overall Status Grid -->
+    <div class="stat-grid" style="margin-bottom: 28px;">
+        <div class="stat-card">
+            <div class="stat-label">{{ call .T "admin.status_tersedia" }}</div>
+            <div class="stat-value" id="overall-tersedia">{{index .Stats.OverallCounts "tersedia"}}</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">{{ call .T "admin.status_dikirim" }}</div>
+            <div class="stat-value" id="overall-dikirim">{{index .Stats.OverallCounts "dikirim"}}</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">{{ call .T "admin.status_terkirim" }}</div>
+            <div class="stat-value" id="overall-terkirim" style="color: var(--color-success);">{{index .Stats.OverallCounts "terkirim"}}</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">{{ call .T "admin.status_gagal" }}</div>
+            <div class="stat-value" id="overall-gagal" style="color: var(--color-danger);">{{index .Stats.OverallCounts "gagal"}}</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">{{ call .T "admin.status_tidak_terdaftar" }}</div>
+            <div class="stat-value" id="overall-tidak-terdaftar" style="color: var(--color-muted);">{{index .Stats.OverallCounts "tidak_terdaftar"}}</div>
+        </div>
+    </div>
+
+    <!-- 2. Campaign Reports -->
+    <section style="margin-bottom: 32px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+            <h2 style="font-size: 18px; font-weight: 700; margin: 0; color: var(--color-text);">{{ call .T "admin.campaign_report_title" }}</h2>
+            <a href="/admin/campaigns" class="btn btn-secondary" style="padding: 5px 12px; font-size: 12px; text-decoration: none;">Kelola Campaign</a>
+        </div>
+        <div class="responsive-table-container">
+            <table class="responsive-table">
+                <thead>
+                    <tr>
+                        <th>Campaign</th>
+                        <th>Status</th>
+                        <th>Tersedia</th>
+                        <th>Dikirim</th>
+                        <th>Terkirim</th>
+                        <th>Gagal</th>
+                        <th>Tidak Terdaftar</th>
+                    </tr>
+                </thead>
+                <tbody id="campaigns-tbody">
+                    {{range .Stats.Campaigns}}
+                    <tr>
+                        <td style="font-weight: 600;"><a href="/admin/campaigns/{{.ID}}">{{.Name}}</a></td>
+                        <td>
+                            <span class="badge {{if eq .Status "berjalan"}}badge-success{{else if eq .Status "draf"}}badge-muted{{else}}badge-muted{{end}}">
+                                {{.Status}}
+                            </span>
+                        </td>
+                        <td>{{.Tersedia}}</td>
+                        <td>{{.Dikirim}}</td>
+                        <td style="font-weight: bold; color: var(--color-success);">{{.Terkirim}}</td>
+                        <td style="color: var(--color-danger);">{{.Gagal}}</td>
+                        <td style="color: var(--color-muted);">{{.TidakTerdaftar}}</td>
+                    </tr>
+                    {{else}}
+                    <tr>
+                        <td colspan="7" style="text-align: center; color: var(--color-muted); padding: 20px;">Belum ada campaign.</td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <!-- 3. Worker Statistics -->
+    <section style="margin-bottom: 32px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+            <h2 style="font-size: 18px; font-weight: 700; margin: 0; color: var(--color-text);">{{ call .T "admin.worker_report_title" }}</h2>
+            <a href="/admin/workers" class="btn btn-secondary" style="padding: 5px 12px; font-size: 12px; text-decoration: none;">Daftar Pekerja</a>
+        </div>
+        <div class="responsive-table-container">
+            <table class="responsive-table">
+                <thead>
+                    <tr>
+                        <th>Pekerja</th>
+                        <th>{{ call .T "admin.worker_sent_today" }}</th>
+                        <th>{{ call .T "admin.worker_sent_total" }}</th>
+                        <th>{{ call .T "admin.worker_earnings_idr" }}</th>
+                        <th>{{ call .T "admin.worker_earnings_usdt" }}</th>
+                    </tr>
+                </thead>
+                <tbody id="workers-tbody">
+                    {{range .Stats.Workers}}
+                    <tr>
+                        <td style="font-weight: 600;">{{.Username}} <span style="font-size: 12px; color: var(--color-muted); font-weight: normal;">({{.Email}})</span></td>
+                        <td style="font-weight: bold;">{{.SentToday}}</td>
+                        <td>{{.SentTotal}}</td>
+                        <td>Rp {{.EarningsIDR}}</td>
+                        <td>{{.EarningsUSDT}}</td>
+                    </tr>
+                    {{else}}
+                    <tr>
+                        <td colspan="5" style="text-align: center; color: var(--color-muted); padding: 20px;">Belum ada pekerja terdaftar.</td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <!-- 4. WhatsApp Accounts List -->
+    <section style="margin-bottom: 32px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+            <h2 style="font-size: 18px; font-weight: 700; margin: 0; color: var(--color-text);">{{ call .T "admin.wa_accounts_title" }}</h2>
+        </div>
+        <div class="responsive-table-container">
+            <table class="responsive-table">
+                <thead>
+                    <tr>
+                        <th>Akun / Label</th>
+                        <th>Pekerja</th>
+                        <th>Kecepatan</th>
+                        <th>Status Sesi</th>
+                        <th>{{ call .T "admin.work_status" }}</th>
+                        <th>{{ call .T "admin.stop_reason" }}</th>
+                    </tr>
+                </thead>
+                <tbody id="accounts-tbody">
+                    {{range .Stats.Accounts}}
+                    <tr>
+                        <td style="font-weight: 600;">{{.Label}}</td>
+                        <td>{{.WorkerUsername}}</td>
+                        <td><span class="badge badge-muted">{{.Speed}}</span></td>
+                        <td>
+                            <span class="badge {{if eq .Status "terhubung"}}badge-success{{else if eq .Status "menunggu_scan"}}badge-warning{{else}}badge-danger{{end}}">
+                                {{.Status}}
+                            </span>
+                        </td>
+                        <td>
+                            {{if .IsRunning}}
+                            <span class="badge badge-success">{{ call $.T "wa.working" }}</span>
+                            {{else}}
+                            <span class="badge badge-muted">{{ call $.T "wa.not_working" }}</span>
+                            {{end}}
+                        </td>
+                        <td style="font-size: 12px; color: var(--color-muted);">{{if .StopReason}}{{.StopReason}}{{else}}-{{end}}</td>
+                    </tr>
+                    {{else}}
+                    <tr>
+                        <td colspan="6" style="text-align: center; color: var(--color-muted); padding: 20px;">Belum ada akun WhatsApp tersambung.</td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <!-- 5. 14-Day Daily Trends -->
+    <section style="margin-bottom: 32px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+            <h2 style="font-size: 18px; font-weight: 700; margin: 0; color: var(--color-text);">{{ call .T "admin.daily_trends_title" }}</h2>
+        </div>
+        <div class="responsive-table-container">
+            <table class="responsive-table">
+                <thead>
+                    <tr>
+                        <th>{{ call .T "admin.date" }}</th>
+                        <th>{{ call .T "admin.status_terkirim" }}</th>
+                        <th>{{ call .T "admin.status_gagal" }}</th>
+                        <th>{{ call .T "admin.status_tidak_terdaftar" }}</th>
+                        <th>{{ call .T "admin.total_processed" }}</th>
+                    </tr>
+                </thead>
+                <tbody id="trends-tbody">
+                    {{range .Stats.DailyTrends}}
+                    <tr>
+                        <td style="font-weight: 600;">{{.Date}}</td>
+                        <td style="color: var(--color-success); font-weight: bold;">{{.Terkirim}}</td>
+                        <td style="color: var(--color-danger);">{{.Gagal}}</td>
+                        <td style="color: var(--color-muted);">{{.TidakTerdaftar}}</td>
+                        <td style="font-weight: bold;">{{.Total}}</td>
+                    </tr>
+                    {{else}}
+                    <tr>
+                        <td colspan="5" style="text-align: center; color: var(--color-muted); padding: 20px;">Belum ada data tren harian.</td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </div>
+    </section>
+</main>
+
+<!-- Polling fetch() 10 detik -->
+<script>
+setInterval(function() {
+    fetch('/admin/api/stats')
+        .then(function(res) {
+            if (!res.ok) throw new Error('Network error');
+            return res.json();
+        })
+        .then(function(data) {
+            if (!data) return;
+
+            // Update overall counts
+            if (data.overall_counts) {
+                var elTk = document.getElementById('overall-tersedia');
+                if (elTk) elTk.textContent = data.overall_counts.tersedia || 0;
+                var elDk = document.getElementById('overall-dikirim');
+                if (elDk) elDk.textContent = data.overall_counts.dikirim || 0;
+                var elTr = document.getElementById('overall-terkirim');
+                if (elTr) elTr.textContent = data.overall_counts.terkirim || 0;
+                var elGg = document.getElementById('overall-gagal');
+                if (elGg) elGg.textContent = data.overall_counts.gagal || 0;
+                var elTt = document.getElementById('overall-tidak-terdaftar');
+                if (elTt) elTt.textContent = data.overall_counts.tidak_terdaftar || 0;
+            }
+
+            // Update timestamp
+            var elUp = document.getElementById('last-updated');
+            if (elUp && data.updated_at) {
+                elUp.textContent = data.updated_at;
+            }
+        })
+        .catch(function(err) {
+            console.error('Stats polling error:', err);
+        });
+}, 10000);
+</script>
+{{end}}

@@ -1,4 +1,5 @@
 {{define "content"}}
+{{ template "admin_nav" . }}
 <div style="max-width: 1200px; margin: 0 auto; padding: 20px;">
     <h2>{{if .Campaign.ID}}{{ call .T "campaign.form_edit_title" }}{{else}}{{ call .T "campaign.form_create_title" }}{{end}}</h2>
     

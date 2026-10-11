@@ -1,0 +1,143 @@
+{{define "content"}}
+{{ template "admin_nav" . }}
+
+<main style="max-width: 900px; margin: 0 auto; padding: 24px 20px;">
+    <div style="margin-bottom: 24px;">
+        <h1 style="font-size: 24px; font-weight: 700; margin: 0; color: var(--color-text);">{{ call .T "admin.settings_title" }}</h1>
+        <p style="font-size: 13px; color: var(--color-muted); margin: 4px 0 0 0;">{{ call .T "admin.settings_desc" }}</p>
+    </div>
+
+    {{if .Error}}
+    <div style="background-color: var(--color-surface-muted); border: 1px solid var(--color-danger); color: var(--color-danger); padding: 12px 16px; border-radius: 8px; margin-bottom: 20px; font-size: 14px;">
+        {{.Error}}
+    </div>
+    {{end}}
+
+    {{if .Message}}
+    <div style="background-color: var(--color-surface-muted); border: 1px solid var(--color-success); color: var(--color-success); padding: 12px 16px; border-radius: 8px; margin-bottom: 20px; font-size: 14px;">
+        {{.Message}}
+    </div>
+    {{end}}
+
+    <form method="POST" action="/admin/settings" style="display: flex; flex-direction: column; gap: 24px;">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+
+        <!-- 1. Tarif Upah (rate_wage) -->
+        <div class="card" style="margin: 0;">
+            <h2 style="font-size: 16px; font-weight: 700; margin-top: 0; margin-bottom: 6px; color: var(--color-text);">{{ call .T "admin.rate_wage" }} <span class="badge badge-warning" style="font-size: 11px;">{{ call .T "admin.required_label" }}</span></h2>
+            <p style="font-size: 12px; color: var(--color-muted); margin-bottom: 16px;">Tarif upah per pesan terkirim yang diterima pekerja.</p>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;">
+                <div class="field">
+                    <label for="rate_wage_idr">{{ call .T "admin.rate_wage_idr" }}</label>
+                    <input type="number" id="rate_wage_idr" name="rate_wage_idr" class="input" min="1" {{if .Settings.RateWageIDR}}value="{{.Settings.RateWageIDR}}"{{else}}value="" placeholder="wajib diisi"{{end}} required>
+                </div>
+                <div class="field">
+                    <label for="rate_wage_usdt">{{ call .T "admin.rate_wage_usdt" }}</label>
+                    <input type="number" id="rate_wage_usdt" name="rate_wage_usdt" class="input" min="1" {{if .Settings.RateWageUSDT}}value="{{.Settings.RateWageUSDT}}"{{else}}value="" placeholder="wajib diisi"{{end}} required>
+                </div>
+            </div>
+        </div>
+
+        <!-- 2. Tarif Referral (rate_referral) -->
+        <div class="card" style="margin: 0;">
+            <h2 style="font-size: 16px; font-weight: 700; margin-top: 0; margin-bottom: 6px; color: var(--color-text);">{{ call .T "admin.rate_referral" }}</h2>
+            <p style="font-size: 12px; color: var(--color-muted); margin-bottom: 16px;">Disimpan sekarang untuk digunakan pada sistem referral (Tahap 18).</p>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;">
+                <div class="field">
+                    <label for="rate_referral_idr">{{ call .T "admin.rate_referral_idr" }}</label>
+                    <input type="number" id="rate_referral_idr" name="rate_referral_idr" class="input" min="0" {{if .Settings.RateReferralIDR}}value="{{.Settings.RateReferralIDR}}"{{else}}value="0"{{end}}>
+                </div>
+                <div class="field">
+                    <label for="rate_referral_usdt">{{ call .T "admin.rate_referral_usdt" }}</label>
+                    <input type="number" id="rate_referral_usdt" name="rate_referral_usdt" class="input" min="0" {{if .Settings.RateReferralUSDT}}value="{{.Settings.RateReferralUSDT}}"{{else}}value="0"{{end}}>
+                </div>
+            </div>
+        </div>
+
+        <!-- 3. Jeda Kecepatan (speed_delays) -->
+        <div class="card" style="margin: 0;">
+            <h2 style="font-size: 16px; font-weight: 700; margin-top: 0; margin-bottom: 6px; color: var(--color-text);">{{ call .T "admin.speed_delays" }}</h2>
+            <p style="font-size: 12px; color: var(--color-muted); margin-bottom: 16px;">Jeda waktu kirim antar pesan dalam satuan detik (1 - 600).</p>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px;">
+                <div class="field">
+                    <label for="speed_delay_fast">Fast (detik)</label>
+                    <input type="number" id="speed_delay_fast" name="speed_delay_fast" class="input" min="1" max="600" value="{{index .Settings.SpeedDelays "fast"}}" required>
+                </div>
+                <div class="field">
+                    <label for="speed_delay_medium">Medium (detik)</label>
+                    <input type="number" id="speed_delay_medium" name="speed_delay_medium" class="input" min="1" max="600" value="{{index .Settings.SpeedDelays "medium"}}" required>
+                </div>
+                <div class="field">
+                    <label for="speed_delay_slow">Slow (detik)</label>
+                    <input type="number" id="speed_delay_slow" name="speed_delay_slow" class="input" min="1" max="600" value="{{index .Settings.SpeedDelays "slow"}}" required>
+                </div>
+                <div class="field">
+                    <label for="speed_delay_over_slow">Over Slow (detik)</label>
+                    <input type="number" id="speed_delay_over_slow" name="speed_delay_over_slow" class="input" min="1" max="600" value="{{index .Settings.SpeedDelays "over_slow"}}" required>
+                </div>
+            </div>
+        </div>
+
+        <!-- 4. Batas Harian Akun (daily_limits) -->
+        <div class="card" style="margin: 0;">
+            <h2 style="font-size: 16px; font-weight: 700; margin-top: 0; margin-bottom: 6px; color: var(--color-text);">{{ call .T "admin.daily_limits" }} <span class="badge badge-warning" style="font-size: 11px;">{{ call .T "admin.required_label" }}</span></h2>
+            <p style="font-size: 12px; color: var(--color-muted); margin-bottom: 16px;">Maksimal pesan per hari per akun WhatsApp (1 - 5000).</p>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px;">
+                <div class="field">
+                    <label for="daily_limit_fast">Fast (pesan/hari)</label>
+                    <input type="number" id="daily_limit_fast" name="daily_limit_fast" class="input" min="1" max="5000" {{if index .Settings.DailyLimits "fast"}}value="{{index .Settings.DailyLimits "fast"}}"{{else}}value="" placeholder="wajib diisi"{{end}} required>
+                </div>
+                <div class="field">
+                    <label for="daily_limit_medium">Medium (pesan/hari)</label>
+                    <input type="number" id="daily_limit_medium" name="daily_limit_medium" class="input" min="1" max="5000" {{if index .Settings.DailyLimits "medium"}}value="{{index .Settings.DailyLimits "medium"}}"{{else}}value="" placeholder="wajib diisi"{{end}} required>
+                </div>
+                <div class="field">
+                    <label for="daily_limit_slow">Slow (pesan/hari)</label>
+                    <input type="number" id="daily_limit_slow" name="daily_limit_slow" class="input" min="1" max="5000" {{if index .Settings.DailyLimits "slow"}}value="{{index .Settings.DailyLimits "slow"}}"{{else}}value="" placeholder="wajib diisi"{{end}} required>
+                </div>
+                <div class="field">
+                    <label for="daily_limit_over_slow">Over Slow (pesan/hari)</label>
+                    <input type="number" id="daily_limit_over_slow" name="daily_limit_over_slow" class="input" min="1" max="5000" {{if index .Settings.DailyLimits "over_slow"}}value="{{index .Settings.DailyLimits "over_slow"}}"{{else}}value="" placeholder="wajib diisi"{{end}} required>
+                </div>
+            </div>
+        </div>
+
+        <!-- 5. Parameter Operasional Lainnya -->
+        <div class="card" style="margin: 0;">
+            <h2 style="font-size: 16px; font-weight: 700; margin-top: 0; margin-bottom: 16px; color: var(--color-text);">Parameter Operasional Mesin</h2>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px;">
+                <div class="field">
+                    <label for="max_attempts">{{ call .T "admin.max_attempts" }} <span class="badge badge-warning" style="font-size: 11px;">{{ call .T "admin.required_label" }}</span></label>
+                    <input type="number" id="max_attempts" name="max_attempts" class="input" min="1" max="10" {{if .Settings.MaxAttempts}}value="{{.Settings.MaxAttempts}}"{{else}}value="" placeholder="wajib diisi"{{end}} required>
+                </div>
+                <div class="field">
+                    <label for="max_consecutive_failures">{{ call .T "admin.max_consecutive_failures" }} <span class="badge badge-warning" style="font-size: 11px;">{{ call .T "admin.required_label" }}</span></label>
+                    <input type="number" id="max_consecutive_failures" name="max_consecutive_failures" class="input" min="1" max="50" {{if .Settings.MaxConsecutiveFailures}}value="{{.Settings.MaxConsecutiveFailures}}"{{else}}value="" placeholder="wajib diisi"{{end}} required>
+                </div>
+                <div class="field">
+                    <label for="claim_timeout_seconds">{{ call .T "admin.claim_timeout_seconds" }}</label>
+                    <input type="number" id="claim_timeout_seconds" name="claim_timeout_seconds" class="input" min="120" max="3600" value="{{.Settings.ClaimTimeoutSeconds}}" required>
+                </div>
+                <div class="field">
+                    <label for="max_accounts_per_worker">{{ call .T "admin.max_accounts_per_worker" }} <span class="badge badge-warning" style="font-size: 11px;">{{ call .T "admin.required_label" }}</span></label>
+                    <input type="number" id="max_accounts_per_worker" name="max_accounts_per_worker" class="input" min="1" max="50" {{if .Settings.MaxAccountsPerWorker}}value="{{.Settings.MaxAccountsPerWorker}}"{{else}}value="" placeholder="wajib diisi"{{end}} required>
+                </div>
+                <div class="field">
+                    <label for="max_active_sessions">{{ call .T "admin.max_active_sessions" }} <span class="badge badge-warning" style="font-size: 11px;">{{ call .T "admin.required_label" }}</span></label>
+                    <input type="number" id="max_active_sessions" name="max_active_sessions" class="input" min="1" max="500" {{if .Settings.MaxActiveSessions}}value="{{.Settings.MaxActiveSessions}}"{{else}}value="" placeholder="wajib diisi"{{end}} required>
+                </div>
+                <div class="field">
+                    <label for="default_country_code">{{ call .T "admin.default_country_code" }}</label>
+                    <input type="text" id="default_country_code" name="default_country_code" class="input" value="{{.Settings.DefaultCountryCode}}" required>
+                </div>
+            </div>
+        </div>
+
+        <div>
+            <button type="submit" class="btn btn-primary" style="padding: 12px 24px; font-size: 15px;">
+                {{ call .T "admin.settings_save_btn" }}
+            </button>
+        </div>
+    </form>
+</main>
+{{end}}

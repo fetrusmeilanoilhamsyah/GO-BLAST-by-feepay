@@ -10,9 +10,10 @@ Nomor tahap mengacu ke tabel "Daftar Tahap" di bawah.
 ## Posisi sekarang
 
 - **Fase**: 1 (MVP)
-- **Terakhir dikerjakan**: Tahap 10b (Penyambungan engine ke aplikasi via WorkController, rute kontrol kerja pekerja POST /worker/accounts/{id}/work/start dan /stop, status kerja & stop_reason serta tombol di template tiga bahasa, graceful shutdown http.Server timeouts + SIGINT/SIGTERM 15s, tes handler & engine lulus 100%).
-- **Lanjut dari sini**: Uji manual pengiriman nyata (dua akun cadangan, satu database kecil) oleh pemilik untuk Tahap 10, atau lanjut ke tahap berikutnya yang diperintahkan.
+- **Terakhir dikerjakan**: Tahap 12 selesai dan diverifikasi.
+- **Sedang dikerjakan**: Menunggu arahan pemilik proyek untuk tahap berikutnya (Tahap 13. Halaman publik).
 - **Blocker**: tidak ada.
+
 
 ---
 
@@ -21,7 +22,6 @@ Nomor tahap mengacu ke tabel "Daftar Tahap" di bawah.
 - **Uji manual pengiriman nyata (Tahap 10)**: Uji manual pengiriman nyata (dua akun cadangan, satu database kecil) menunggu pemilik, dan jangan menandai Tahap 10 Selesai berdasarkan tes dengan FakeSender saja.
 - Terkait keputusan terbuka #1: Definisi "terkirim" DeliveryLevel saat ini bernilai "server_ack" (centang satu). Menunggu konfirmasi apakah perlu centang dua.
 - Terkait keputusan terbuka #4: Saat ini form pendaftaran pekerja tidak memuat pilihan mata uang. Kolom currency pada tabel `users` dibuat konstan `IDR` saat pendaftaran. Menunggu keputusan final pemilik proyek apakah mata uang dipilih saat pendaftaran.
-- **Tahap 12**: Cek dompet saat upload nomor ditunda ke Tahap 12 (jangan buat fungsi kosong sekarang).
 - **Fleksibilitas Data Penerima (Nomor Saja vs Nomor+Nama/USN/ID)**: Sistem harus fleksibel mendukung upload nomor polos tanpa nama, maupun nomor yang disertai nama/username/ID kustom (format `nomor,nama`, `nomor:nama`, kolom CSV/XLSX), serta template variabel seperti `{nama}` dengan fallback aman jika data kosong.
 
 ## Persiapan
@@ -58,7 +58,7 @@ Daftar resmi. Agen hanya boleh mengubah kolom Status, dan hanya untuk tahap yang
 | 9 | Pengelola sesi WhatsApp | Selesai |
 | 10 | Mesin kirim: klaim nomor, kecepatan, buku besar | Sebagian |
 | 11 | Panel pekerja | Selesai |
-| 12 | Panel admin: laporan, pengaturan, dompet | Belum |
+| 12 | Panel admin: laporan, pengaturan, dompet | Selesai |
 | 13 | Halaman publik | Belum |
 | 14 | Penarikan manual | Belum |
 | 15 | Review keamanan dan uji beban | Belum |
@@ -76,7 +76,7 @@ Salinan dari DOC_KONSEP bagian 15. Agen tidak boleh memutuskan sendiri.
 - [ ] 2. Batas harian per kecepatan (jeda sudah ada: 1, 5, 15, 30 detik, bisa diubah di panel)
 - [ ] 3. Jumlah percobaan ulang sebelum `gagal`
 - [ ] 4. Cara menentukan mata uang akun pekerja (usulan: dipilih saat daftar)
-- [ ] 5. Cara menghitung dompet dengan dua mata uang (usulan: satu kurs acuan dari admin)
+- [x] 5. Cara menghitung dompet dengan dua mata uang (diputuskan: dompet admin murni untuk pembukuan dan pemantauan sisa modal per mata uang; upload nomor tidak diblokir saldo; kurs_acuan tidak dibuat)
 - [ ] 6. Nilai awal batas nomor per pekerja dan batas total sesi aktif (setelah pengukuran Tahap 3 dan 15)
 - [x] 7. Mode bawaan template: diputuskan `kartu_link` (hasil uji Tahap 3 membuktikan `tombol_asli` tidak dirender oleh aplikasi WA penerima).
 - [ ] 8. Penanda klik unik: fase 1 atau fase 2
@@ -92,6 +92,7 @@ Terbaru di atas. Agen menambah baris di sini setiap ada keputusan baru, dari pem
 
 | Tanggal | Keputusan | Alasan | Oleh |
 |---|---|---|---|
+| 2026-10-12 | Keputusan #5: Dompet admin murni untuk pembukuan dan pemantauan sisa modal per mata uang (bebas upload nomor tanpa memblokir saldo); kunci kurs_acuan tidak dibuat | Menjaga fleksibilitas alur upload campaign agar tidak terkunci/macet, dan mengelola saldo modal IDR & USDT secara terpisah | pemilik |
 | 2026-10-12 | Tahap 10b: Penyambungan Engine via WorkController, rute kontrol kerja pekerja (start/stop), graceful shutdown (ReadHeaderTimeout 10s, ReadTimeout 60s, WriteTimeout 60s, IdleTimeout 120s, timeout 15s) | Memungkinkan pekerja mengontrol goroutine pengiriman pesan per akun secara aman tanpa logout WhatsApp, dan menjamin penutupan bersih saat server dihentikan | pemilik dan agen |
 | 2026-10-12 | Koreksi Tahap 10: Pengaman uang & pesan, satuan rate_wage mikro-USDT, thumbnail cache (path, modTime), batas harian Asia/Jakarta, migrasi 0010 pembersihan seeded business defaults | Melindungi integritas buku besar dan saldo, mencegah pengiriman ganda pada timeout/error tidak pasti, menghapus default bisnis dari migrasi agar kontrol penuh di tangan admin, dan meningkatkan efisiensi render per campaign | pemilik dan agen |
 | 2026-10-11 | Reposisi Navbar & Drawer (Menu di Kiri, Profil di Kanan) serta Pengelompokan Pengaturan Akun ke Accordion Collapsible Ringkas | Standarisasi letak menu navigasi umum di sebelah kiri dan profil di kanan, serta menggantikan form panjang di drawer profil yang meluber dengan 3 kartu accordion rapi (Pengaturan Profil, Rekening & Wallet, Keamanan Kata Sandi) | pemilik dan agen |
@@ -182,6 +183,7 @@ Langkah uji sambung dan putus satu nomor cadangan:
 
 Terbaru di atas. Format: `tanggal: ringkasan satu baris` (Log Tahap 0 - 5 diarsipkan di [ARSIP_PROGRES.md](ARSIP_PROGRES.md)).
 
+- 2026-10-12: Tahap 12 selesai: Panel admin (dashboard statistik & tren 14 hari dengan polling 10s vanilla fetch, pengaturan dengan audit log perubahan nilai lama & baru serta validasi ketat, dompet pembukuan modal IDR/USDT dan riwayat isi ulang, direktori pekerja dengan aksi enable/disable yang otomatis menghentikan akun WA dan membersihkan sesi web). Seluruh tes unit & integrasi lulus 100%.
 - 2026-10-12: Responsif mobile riwayat pesan /worker/history: ganti tabel kaku dengan tata letak adaptif desktop-only tabel dan mobile-only daftar kartu simetris ala akun WhatsApp, touch target paginasi >= 40px, dan verifikasi seluruh tes 100% lulus.
 - 2026-10-12: Optimasi kecepatan QR code WhatsApp: singleton sqlstore container (hindari overhead koneksi DB & migrasi berulang per sambung akun), background pre-encoding PNG base64 di memori Session, sertakan QR langsung di HTTP response POST /init, polling awal 200ms & interval 800ms. Seluruh tes lulus 100%.
 - 2026-10-12: Perbaikan siklus hidup akun WA: otomatis bersihkan antrean sementara saat user batal/tutup modal tambah akun agar tidak menggantung di DB, perbaiki fallback tombol aksi di tabel desktop & mobile agar akun terputus/berhenti selalu bisa disambung kembali atau dihapus dengan aman, unclaim campaign_numbers sebelum hapus akun, dan perbarui binary goblast.exe.

@@ -309,6 +309,25 @@ func (m *Manager) Disconnect(ctx context.Context, accountID, callerWorkerID int6
 	return nil
 }
 
+// DisconnectAccount memutus koneksi sebuah akun tanpa memeriksa callerWorkerID (dipakai admin saat menonaktifkan pekerja).
+func (m *Manager) DisconnectAccount(ctx context.Context, accountID int64) error {
+	m.mu.Lock()
+	sess, ok := m.sessions[accountID]
+	m.mu.Unlock()
+	if ok && sess != nil {
+		sess.cancel()
+		if sess.Client != nil {
+			sess.Client.Disconnect()
+		}
+	}
+
+	m.removeSession(accountID)
+	_, _ = m.db.Pool.Exec(ctx,
+		`UPDATE wa_accounts SET status = 'terputus' WHERE id = $1`, accountID)
+	m.releaseNumbers(ctx, accountID)
+	return nil
+}
+
 // Stop logout penuh (hapus sesi whatsmeow), status menjadi berhenti.
 // callerWorkerID harus cocok dengan worker_id di DB.
 func (m *Manager) Stop(ctx context.Context, accountID, callerWorkerID int64, reason string) error {
