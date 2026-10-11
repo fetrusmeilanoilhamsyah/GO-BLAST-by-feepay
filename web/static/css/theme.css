@@ -456,6 +456,67 @@ textarea.input {
   box-shadow: 0 1px 2px var(--color-shadow);
 }
 
+/* Worker Drawer Accordion */
+.worker-accordion {
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background-color: var(--color-card);
+  margin-bottom: 8px;
+  overflow: hidden;
+  transition: border-color 0.15s ease;
+}
+
+.worker-accordion[open] {
+  border-color: var(--color-border);
+}
+
+.worker-accordion-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 11px 14px;
+  cursor: pointer;
+  user-select: none;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text);
+  background-color: var(--color-surface-muted);
+  transition: background-color 0.15s ease;
+  list-style: none;
+}
+
+.worker-accordion-summary::-webkit-details-marker {
+  display: none;
+}
+
+.worker-accordion-summary:hover {
+  background-color: var(--color-card);
+}
+
+.worker-accordion-header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--color-text);
+}
+
+.worker-accordion-chevron {
+  transition: transform 0.2s ease;
+  color: var(--color-muted);
+  flex-shrink: 0;
+}
+
+.worker-accordion[open] .worker-accordion-chevron {
+  transform: rotate(180deg);
+  color: var(--color-text);
+}
+
+.worker-accordion-body {
+  padding: 14px;
+  border-top: 1px solid var(--color-border);
+  background-color: var(--color-card);
+}
+
 .drawer-backdrop {
   position: fixed;
   top: 0;

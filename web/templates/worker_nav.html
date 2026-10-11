@@ -1,12 +1,13 @@
 {{define "worker_nav"}}
 <!-- BILAH ATAS (TOPBAR) -->
 <header class="worker-topbar">
-    <!-- KIRI: TOMBOL AKUN PENGGUNA (MEMBUKA SIDEBAR KIRI) -->
-    <button type="button" class="worker-topbar-btn" onclick="toggleDrawer('drawer-left')" aria-label="{{ call .T "worker.account_info" }}">
-        <span class="worker-avatar-badge">{{if .User.Username}}{{printf "%.1s" .User.Username}}{{else if .User.DisplayName}}{{printf "%.1s" .User.DisplayName}}{{else}}W{{end}}</span>
-        <span style="max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-            {{if .User.Username}}{{.User.Username}}{{else}}{{.User.DisplayName}}{{end}}
-        </span>
+    <!-- KIRI: TOMBOL MENU NAVIGASI (MEMBUKA SIDEBAR KIRI) -->
+    <button type="button" class="worker-topbar-btn" onclick="toggleDrawer('drawer-left')" aria-label="{{ call .T "worker.menu" }}">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="4" y1="7" x2="20" y2="7"></line>
+            <line x1="4" y1="17" x2="20" y2="17"></line>
+        </svg>
+        <span>{{ call .T "worker.menu" }}</span>
     </button>
 
     <!-- TENGAH: LOGO DAN IDENTITAS PRODUK -->
@@ -15,168 +16,26 @@
         <span class="worker-topbar-brand-sub">{{ call .T "app.tagline" }}</span>
     </a>
 
-    <!-- KANAN: TOMBOL MENU NAVIGASI (MEMBUKA SIDEBAR KANAN) -->
-    <button type="button" class="worker-topbar-btn" onclick="toggleDrawer('drawer-right')" aria-label="{{ call .T "worker.menu" }}">
-        <span>{{ call .T "worker.menu" }}</span>
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="4" y1="7" x2="20" y2="7"></line>
-            <line x1="4" y1="17" x2="20" y2="17"></line>
-        </svg>
+    <!-- KANAN: TOMBOL AKUN PENGGUNA (MEMBUKA SIDEBAR KANAN) -->
+    <button type="button" class="worker-topbar-btn" onclick="toggleDrawer('drawer-right')" aria-label="{{ call .T "worker.account_info" }}">
+        <span class="worker-avatar-badge">{{if .User.Username}}{{printf "%.1s" .User.Username}}{{else if .User.DisplayName}}{{printf "%.1s" .User.DisplayName}}{{else}}W{{end}}</span>
+        <span style="max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+            {{if .User.Username}}{{.User.Username}}{{else}}{{.User.DisplayName}}{{end}}
+        </span>
     </button>
 </header>
 
 <!-- OVERLAY BACKDROP -->
 <div id="drawer-backdrop" class="drawer-backdrop" onclick="closeAllDrawers()"></div>
 
-<!-- SIDEBAR KIRI: AKUN, PENGATURAN, KEAMANAN, DAN SESI -->
-<aside id="drawer-left" class="worker-drawer worker-drawer-left" aria-label="{{ call .T "worker.account_info" }}">
-    <div class="worker-drawer-header">
-        <div style="display: flex; align-items: center; gap: 10px; overflow: hidden;">
-            <span class="worker-avatar-badge" style="width: 32px; height: 32px; font-size: 14px;">
-                {{if .User.Username}}{{printf "%.1s" .User.Username}}{{else if .User.DisplayName}}{{printf "%.1s" .User.DisplayName}}{{else}}W{{end}}
-            </span>
-            <div style="overflow: hidden;">
-                <div style="font-weight: 700; font-size: 14px; color: var(--color-text); text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">
-                    {{if .User.Username}}{{.User.Username}}{{else}}{{.User.DisplayName}}{{end}}
-                </div>
-                <div style="font-size: 12px; color: var(--color-muted); text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">
-                    {{.User.Email}}
-                </div>
-            </div>
-        </div>
-        <button type="button" class="worker-drawer-close" onclick="closeDrawer('drawer-left')" aria-label="{{ call .T "worker.close" }}">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <line x1="18" y1="6" x2="6" y2="18"></line>
-                <line x1="6" y1="6" x2="18" y2="18"></line>
-            </svg>
-        </button>
-    </div>
-
-    <div class="worker-drawer-body">
-        <!-- RINGKASAN AKUN -->
-        <div class="worker-drawer-section">
-            <div class="worker-drawer-section-title">{{ call .T "worker.account_info" }}</div>
-            <div style="background-color: var(--color-surface-muted); padding: 12px 14px; border-radius: 6px; font-size: 13px; line-height: 1.6; border: 1px solid var(--color-border);">
-                <div><strong>{{ call .T "worker.username_label" }}</strong> {{if .User.Username}}{{.User.Username}}{{else}}-{{end}}</div>
-                <div><strong>{{ call .T "worker.id_label" }}</strong> #{{.User.ID}}</div>
-                <div><strong>{{ call .T "worker.role_label" }}</strong> {{ call .T "worker.role" }}</div>
-                <div><strong>{{ call .T "worker.currency_label" }}</strong> {{.User.Currency}}</div>
-            </div>
-        </div>
-
-        <!-- PENGATURAN NAMA TAMPILAN -->
-        <div class="worker-drawer-section">
-            <div class="worker-drawer-section-title">{{ call .T "worker.profile_settings" }}</div>
-            <form method="POST" action="/worker/profile">
-                <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-                <div class="field" style="margin-bottom: 10px;">
-                    <label for="drawer-display-name" style="font-size: 12px; font-weight: 600; color: var(--color-muted);">{{ call .T "worker.display_name" }}</label>
-                    <input type="text" id="drawer-display-name" name="display_name" class="input" value="{{.User.DisplayName}}" required style="padding: 8px 10px; font-size: 13px;">
-                </div>
-                <button type="submit" class="btn btn-secondary" style="width: 100%; padding: 8px; font-size: 13px; font-weight: bold; cursor: pointer;">
-                    {{ call .T "worker.update_profile" }}
-                </button>
-            </form>
-        </div>
-
-        <!-- PENGATURAN REKENING & WALLET -->
-        <div class="worker-drawer-section">
-            <div class="worker-drawer-section-title">{{ call .T "worker.wallet_settings" }}</div>
-            {{if .User.PayoutMethod}}
-            <div style="background-color: var(--color-surface-muted); padding: 10px 12px; border-radius: 6px; font-size: 13px; line-height: 1.5; border: 1px solid var(--color-border); margin-bottom: 10px;">
-                <div style="font-size: 11px; color: var(--color-muted); text-transform: uppercase; font-weight: 600;">{{ call .T "worker.wallet_saved" }}</div>
-                <div style="font-weight: 700; color: var(--color-text); margin-top: 2px;">
-                    <span class="badge badge-muted" style="text-transform: uppercase; margin-right: 4px;">{{.User.PayoutMethod}}</span>
-                    {{.User.PayoutDestMasked}}
-                </div>
-                {{if .User.PayoutAccountName}}
-                <div style="font-size: 12px; color: var(--color-muted); margin-top: 2px;">a.n. {{.User.PayoutAccountName}}</div>
-                {{end}}
-            </div>
-            {{else}}
-            <div style="background-color: var(--color-surface-muted); padding: 10px 12px; border-radius: 6px; font-size: 12px; color: var(--color-muted); line-height: 1.5; border: 1px solid var(--color-border); margin-bottom: 10px;">
-                {{ call .T "worker.wallet_not_set" }}
-            </div>
-            {{end}}
-
-            <form method="POST" action="/worker/wallet">
-                <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-                <div class="field" style="margin-bottom: 8px;">
-                    <label for="drawer-wallet-method" style="font-size: 12px; font-weight: 600; color: var(--color-muted);">{{ call .T "worker.withdraw_method" }}</label>
-                    <select id="drawer-wallet-method" name="method" class="input" required style="padding: 8px 10px; font-size: 13px;" onchange="handleDrawerWalletMethodChange(this.value)">
-                        <option value="seabank"{{if eq .User.PayoutMethod "seabank"}} selected{{end}}>SeaBank</option>
-                        <option value="bca"{{if eq .User.PayoutMethod "bca"}} selected{{end}}>BCA</option>
-                        <option value="dana"{{if eq .User.PayoutMethod "dana"}} selected{{end}}>DANA</option>
-                        <option value="usdt_bep20"{{if eq .User.PayoutMethod "usdt_bep20"}} selected{{end}}>USDT (BEP20)</option>
-                    </select>
-                </div>
-                <div class="field" style="margin-bottom: 8px;">
-                    <label for="drawer-wallet-dest" style="font-size: 12px; font-weight: 600; color: var(--color-muted);">{{ call .T "worker.account_number" }}</label>
-                    <input type="text" id="drawer-wallet-dest" name="destination" class="input" required placeholder="Nomor Rekening / HP DANA / Alamat BEP20" style="padding: 8px 10px; font-size: 13px;">
-                </div>
-                <div class="field" id="drawer-wallet-name-group" style="margin-bottom: 10px;{{if eq .User.PayoutMethod "usdt_bep20"}} display: none;{{end}}">
-                    <label for="drawer-wallet-name" style="font-size: 12px; font-weight: 600; color: var(--color-muted);">{{ call .T "worker.account_name" }}</label>
-                    <input type="text" id="drawer-wallet-name" name="account_name" class="input" value="{{.User.PayoutAccountName}}" placeholder="Nama Pemilik Rekening" style="padding: 8px 10px; font-size: 13px;">
-                </div>
-                <button type="submit" class="btn btn-secondary" style="width: 100%; padding: 8px; font-size: 13px; font-weight: bold; cursor: pointer;">
-                    {{if .User.PayoutMethod}}{{ call .T "worker.wallet_change_btn" }}{{else}}{{ call .T "worker.wallet_save_btn" }}{{end}}
-                </button>
-            </form>
-            <script>
-            function handleDrawerWalletMethodChange(val) {
-                var nameGroup = document.getElementById('drawer-wallet-name-group');
-                var destInput = document.getElementById('drawer-wallet-dest');
-                if (val === 'usdt_bep20') {
-                    if (nameGroup) nameGroup.style.display = 'none';
-                    if (destInput) destInput.placeholder = '0x... (Alamat Wallet USDT BEP20)';
-                } else {
-                    if (nameGroup) nameGroup.style.display = 'block';
-                    if (destInput) destInput.placeholder = 'Nomor Rekening / Nomor HP DANA';
-                }
-            }
-            </script>
-        </div>
-
-        <!-- KEAMANAN: UBAH KATA SANDI -->
-        <div class="worker-drawer-section">
-            <div class="worker-drawer-section-title">{{ call .T "worker.account_security" }}</div>
-            <form method="POST" action="/worker/security">
-                <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-                <div class="field" style="margin-bottom: 8px;">
-                    <label for="drawer-old-password" style="font-size: 12px; font-weight: 600; color: var(--color-muted);">{{ call .T "worker.current_password" }}</label>
-                    <input type="password" id="drawer-old-password" name="old_password" class="input" required style="padding: 8px 10px; font-size: 13px;">
-                </div>
-                <div class="field" style="margin-bottom: 8px;">
-                    <label for="drawer-new-password" style="font-size: 12px; font-weight: 600; color: var(--color-muted);">{{ call .T "worker.new_password" }}</label>
-                    <input type="password" id="drawer-new-password" name="new_password" class="input" minlength="10" placeholder="{{ call .T "worker.min_password_hint" }}" required style="padding: 8px 10px; font-size: 13px;">
-                </div>
-                <div class="field" style="margin-bottom: 12px;">
-                    <label for="drawer-confirm-password" style="font-size: 12px; font-weight: 600; color: var(--color-muted);">{{ call .T "worker.confirm_new_password" }}</label>
-                    <input type="password" id="drawer-confirm-password" name="confirm_password" class="input" minlength="10" required style="padding: 8px 10px; font-size: 13px;">
-                </div>
-                <button type="submit" class="btn btn-secondary" style="width: 100%; padding: 8px; font-size: 13px; font-weight: bold; cursor: pointer;">
-                    {{ call .T "worker.change_password" }}
-                </button>
-            </form>
-        </div>
-
-        <!-- SESI & KELUAR -->
-        <div class="worker-drawer-section" style="margin-top: 30px;">
-            <a href="/logout" class="btn btn-secondary" style="display: block; width: 100%; text-align: center; box-sizing: border-box; padding: 10px; font-size: 14px; font-weight: bold; color: var(--color-danger); border-color: var(--color-danger); text-decoration: none;">
-                {{ call .T "common.logout" }}
-            </a>
-        </div>
-    </div>
-</aside>
-
-<!-- SIDEBAR KANAN: BERANDA, PERANGKAT, PENARIKAN, REFERRAL, BAHASA, MODE -->
-<aside id="drawer-right" class="worker-drawer worker-drawer-right" aria-label="{{ call .T "worker.main_nav" }}">
+<!-- SIDEBAR KIRI: BERANDA, PERANGKAT, PENARIKAN, REFERRAL, BAHASA, MODE -->
+<aside id="drawer-left" class="worker-drawer worker-drawer-left" aria-label="{{ call .T "worker.main_nav" }}">
     <div class="worker-drawer-header">
         <div class="worker-topbar-brand">
             <span class="worker-topbar-brand-title">{{ call .T "app.name" }}</span>
             <span class="worker-topbar-brand-sub">{{ call .T "app.tagline" }}</span>
         </div>
-        <button type="button" class="worker-drawer-close" onclick="closeDrawer('drawer-right')" aria-label="{{ call .T "worker.close" }}">
+        <button type="button" class="worker-drawer-close" onclick="closeDrawer('drawer-left')" aria-label="{{ call .T "worker.close" }}">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <line x1="18" y1="6" x2="6" y2="18"></line>
                 <line x1="6" y1="6" x2="18" y2="18"></line>
@@ -266,7 +125,195 @@
     </div>
 </aside>
 
-<!-- JAVASCRIPT KONTROL DRAWER -->
+<!-- SIDEBAR KANAN: AKUN, PENGATURAN TERKELOMPOK, KEAMANAN, DAN SESI -->
+<aside id="drawer-right" class="worker-drawer worker-drawer-right" aria-label="{{ call .T "worker.account_info" }}">
+    <div class="worker-drawer-header">
+        <div style="display: flex; align-items: center; gap: 10px; overflow: hidden;">
+            <span class="worker-avatar-badge" style="width: 32px; height: 32px; font-size: 14px;">
+                {{if .User.Username}}{{printf "%.1s" .User.Username}}{{else if .User.DisplayName}}{{printf "%.1s" .User.DisplayName}}{{else}}W{{end}}
+            </span>
+            <div style="overflow: hidden;">
+                <div style="font-weight: 700; font-size: 14px; color: var(--color-text); text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">
+                    {{if .User.Username}}{{.User.Username}}{{else}}{{.User.DisplayName}}{{end}}
+                </div>
+                <div style="font-size: 12px; color: var(--color-muted); text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">
+                    {{.User.Email}}
+                </div>
+            </div>
+        </div>
+        <button type="button" class="worker-drawer-close" onclick="closeDrawer('drawer-right')" aria-label="{{ call .T "worker.close" }}">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+        </button>
+    </div>
+
+    <div class="worker-drawer-body">
+        <!-- RINGKASAN AKUN -->
+        <div class="worker-drawer-section" style="margin-bottom: 16px;">
+            <div style="background-color: var(--color-surface-muted); padding: 12px 14px; border-radius: 8px; font-size: 13px; line-height: 1.6; border: 1px solid var(--color-border);">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
+                    <span style="color: var(--color-muted);">{{ call .T "worker.username_label" }}</span>
+                    <strong style="color: var(--color-text);">{{if .User.Username}}{{.User.Username}}{{else}}-{{end}}</strong>
+                </div>
+                <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
+                    <span style="color: var(--color-muted);">{{ call .T "worker.id_label" }}</span>
+                    <span style="color: var(--color-text); font-weight: 600;">#{{.User.ID}}</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
+                    <span style="color: var(--color-muted);">{{ call .T "worker.role_label" }}</span>
+                    <span class="badge badge-muted" style="font-size: 11px;">{{ call .T "worker.role" }}</span>
+                </div>
+                <div style="display: flex; justify-content: space-between;">
+                    <span style="color: var(--color-muted);">{{ call .T "worker.currency_label" }}</span>
+                    <span style="color: var(--color-text); font-weight: 600;">{{.User.Currency}}</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- PENGELOMPOKAN MENU PENGATURAN (ACCORDION COLLAPSIBLE) -->
+        <div class="worker-drawer-section">
+            <div class="worker-drawer-section-title">PENGATURAN AKUN</div>
+
+            <!-- KELOMPOK 1: PENGATURAN PROFIL -->
+            <details class="worker-accordion" id="acc-profile" name="profile_group">
+                <summary class="worker-accordion-summary">
+                    <div class="worker-accordion-header-left">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"></path>
+                            <circle cx="12" cy="7" r="4"></circle>
+                        </svg>
+                        <span>{{ call .T "worker.profile_settings" }}</span>
+                    </div>
+                    <svg class="worker-accordion-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="6 9 12 15 18 9"></polyline>
+                    </svg>
+                </summary>
+                <div class="worker-accordion-body">
+                    <form method="POST" action="/worker/profile">
+                        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+                        <div class="field" style="margin-bottom: 10px;">
+                            <label for="drawer-display-name" style="font-size: 12px; font-weight: 600; color: var(--color-muted);">{{ call .T "worker.display_name" }}</label>
+                            <input type="text" id="drawer-display-name" name="display_name" class="input" value="{{.User.DisplayName}}" required style="padding: 8px 10px; font-size: 13px;">
+                        </div>
+                        <button type="submit" class="btn btn-secondary" style="width: 100%; padding: 8px; font-size: 13px; font-weight: bold; cursor: pointer;">
+                            {{ call .T "worker.update_profile" }}
+                        </button>
+                    </form>
+                </div>
+            </details>
+
+            <!-- KELOMPOK 2: PENGATURAN REKENING & WALLET -->
+            <details class="worker-accordion" id="acc-wallet" name="profile_group">
+                <summary class="worker-accordion-summary">
+                    <div class="worker-accordion-header-left">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+                            <rect width="20" height="14" x="2" y="5" rx="2"></rect>
+                            <line x1="2" x2="22" y1="10" y2="10"></line>
+                        </svg>
+                        <span>{{ call .T "worker.wallet_settings" }}</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 6px;">
+                        {{if .User.PayoutMethod}}
+                        <span class="badge badge-muted" style="text-transform: uppercase; font-size: 10px; padding: 2px 6px;">{{.User.PayoutMethod}}</span>
+                        {{end}}
+                        <svg class="worker-accordion-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="6 9 12 15 18 9"></polyline>
+                        </svg>
+                    </div>
+                </summary>
+                <div class="worker-accordion-body">
+                    {{if .User.PayoutMethod}}
+                    <div style="background-color: var(--color-surface-muted); padding: 10px 12px; border-radius: 6px; font-size: 13px; line-height: 1.5; border: 1px solid var(--color-border); margin-bottom: 12px;">
+                        <div style="font-size: 11px; color: var(--color-muted); text-transform: uppercase; font-weight: 600;">{{ call .T "worker.wallet_saved" }}</div>
+                        <div style="font-weight: 700; color: var(--color-text); margin-top: 2px;">
+                            <span class="badge badge-muted" style="text-transform: uppercase; margin-right: 4px;">{{.User.PayoutMethod}}</span>
+                            {{.User.PayoutDestMasked}}
+                        </div>
+                        {{if .User.PayoutAccountName}}
+                        <div style="font-size: 12px; color: var(--color-muted); margin-top: 2px;">a.n. {{.User.PayoutAccountName}}</div>
+                        {{end}}
+                    </div>
+                    {{else}}
+                    <div style="background-color: var(--color-surface-muted); padding: 10px 12px; border-radius: 6px; font-size: 12px; color: var(--color-muted); line-height: 1.5; border: 1px solid var(--color-border); margin-bottom: 12px;">
+                        {{ call .T "worker.wallet_not_set" }}
+                    </div>
+                    {{end}}
+
+                    <form method="POST" action="/worker/wallet">
+                        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+                        <div class="field" style="margin-bottom: 8px;">
+                            <label for="drawer-wallet-method" style="font-size: 12px; font-weight: 600; color: var(--color-muted);">{{ call .T "worker.withdraw_method" }}</label>
+                            <select id="drawer-wallet-method" name="method" class="input" required style="padding: 8px 10px; font-size: 13px;" onchange="handleDrawerWalletMethodChange(this.value)">
+                                <option value="seabank"{{if eq .User.PayoutMethod "seabank"}} selected{{end}}>SeaBank</option>
+                                <option value="bca"{{if eq .User.PayoutMethod "bca"}} selected{{end}}>BCA</option>
+                                <option value="dana"{{if eq .User.PayoutMethod "dana"}} selected{{end}}>DANA</option>
+                                <option value="usdt_bep20"{{if eq .User.PayoutMethod "usdt_bep20"}} selected{{end}}>USDT (BEP20)</option>
+                            </select>
+                        </div>
+                        <div class="field" style="margin-bottom: 8px;">
+                            <label for="drawer-wallet-dest" style="font-size: 12px; font-weight: 600; color: var(--color-muted);">{{ call .T "worker.account_number" }}</label>
+                            <input type="text" id="drawer-wallet-dest" name="destination" class="input" required placeholder="Nomor Rekening / HP DANA / Alamat BEP20" style="padding: 8px 10px; font-size: 13px;">
+                        </div>
+                        <div class="field" id="drawer-wallet-name-group" style="margin-bottom: 10px;{{if eq .User.PayoutMethod "usdt_bep20"}} display: none;{{end}}">
+                            <label for="drawer-wallet-name" style="font-size: 12px; font-weight: 600; color: var(--color-muted);">{{ call .T "worker.account_name" }}</label>
+                            <input type="text" id="drawer-wallet-name" name="account_name" class="input" value="{{.User.PayoutAccountName}}" placeholder="Nama Pemilik Rekening" style="padding: 8px 10px; font-size: 13px;">
+                        </div>
+                        <button type="submit" class="btn btn-secondary" style="width: 100%; padding: 8px; font-size: 13px; font-weight: bold; cursor: pointer;">
+                            {{if .User.PayoutMethod}}{{ call .T "worker.wallet_change_btn" }}{{else}}{{ call .T "worker.wallet_save_btn" }}{{end}}
+                        </button>
+                    </form>
+                </div>
+            </details>
+
+            <!-- KELOMPOK 3: KEAMANAN & KATA SANDI -->
+            <details class="worker-accordion" id="acc-security" name="profile_group">
+                <summary class="worker-accordion-summary">
+                    <div class="worker-accordion-header-left">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+                            <rect width="18" height="11" x="3" y="11" rx="2" ry="2"></rect>
+                            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                        </svg>
+                        <span>{{ call .T "worker.account_security" }}</span>
+                    </div>
+                    <svg class="worker-accordion-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="6 9 12 15 18 9"></polyline>
+                    </svg>
+                </summary>
+                <div class="worker-accordion-body">
+                    <form method="POST" action="/worker/security">
+                        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+                        <div class="field" style="margin-bottom: 8px;">
+                            <label for="drawer-old-password" style="font-size: 12px; font-weight: 600; color: var(--color-muted);">{{ call .T "worker.current_password" }}</label>
+                            <input type="password" id="drawer-old-password" name="old_password" class="input" required style="padding: 8px 10px; font-size: 13px;">
+                        </div>
+                        <div class="field" style="margin-bottom: 8px;">
+                            <label for="drawer-new-password" style="font-size: 12px; font-weight: 600; color: var(--color-muted);">{{ call .T "worker.new_password" }}</label>
+                            <input type="password" id="drawer-new-password" name="new_password" class="input" minlength="10" placeholder="{{ call .T "worker.min_password_hint" }}" required style="padding: 8px 10px; font-size: 13px;">
+                        </div>
+                        <div class="field" style="margin-bottom: 12px;">
+                            <label for="drawer-confirm-password" style="font-size: 12px; font-weight: 600; color: var(--color-muted);">{{ call .T "worker.confirm_new_password" }}</label>
+                            <input type="password" id="drawer-confirm-password" name="confirm_password" class="input" minlength="10" required style="padding: 8px 10px; font-size: 13px;">
+                        </div>
+                        <button type="submit" class="btn btn-secondary" style="width: 100%; padding: 8px; font-size: 13px; font-weight: bold; cursor: pointer;">
+                            {{ call .T "worker.change_password" }}
+                        </button>
+                    </form>
+                </div>
+            </details>
+        </div>
+
+        <!-- SESI & KELUAR -->
+        <div class="worker-drawer-section" style="margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--color-border);">
+            <a href="/logout" class="btn btn-secondary" style="display: block; width: 100%; text-align: center; box-sizing: border-box; padding: 10px; font-size: 13px; font-weight: bold; color: var(--color-danger); border-color: var(--color-danger); text-decoration: none;">
+                {{ call .T "common.logout" }}
+            </a>
+        </div>
+    </div>
+</aside>
+
+<!-- JAVASCRIPT KONTROL DRAWER & ACCORDION -->
 <script>
 function toggleDrawer(id) {
     const drawer = document.getElementById(id);
@@ -298,6 +345,31 @@ document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
         closeAllDrawers();
     }
+});
+
+function handleDrawerWalletMethodChange(val) {
+    var nameGroup = document.getElementById('drawer-wallet-name-group');
+    var destInput = document.getElementById('drawer-wallet-dest');
+    if (val === 'usdt_bep20') {
+        if (nameGroup) nameGroup.style.display = 'none';
+        if (destInput) destInput.placeholder = '0x... (Alamat Wallet USDT BEP20)';
+    } else {
+        if (nameGroup) nameGroup.style.display = 'block';
+        if (destInput) destInput.placeholder = 'Nomor Rekening / Nomor HP DANA';
+    }
+}
+
+// Accordion toggle behavior: tutup section lain ketika satu section dibuka
+document.querySelectorAll('.worker-accordion').forEach(function(acc) {
+    acc.addEventListener('toggle', function() {
+        if (this.open) {
+            document.querySelectorAll('.worker-accordion').forEach(function(other) {
+                if (other !== acc && other.open) {
+                    other.removeAttribute('open');
+                }
+            });
+        }
+    });
 });
 </script>
 {{end}}
