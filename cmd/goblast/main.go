@@ -10,8 +10,10 @@ import (
 	"goblast/internal/campaign"
 	"goblast/internal/config"
 	"goblast/internal/db"
+	"goblast/internal/engine"
 	"goblast/internal/i18n"
 	"goblast/internal/platform"
+	"goblast/internal/wa"
 	"goblast/internal/web"
 )
 
@@ -51,7 +53,15 @@ func main() {
 	}
 	defer database.Pool.Close()
 
-	srv, err := web.NewServer(database, cfg.AppEnv)
+	settingsReader := wa.NewDBSettingsReader(database)
+	waManager := wa.NewManager(database, settingsReader, cfg)
+	sender := wa.NewRealSender(waManager)
+
+	eng := engine.New(database, sender, waManager, settingsReader)
+	waManager.SetDisconnectCallback(eng.StopAccount)
+	eng.StartCleaner(context.Background())
+
+	srv, err := web.NewServer(database, cfg.AppEnv, waManager)
 	if err != nil {
 		slog.Error("Failed to initialize server", "err", err)
 		os.Exit(1)

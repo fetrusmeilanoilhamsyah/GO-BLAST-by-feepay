@@ -59,6 +59,8 @@ Sesi WhatsApp pekerja.
 - `jid_hash`: Hash JID pekerja untuk privasi.
 - `speed`: Kecepatan kirim (`fast`, `medium`, `slow`, `over_slow`).
 - `status`: `menunggu_scan`, `terhubung`, `berhenti`, `terputus`, `antre`.
+- `consecutive_failures`: Jumlah kegagalan beruntun untuk proteksi auto-stop (ditambahkan di migrasi 0006).
+- `whatsmeow_device_id`: ID perangkat di tabel whatsmeow_devices (ditambahkan di migrasi 0006).
 
 ### `ledger_entries`
 Buku besar untuk saldo pekerja (append-only).
@@ -91,3 +93,5 @@ Catatan aktivitas (audit trail).
 - `idx_ledger_entries_user_curr_time`: Mempercepat kalkulasi saldo (`user_balance`) dan riwayat.
 - `idx_audit_logs_created_at`: Mempercepat query riwayat aktivitas.
 - `idx_web_sessions_user_id`: Mempercepat pencarian dan penghapusan semua sesi milik satu pengguna.
+- `idx_wa_accounts_worker_status`: Mempercepat penghitungan dan validasi batas akun aktif per pekerja.
+- `idx_wa_accounts_status`: Mempercepat pemantauan status seluruh akun dan total batas sesi aktif sistem.
