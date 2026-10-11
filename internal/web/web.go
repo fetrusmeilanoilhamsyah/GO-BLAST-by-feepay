@@ -51,6 +51,7 @@ func NewServer(database *db.DB, env string, waMgr *wa.Manager, workCtrl WorkCont
 		"admin_dashboard.html":                true,
 		"admin_settings.html":                 true,
 		"admin_wallet.html":                   true,
+		"admin_withdrawals.html":              true,
 		"admin_workers.html":                  true,
 		"admin_campaigns.html":                true,
 		"admin_campaign_form.html":            true,
@@ -61,7 +62,7 @@ func NewServer(database *db.DB, env string, waMgr *wa.Manager, workCtrl WorkCont
 
 	pages := []string{
 		"index.html", "login.html", "register.html",
-		"admin_dashboard.html", "admin_settings.html", "admin_wallet.html", "admin_workers.html",
+		"admin_dashboard.html", "admin_settings.html", "admin_wallet.html", "admin_withdrawals.html", "admin_workers.html",
 		"admin_campaigns.html", "admin_campaign_form.html", "admin_campaign_detail.html",
 		"admin_campaign_numbers.html", "admin_campaign_numbers_preview.html",
 		"worker_accounts.html", "worker_account_new.html",
@@ -122,6 +123,9 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.Handle("GET /admin/wallet", s.CSRFMiddleware(s.RequireRole(s.HandleAdminWalletGET, "admin")))
 	mux.Handle("POST /admin/wallet", s.CSRFMiddleware(s.RequireRole(s.HandleAdminWalletTopupPOST, "admin")))
 	mux.Handle("POST /admin/wallet/topup", s.CSRFMiddleware(s.RequireRole(s.HandleAdminWalletTopupPOST, "admin")))
+	mux.Handle("GET /admin/withdrawals", s.CSRFMiddleware(s.RequireRole(s.HandleAdminWithdrawalsGET, "admin")))
+	mux.Handle("POST /admin/withdrawals/{id}/approve", s.CSRFMiddleware(s.RequireRole(s.HandleAdminWithdrawalApprovePOST, "admin")))
+	mux.Handle("POST /admin/withdrawals/{id}/reject", s.CSRFMiddleware(s.RequireRole(s.HandleAdminWithdrawalRejectPOST, "admin")))
 	mux.Handle("GET /admin/workers", s.CSRFMiddleware(s.RequireRole(s.HandleAdminWorkers, "admin")))
 	mux.Handle("POST /admin/workers/{id}/disable", s.CSRFMiddleware(s.RequireRole(s.HandleAdminWorkerDisablePOST, "admin")))
 	mux.Handle("POST /admin/workers/{id}/enable", s.CSRFMiddleware(s.RequireRole(s.HandleAdminWorkerEnablePOST, "admin")))
@@ -134,6 +138,7 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.Handle("GET /admin/campaigns/{id}", s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignDetail, "admin")))
 	mux.Handle("POST /admin/campaigns/{id}/start", s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignStart, "admin")))
 	mux.Handle("POST /admin/campaigns/{id}/finish", s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignFinish, "admin")))
+	mux.Handle("POST /admin/campaigns/{id}/delete", s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignDelete, "admin")))
 	mux.Handle("GET /admin/campaigns/{id}/edit", s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignEditGET, "admin")))
 	mux.Handle("POST /admin/campaigns/{id}/edit", s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignEditPOST, "admin")))
 	mux.Handle("POST /admin/campaigns/preview", s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignPreview, "admin")))

@@ -7,6 +7,15 @@
         <p style="font-size: 13px; color: var(--color-muted); margin: 4px 0 0 0;">{{ call .T "admin.workers_desc" }}</p>
     </div>
 
+    <!-- Search Bar -->
+    <form method="GET" action="/admin/workers" style="margin-bottom: 20px; display: flex; gap: 8px; max-width: 420px;">
+        <input type="text" name="q" value="{{.SearchQuery}}" placeholder="{{ call .T "admin.workers_search_placeholder" }}" class="input" style="flex: 1; padding: 8px 12px; font-size: 13px;">
+        <button type="submit" class="btn btn-primary" style="padding: 8px 16px; font-size: 13px;">{{ call .T "admin.workers_search_btn" }}</button>
+        {{if .SearchQuery}}
+        <a href="/admin/workers" class="btn btn-secondary" style="padding: 8px 12px; font-size: 13px; text-decoration: none;">Reset</a>
+        {{end}}
+    </form>
+
     <div class="responsive-table-container">
         <table class="responsive-table">
             <thead>
@@ -14,7 +23,7 @@
                     <th>Username</th>
                     <th>Email</th>
                     <th>{{ call .T "admin.worker_status" }}</th>
-                    <th>{{ call .T "admin.worker_accounts_count" }}</th>
+                    <th>{{ call .T "admin.worker_accounts_count" }} (Aktif)</th>
                     <th>{{ call .T "admin.worker_sent_total" }}</th>
                     <th>{{ call .T "admin.worker_balance_idr" }}</th>
                     <th>{{ call .T "admin.worker_balance_usdt" }}</th>
@@ -31,10 +40,13 @@
                             {{.Status}}
                         </span>
                     </td>
-                    <td>{{.AccountCount}}</td>
+                    <td>
+                        {{.AccountCount}}
+                        <span style="font-size: 11px; color: var(--color-status-done); font-weight: bold; margin-left: 4px;">({{.ActiveAccountCount}} aktif)</span>
+                    </td>
                     <td style="font-weight: bold;">{{.SentCount}}</td>
-                    <td>Rp {{.BalanceIDR}}</td>
-                    <td>{{.BalanceUSDT}}</td>
+                    <td>Rp {{.BalanceIDRFormatted}}</td>
+                    <td>{{.BalanceUSDTFormatted}} USDT</td>
                     <td>
                         {{if eq .Status "active"}}
                         <form method="POST" action="/admin/workers/{{.ID}}/disable" style="display: inline; margin: 0;" onsubmit="return confirm('{{ call $.T "admin.disable_confirm" }}');">

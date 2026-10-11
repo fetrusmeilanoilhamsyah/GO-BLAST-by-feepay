@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -14,6 +15,7 @@ import (
 	"github.com/nyaruka/phonenumbers"
 	"goblast/internal/engine"
 	"goblast/internal/i18n"
+	"goblast/internal/withdraw"
 )
 
 // --- Structs for Admin Dashboard & API Stats ---
@@ -278,18 +280,20 @@ func (s *Server) fetchDashboardData(ctx context.Context) (*DashboardData, error)
 // --- Settings Handler ---
 
 type SettingsViewData struct {
-	SpeedDelays           map[string]int
-	DailyLimits           map[string]*int
-	MaxAttempts           *int
+	SpeedDelays            map[string]int
+	DailyLimits            map[string]*int
+	MaxAttempts            *int
 	MaxConsecutiveFailures *int
-	ClaimTimeoutSeconds   int
-	MaxAccountsPerWorker  *int
-	MaxActiveSessions     *int
-	DefaultCountryCode    string
-	RateWageIDR           *int64
-	RateWageUSDT          *int64
-	RateReferralIDR       *int64
-	RateReferralUSDT      *int64
+	ClaimTimeoutSeconds    int
+	MaxAccountsPerWorker   *int
+	MaxActiveSessions      *int
+	DefaultCountryCode     string
+	RateWageIDR            *int64
+	RateWageUSDT           *int64
+	RateWageUSDTDisplay    string
+	RateReferralIDR        *int64
+	RateReferralUSDT       *int64
+	RateReferralUSDTDisplay string
 }
 
 func (s *Server) HandleAdminSettingsGET(w http.ResponseWriter, r *http.Request) {
@@ -335,6 +339,25 @@ func (s *Server) HandleAdminSettingsGET(w http.ResponseWriter, r *http.Request) 
 	s.Tmpl["admin_settings.html"].ExecuteTemplate(w, "base.html", viewData)
 }
 
+func parseUSDTInput(str string) (int64, error) {
+	str = strings.TrimSpace(str)
+	if str == "" {
+		return 0, errors.New("input kosong")
+	}
+	str = strings.ReplaceAll(str, ",", ".")
+	f, err := strconv.ParseFloat(str, 64)
+	if err != nil {
+		return 0, err
+	}
+	if f < 0 {
+		return 0, errors.New("tidak boleh negatif")
+	}
+	if f < 1000.0 {
+		return int64(math.Round(f * 1000000.0)), nil
+	}
+	return int64(math.Round(f)), nil
+}
+
 func (s *Server) HandleAdminSettingsPOST(w http.ResponseWriter, r *http.Request) {
 	admin, ok := currentUser(r)
 	if !ok || admin.Role != "admin" {
@@ -360,7 +383,7 @@ func (s *Server) HandleAdminSettingsPOST(w http.ResponseWriter, r *http.Request)
 		speedDelays[k] = val
 	}
 
-	// 2. Validate daily_limits (1 to 5000, required)
+	// 2. Validate daily_limits (0 to 10000000, 0 = unlimited)
 	dailyLimits := make(map[string]int)
 	for _, k := range []string{"fast", "medium", "slow", "over_slow"} {
 		valStr := strings.TrimSpace(r.FormValue("daily_limit_" + k))
@@ -369,8 +392,8 @@ func (s *Server) HandleAdminSettingsPOST(w http.ResponseWriter, r *http.Request)
 			return
 		}
 		val, convErr := strconv.Atoi(valStr)
-		if convErr != nil || val < 1 || val > 5000 {
-			s.renderSettingsError(w, r, fmt.Sprintf("daily_limits (%s) harus antara 1 sampai 5000 pesan per hari", k))
+		if convErr != nil || val < 0 || val > 10000000 {
+			s.renderSettingsError(w, r, fmt.Sprintf("daily_limits (%s) harus antara 0 (tanpa batas) sampai 10.000.000 pesan per hari", k))
 			return
 		}
 		dailyLimits[k] = val
@@ -454,9 +477,9 @@ func (s *Server) HandleAdminSettingsPOST(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	rateWageIDR, err1 := strconv.ParseInt(rateWageIDRStr, 10, 64)
-	rateWageUSDT, err2 := strconv.ParseInt(rateWageUSDTStr, 10, 64)
+	rateWageUSDT, err2 := parseUSDTInput(rateWageUSDTStr)
 	if err1 != nil || err2 != nil || rateWageIDR <= 0 || rateWageUSDT <= 0 {
-		s.renderSettingsError(w, r, "rate_wage harus bernilai bilangan bulat lebih dari 0")
+		s.renderSettingsError(w, r, "rate_wage harus bernilai lebih dari 0")
 		return
 	}
 	rateWage := map[string]int64{
@@ -472,7 +495,11 @@ func (s *Server) HandleAdminSettingsPOST(w http.ResponseWriter, r *http.Request)
 		rateRefIDR, _ = strconv.ParseInt(rateRefIDRStr, 10, 64)
 	}
 	if rateRefUSDTStr != "" {
-		rateRefUSDT, _ = strconv.ParseInt(rateRefUSDTStr, 10, 64)
+		rateRefUSDT, err2 = parseUSDTInput(rateRefUSDTStr)
+		if err2 != nil {
+			s.renderSettingsError(w, r, "rate_referral USDT tidak valid: "+err2.Error())
+			return
+		}
 	}
 	if rateRefIDR < 0 || rateRefUSDT < 0 {
 		s.renderSettingsError(w, r, "rate_referral tidak boleh negatif")
@@ -675,6 +702,15 @@ func (s *Server) readSettingsFromDB(ctx context.Context) (*SettingsViewData, err
 		}
 	}
 
+	if data.RateWageUSDT != nil {
+		f := float64(*data.RateWageUSDT) / 1000000.0
+		data.RateWageUSDTDisplay = strings.TrimRight(strings.TrimRight(fmt.Sprintf("%.6f", f), "0"), ".")
+	}
+	if data.RateReferralUSDT != nil {
+		f := float64(*data.RateReferralUSDT) / 1000000.0
+		data.RateReferralUSDTDisplay = strings.TrimRight(strings.TrimRight(fmt.Sprintf("%.6f", f), "0"), ".")
+	}
+
 	return data, nil
 }
 
@@ -844,17 +880,275 @@ func (s *Server) fetchWalletData(ctx context.Context) (*WalletViewData, error) {
 	return data, nil
 }
 
+// --- Admin Withdrawals Handlers ---
+
+type WithdrawalItemView struct {
+	ID              int64
+	RequestedAt     time.Time
+	WorkerUsername  string
+	WorkerEmail     string
+	Currency        string
+	AmountFormatted string
+	Method          string
+	Destination     string
+	Status          string
+	ProcessedAt     *time.Time
+}
+
+func formatIDR(n int64) string {
+	in := strconv.FormatInt(n, 10)
+	var out []byte
+	l := len(in)
+	for i, c := range in {
+		if i > 0 && (l-i)%3 == 0 {
+			out = append(out, '.')
+		}
+		out = append(out, byte(c))
+	}
+	return string(out)
+}
+
+func formatUSDT(n int64) string {
+	f := float64(n) / 1000000.0
+	res := strings.TrimRight(strings.TrimRight(fmt.Sprintf("%.6f", f), "0"), ".")
+	if res == "" {
+		return "0"
+	}
+	return res
+}
+
+func (s *Server) HandleAdminWithdrawalsGET(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	lang := "id"
+	if u, ok := currentUser(r); ok && u.Language != "" {
+		lang = u.Language
+	}
+
+	statusFilter := strings.TrimSpace(r.URL.Query().Get("status"))
+	if statusFilter == "" {
+		statusFilter = "menunggu"
+	}
+
+	// Pending totals
+	var pendingIDRTotal, pendingIDRCount int64
+	var pendingUSDTTotal, pendingUSDTCount int64
+
+	_ = s.DB.Pool.QueryRow(ctx, `
+		SELECT COALESCE(SUM(amount), 0), COUNT(*) 
+		FROM withdrawals 
+		WHERE status = 'menunggu' AND currency = 'IDR'
+	`).Scan(&pendingIDRTotal, &pendingIDRCount)
+
+	_ = s.DB.Pool.QueryRow(ctx, `
+		SELECT COALESCE(SUM(amount), 0), COUNT(*) 
+		FROM withdrawals 
+		WHERE status = 'menunggu' AND currency = 'USDT'
+	`).Scan(&pendingUSDTTotal, &pendingUSDTCount)
+
+	// Build query
+	var query string
+	var args []interface{}
+	if statusFilter == "semua" {
+		query = `
+			SELECT w.id, w.currency, w.amount, w.method, w.destination_encrypted, w.status, w.requested_at, w.processed_at,
+			       COALESCE(u.username, u.email), u.email
+			FROM withdrawals w
+			JOIN users u ON u.id = w.user_id
+			ORDER BY w.id DESC
+			LIMIT 100
+		`
+	} else {
+		query = `
+			SELECT w.id, w.currency, w.amount, w.method, w.destination_encrypted, w.status, w.requested_at, w.processed_at,
+			       COALESCE(u.username, u.email), u.email
+			FROM withdrawals w
+			JOIN users u ON u.id = w.user_id
+			WHERE w.status = $1
+			ORDER BY w.id DESC
+			LIMIT 100
+		`
+		args = append(args, statusFilter)
+	}
+
+	rows, err := s.DB.Pool.Query(ctx, query, args...)
+	var items []WithdrawalItemView
+	if err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var it WithdrawalItemView
+			var destEnc string
+			var rawAmount int64
+			if err := rows.Scan(&it.ID, &it.Currency, &rawAmount, &it.Method, &destEnc, &it.Status, &it.RequestedAt, &it.ProcessedAt, &it.WorkerUsername, &it.WorkerEmail); err == nil {
+				if it.Currency == "IDR" {
+					it.AmountFormatted = formatIDR(rawAmount)
+				} else {
+					it.AmountFormatted = formatUSDT(rawAmount)
+				}
+
+				dest, decErr := withdraw.DecryptDestination(destEnc, s.EncryptionKey)
+				if decErr != nil {
+					it.Destination = "(gagal dekripsi)"
+				} else {
+					it.Destination = dest
+				}
+
+				items = append(items, it)
+			}
+		}
+	}
+
+	viewData := struct {
+		Lang             string
+		Title            string
+		Theme            string
+		CSRFToken        string
+		ActiveNav        string
+		PendingIDRTotal  string
+		PendingIDRCount  int64
+		PendingUSDTTotal string
+		PendingUSDTCount int64
+		CurrentStatus    string
+		Message          string
+		Error            string
+		Items            []WithdrawalItemView
+		T                func(string) string
+	}{
+		Lang:             lang,
+		Title:            "Permintaan Penarikan - GO BLAST",
+		Theme:            getTheme(r),
+		CSRFToken:        getCSRF(r),
+		ActiveNav:        "withdrawals",
+		PendingIDRTotal:  formatIDR(pendingIDRTotal),
+		PendingIDRCount:  pendingIDRCount,
+		PendingUSDTTotal: formatUSDT(pendingUSDTTotal),
+		PendingUSDTCount: pendingUSDTCount,
+		CurrentStatus:    statusFilter,
+		Message:          r.URL.Query().Get("msg"),
+		Error:            r.URL.Query().Get("err"),
+		Items:            items,
+		T: func(key string) string {
+			return i18n.T(lang, key)
+		},
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	s.Tmpl["admin_withdrawals.html"].ExecuteTemplate(w, "base.html", viewData)
+}
+
+func (s *Server) HandleAdminWithdrawalApprovePOST(w http.ResponseWriter, r *http.Request) {
+	admin, ok := currentUser(r)
+	if !ok || admin.Role != "admin" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	idStr := r.PathValue("id")
+	withdrawalID, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		http.Redirect(w, r, "/admin/withdrawals?err=ID+penarikan+tidak+valid", http.StatusSeeOther)
+		return
+	}
+
+	ctx := r.Context()
+	var status, currency string
+	var amount int64
+	err = s.DB.Pool.QueryRow(ctx, "SELECT status, amount, currency FROM withdrawals WHERE id = $1 FOR UPDATE", withdrawalID).Scan(&status, &amount, &currency)
+	if err != nil {
+		http.Redirect(w, r, "/admin/withdrawals?err=Data+penarikan+tidak+ditemukan", http.StatusSeeOther)
+		return
+	}
+
+	if status != "menunggu" {
+		http.Redirect(w, r, "/admin/withdrawals?err=Hanya+penarikan+berstatus+menunggu+yang+dapat+disetujui", http.StatusSeeOther)
+		return
+	}
+
+	_, err = s.DB.Pool.Exec(ctx, "UPDATE withdrawals SET status = 'selesai', processed_at = CURRENT_TIMESTAMP WHERE id = $1", withdrawalID)
+	if err != nil {
+		http.Redirect(w, r, "/admin/withdrawals?err=Gagal+menyetujui+penarikan: "+err.Error(), http.StatusSeeOther)
+		return
+	}
+
+	s.logAudit(&admin.ID, "withdrawal_approve", "withdrawals", idStr, fmt.Sprintf("approved %d %s", amount, currency))
+	http.Redirect(w, r, "/admin/withdrawals?msg=Penarikan+#"+idStr+"+berhasil+disetujui", http.StatusSeeOther)
+}
+
+func (s *Server) HandleAdminWithdrawalRejectPOST(w http.ResponseWriter, r *http.Request) {
+	admin, ok := currentUser(r)
+	if !ok || admin.Role != "admin" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	idStr := r.PathValue("id")
+	withdrawalID, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		http.Redirect(w, r, "/admin/withdrawals?err=ID+penarikan+tidak+valid", http.StatusSeeOther)
+		return
+	}
+
+	ctx := r.Context()
+	tx, err := s.DB.Pool.Begin(ctx)
+	if err != nil {
+		http.Redirect(w, r, "/admin/withdrawals?err=Kesalahan+sistem", http.StatusSeeOther)
+		return
+	}
+	defer tx.Rollback(ctx)
+
+	var userID, amount int64
+	var status, currency string
+	err = tx.QueryRow(ctx, "SELECT user_id, status, amount, currency FROM withdrawals WHERE id = $1 FOR UPDATE", withdrawalID).Scan(&userID, &status, &amount, &currency)
+	if err != nil {
+		http.Redirect(w, r, "/admin/withdrawals?err=Data+penarikan+tidak+ditemukan", http.StatusSeeOther)
+		return
+	}
+
+	if status != "menunggu" {
+		http.Redirect(w, r, "/admin/withdrawals?err=Hanya+penarikan+berstatus+menunggu+yang+dapat+ditolak", http.StatusSeeOther)
+		return
+	}
+
+	// 1. Ubah status jadi ditolak
+	_, err = tx.Exec(ctx, "UPDATE withdrawals SET status = 'ditolak', processed_at = CURRENT_TIMESTAMP WHERE id = $1", withdrawalID)
+	if err != nil {
+		http.Redirect(w, r, "/admin/withdrawals?err=Gagal+mengubah+status+penarikan", http.StatusSeeOther)
+		return
+	}
+
+	// 2. Refund saldo pekerja di ledger_entries (kind = 'koreksi')
+	refundNote := fmt.Sprintf("Pengembalian dana penarikan #%d ditolak", withdrawalID)
+	_, err = tx.Exec(ctx, `
+		INSERT INTO ledger_entries (user_id, kind, currency, amount, note)
+		VALUES ($1, 'koreksi', $2, $3, $4)
+	`, userID, currency, amount, refundNote)
+	if err != nil {
+		http.Redirect(w, r, "/admin/withdrawals?err=Gagal+mengembalikan+saldo: "+err.Error(), http.StatusSeeOther)
+		return
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		http.Redirect(w, r, "/admin/withdrawals?err=Gagal+menyelesaikan+transaksi+penolakan", http.StatusSeeOther)
+		return
+	}
+
+	s.logAudit(&admin.ID, "withdrawal_reject", "withdrawals", idStr, fmt.Sprintf("rejected %d %s (refunded)", amount, currency))
+	http.Redirect(w, r, "/admin/withdrawals?msg=Penarikan+#"+idStr+"+ditolak+dan+saldo+telah+dikembalikan", http.StatusSeeOther)
+}
+
 // --- Admin Workers Handler ---
 
 type WorkerListItem struct {
-	ID           int64  `json:"id"`
-	Username     string `json:"username"`
-	Email        string `json:"email"`
-	Status       string `json:"status"`
-	AccountCount int    `json:"account_count"`
-	SentCount    int    `json:"sent_count"`
-	BalanceIDR   int64  `json:"balance_idr"`
-	BalanceUSDT  int64  `json:"balance_usdt"`
+	ID                   int64  `json:"id"`
+	Username             string `json:"username"`
+	Email                string `json:"email"`
+	Status               string `json:"status"`
+	AccountCount         int    `json:"account_count"`
+	ActiveAccountCount   int    `json:"active_account_count"`
+	SentCount            int    `json:"sent_count"`
+	BalanceIDR          int64  `json:"balance_idr"`
+	BalanceUSDT         int64  `json:"balance_usdt"`
+	BalanceIDRFormatted  string `json:"balance_idr_formatted"`
+	BalanceUSDTFormatted string `json:"balance_usdt_formatted"`
 }
 
 func (s *Server) HandleAdminWorkers(w http.ResponseWriter, r *http.Request) {
@@ -863,16 +1157,39 @@ func (s *Server) HandleAdminWorkers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rows, err := s.DB.Pool.Query(r.Context(), `
-		SELECT u.id, COALESCE(u.username, u.email), u.email, u.status,
-		       (SELECT COUNT(*) FROM wa_accounts WHERE worker_id = u.id) AS account_count,
-		       (SELECT COUNT(*) FROM ledger_entries WHERE user_id = u.id AND kind = 'upah') AS sent_count,
-		       user_balance(u.id, 'IDR') AS balance_idr,
-		       user_balance(u.id, 'USDT') AS balance_usdt
-		FROM users u
-		WHERE u.role = 'worker'
-		ORDER BY u.id DESC
-	`)
+	ctx := r.Context()
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+
+	var query string
+	var args []interface{}
+	if q != "" {
+		query = `
+			SELECT u.id, COALESCE(u.username, u.email), u.email, u.status,
+			       (SELECT COUNT(*) FROM wa_accounts WHERE worker_id = u.id) AS account_count,
+			       (SELECT COUNT(*) FROM wa_accounts WHERE worker_id = u.id AND status = 'terhubung') AS active_account_count,
+			       (SELECT COUNT(*) FROM ledger_entries WHERE user_id = u.id AND kind = 'upah') AS sent_count,
+			       user_balance(u.id, 'IDR') AS balance_idr,
+			       user_balance(u.id, 'USDT') AS balance_usdt
+			FROM users u
+			WHERE u.role = 'worker' AND (u.username ILIKE $1 OR u.email ILIKE $1)
+			ORDER BY u.id DESC
+		`
+		args = append(args, "%"+q+"%")
+	} else {
+		query = `
+			SELECT u.id, COALESCE(u.username, u.email), u.email, u.status,
+			       (SELECT COUNT(*) FROM wa_accounts WHERE worker_id = u.id) AS account_count,
+			       (SELECT COUNT(*) FROM wa_accounts WHERE worker_id = u.id AND status = 'terhubung') AS active_account_count,
+			       (SELECT COUNT(*) FROM ledger_entries WHERE user_id = u.id AND kind = 'upah') AS sent_count,
+			       user_balance(u.id, 'IDR') AS balance_idr,
+			       user_balance(u.id, 'USDT') AS balance_usdt
+			FROM users u
+			WHERE u.role = 'worker'
+			ORDER BY u.id DESC
+		`
+	}
+
+	rows, err := s.DB.Pool.Query(ctx, query, args...)
 	if err != nil {
 		http.Error(w, "Gagal memuat pekerja: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -882,7 +1199,9 @@ func (s *Server) HandleAdminWorkers(w http.ResponseWriter, r *http.Request) {
 	var workers []WorkerListItem
 	for rows.Next() {
 		var item WorkerListItem
-		if err := rows.Scan(&item.ID, &item.Username, &item.Email, &item.Status, &item.AccountCount, &item.SentCount, &item.BalanceIDR, &item.BalanceUSDT); err == nil {
+		if err := rows.Scan(&item.ID, &item.Username, &item.Email, &item.Status, &item.AccountCount, &item.ActiveAccountCount, &item.SentCount, &item.BalanceIDR, &item.BalanceUSDT); err == nil {
+			item.BalanceIDRFormatted = formatIDR(item.BalanceIDR)
+			item.BalanceUSDTFormatted = formatUSDT(item.BalanceUSDT)
 			workers = append(workers, item)
 		}
 	}
@@ -893,20 +1212,22 @@ func (s *Server) HandleAdminWorkers(w http.ResponseWriter, r *http.Request) {
 	}
 
 	viewData := struct {
-		Lang      string
-		Title     string
-		Theme     string
-		CSRFToken string
-		ActiveNav string
-		Workers   []WorkerListItem
-		T         func(string) string
+		Lang        string
+		Title       string
+		Theme       string
+		CSRFToken   string
+		ActiveNav   string
+		SearchQuery string
+		Workers     []WorkerListItem
+		T           func(string) string
 	}{
-		Lang:      lang,
-		Title:     "Daftar Pekerja - GO BLAST",
-		Theme:     getTheme(r),
-		CSRFToken: getCSRF(r),
-		ActiveNav: "workers",
-		Workers:   workers,
+		Lang:        lang,
+		Title:       "Daftar Pekerja - GO BLAST",
+		Theme:       getTheme(r),
+		CSRFToken:   getCSRF(r),
+		ActiveNav:   "workers",
+		SearchQuery: q,
+		Workers:     workers,
 		T: func(key string) string {
 			return i18n.T(lang, key)
 		},

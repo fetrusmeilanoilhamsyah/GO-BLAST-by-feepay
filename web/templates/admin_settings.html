@@ -2,9 +2,16 @@
 {{ template "admin_nav" . }}
 
 <main style="max-width: 900px; margin: 0 auto; padding: 24px 20px;">
-    <div style="margin-bottom: 24px;">
-        <h1 style="font-size: 24px; font-weight: 700; margin: 0; color: var(--color-text);">{{ call .T "admin.settings_title" }}</h1>
-        <p style="font-size: 13px; color: var(--color-muted); margin: 4px 0 0 0;">{{ call .T "admin.settings_desc" }}</p>
+    <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 12px; margin-bottom: 24px;">
+        <div>
+            <h1 style="font-size: 24px; font-weight: 700; margin: 0; color: var(--color-text);">{{ call .T "admin.settings_title" }}</h1>
+            <p style="font-size: 13px; color: var(--color-muted); margin: 4px 0 0 0;">{{ call .T "admin.settings_desc" }}</p>
+        </div>
+        <div>
+            <button type="button" onclick="fillRecommendedSettings()" class="btn btn-secondary" style="font-size: 13px; padding: 8px 14px; border-color: var(--color-accent); color: var(--color-accent);">
+                Isi Nilai Rekomendasi
+            </button>
+        </div>
     </div>
 
     {{if .Error}}
@@ -25,7 +32,7 @@
         <!-- 1. Tarif Upah (rate_wage) -->
         <div class="card" style="margin: 0;">
             <h2 style="font-size: 16px; font-weight: 700; margin-top: 0; margin-bottom: 6px; color: var(--color-text);">{{ call .T "admin.rate_wage" }} <span class="badge badge-warning" style="font-size: 11px;">{{ call .T "admin.required_label" }}</span></h2>
-            <p style="font-size: 12px; color: var(--color-muted); margin-bottom: 16px;">Tarif upah per pesan terkirim yang diterima pekerja.</p>
+            <p style="font-size: 12px; color: var(--color-muted); margin-bottom: 16px;">Tarif upah per pesan terkirim yang diterima pekerja. Format USDT dapat berupa desimal (contoh: 0.003 USDT) atau angka bulat sepersejuta USDT.</p>
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;">
                 <div class="field">
                     <label for="rate_wage_idr">{{ call .T "admin.rate_wage_idr" }}</label>
@@ -33,7 +40,7 @@
                 </div>
                 <div class="field">
                     <label for="rate_wage_usdt">{{ call .T "admin.rate_wage_usdt" }}</label>
-                    <input type="number" id="rate_wage_usdt" name="rate_wage_usdt" class="input" min="1" {{if .Settings.RateWageUSDT}}value="{{.Settings.RateWageUSDT}}"{{else}}value="" placeholder="wajib diisi"{{end}} required>
+                    <input type="text" id="rate_wage_usdt" name="rate_wage_usdt" class="input" min="1" {{if .Settings.RateWageUSDTDisplay}}value="{{.Settings.RateWageUSDTDisplay}}"{{else if .Settings.RateWageUSDT}}value="{{.Settings.RateWageUSDT}}"{{else}}value="" placeholder="wajib diisi"{{end}} required>
                 </div>
             </div>
         </div>
@@ -49,7 +56,7 @@
                 </div>
                 <div class="field">
                     <label for="rate_referral_usdt">{{ call .T "admin.rate_referral_usdt" }}</label>
-                    <input type="number" id="rate_referral_usdt" name="rate_referral_usdt" class="input" min="0" {{if .Settings.RateReferralUSDT}}value="{{.Settings.RateReferralUSDT}}"{{else}}value="0"{{end}}>
+                    <input type="text" id="rate_referral_usdt" name="rate_referral_usdt" class="input" {{if .Settings.RateReferralUSDTDisplay}}value="{{.Settings.RateReferralUSDTDisplay}}"{{else if .Settings.RateReferralUSDT}}value="{{.Settings.RateReferralUSDT}}"{{else}}value="0"{{end}}>
                 </div>
             </div>
         </div>
@@ -81,23 +88,23 @@
         <!-- 4. Batas Harian Akun (daily_limits) -->
         <div class="card" style="margin: 0;">
             <h2 style="font-size: 16px; font-weight: 700; margin-top: 0; margin-bottom: 6px; color: var(--color-text);">{{ call .T "admin.daily_limits" }} <span class="badge badge-warning" style="font-size: 11px;">{{ call .T "admin.required_label" }}</span></h2>
-            <p style="font-size: 12px; color: var(--color-muted); margin-bottom: 16px;">Maksimal pesan per hari per akun WhatsApp (1 - 5000).</p>
+            <p style="font-size: 12px; color: var(--color-muted); margin-bottom: 16px;">Maksimal pesan per hari per akun WhatsApp (isi 0 atau angka besar untuk tanpa batas).</p>
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px;">
                 <div class="field">
-                    <label for="daily_limit_fast">Fast (pesan/hari)</label>
-                    <input type="number" id="daily_limit_fast" name="daily_limit_fast" class="input" min="1" max="5000" {{if index .Settings.DailyLimits "fast"}}value="{{index .Settings.DailyLimits "fast"}}"{{else}}value="" placeholder="wajib diisi"{{end}} required>
+                    <label for="daily_limit_fast">Fast (0 = tanpa batas)</label>
+                    <input type="number" id="daily_limit_fast" name="daily_limit_fast" class="input" min="0" {{if index .Settings.DailyLimits "fast"}}value="{{index .Settings.DailyLimits "fast"}}"{{else}}value="" placeholder="wajib diisi"{{end}} required>
                 </div>
                 <div class="field">
-                    <label for="daily_limit_medium">Medium (pesan/hari)</label>
-                    <input type="number" id="daily_limit_medium" name="daily_limit_medium" class="input" min="1" max="5000" {{if index .Settings.DailyLimits "medium"}}value="{{index .Settings.DailyLimits "medium"}}"{{else}}value="" placeholder="wajib diisi"{{end}} required>
+                    <label for="daily_limit_medium">Medium (0 = tanpa batas)</label>
+                    <input type="number" id="daily_limit_medium" name="daily_limit_medium" class="input" min="0" {{if index .Settings.DailyLimits "medium"}}value="{{index .Settings.DailyLimits "medium"}}"{{else}}value="" placeholder="wajib diisi"{{end}} required>
                 </div>
                 <div class="field">
-                    <label for="daily_limit_slow">Slow (pesan/hari)</label>
-                    <input type="number" id="daily_limit_slow" name="daily_limit_slow" class="input" min="1" max="5000" {{if index .Settings.DailyLimits "slow"}}value="{{index .Settings.DailyLimits "slow"}}"{{else}}value="" placeholder="wajib diisi"{{end}} required>
+                    <label for="daily_limit_slow">Slow (0 = tanpa batas)</label>
+                    <input type="number" id="daily_limit_slow" name="daily_limit_slow" class="input" min="0" {{if index .Settings.DailyLimits "slow"}}value="{{index .Settings.DailyLimits "slow"}}"{{else}}value="" placeholder="wajib diisi"{{end}} required>
                 </div>
                 <div class="field">
-                    <label for="daily_limit_over_slow">Over Slow (pesan/hari)</label>
-                    <input type="number" id="daily_limit_over_slow" name="daily_limit_over_slow" class="input" min="1" max="5000" {{if index .Settings.DailyLimits "over_slow"}}value="{{index .Settings.DailyLimits "over_slow"}}"{{else}}value="" placeholder="wajib diisi"{{end}} required>
+                    <label for="daily_limit_over_slow">Over Slow (0 = tanpa batas)</label>
+                    <input type="number" id="daily_limit_over_slow" name="daily_limit_over_slow" class="input" min="0" {{if index .Settings.DailyLimits "over_slow"}}value="{{index .Settings.DailyLimits "over_slow"}}"{{else}}value="" placeholder="wajib diisi"{{end}} required>
                 </div>
             </div>
         </div>
@@ -140,4 +147,27 @@
         </div>
     </form>
 </main>
+
+<script>
+function fillRecommendedSettings() {
+    document.getElementById('rate_wage_idr').value = '25';
+    document.getElementById('rate_wage_usdt').value = '0.002';
+    document.getElementById('rate_referral_idr').value = '5';
+    document.getElementById('rate_referral_usdt').value = '0.0005';
+    document.getElementById('speed_delay_fast').value = '5';
+    document.getElementById('speed_delay_medium').value = '15';
+    document.getElementById('speed_delay_slow').value = '30';
+    document.getElementById('speed_delay_over_slow').value = '60';
+    document.getElementById('daily_limit_fast').value = '0';
+    document.getElementById('daily_limit_medium').value = '0';
+    document.getElementById('daily_limit_slow').value = '0';
+    document.getElementById('daily_limit_over_slow').value = '0';
+    document.getElementById('max_attempts').value = '3';
+    document.getElementById('max_consecutive_failures').value = '5';
+    document.getElementById('claim_timeout_seconds').value = '180';
+    document.getElementById('max_accounts_per_worker').value = '10';
+    document.getElementById('max_active_sessions').value = '100';
+    document.getElementById('default_country_code').value = '62';
+}
+</script>
 {{end}}

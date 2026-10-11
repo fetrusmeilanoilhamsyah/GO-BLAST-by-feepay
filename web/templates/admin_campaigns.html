@@ -21,8 +21,10 @@
             <tbody>
                 {{range .Campaigns}}
                 <tr style="border-bottom: 1px solid var(--color-border);">
-                    <td style="padding: 15px;">#{{.ID}}</td>
-                    <td style="padding: 15px; font-weight: bold;">{{.Name}}</td>
+                    <td style="padding: 15px;"><a href="/admin/campaigns/{{.ID}}" style="color: var(--color-muted); text-decoration: none; font-weight: bold;">#{{.ID}}</a></td>
+                    <td style="padding: 15px; font-weight: bold;">
+                        <a href="/admin/campaigns/{{.ID}}" style="color: var(--color-text); text-decoration: none;">{{.Name}}</a>
+                    </td>
                     <td style="padding: 15px;">
                         <span style="padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: bold; color: var(--color-on-primary); background-color: {{if eq .Status "draf"}}var(--color-status-draft){{else if eq .Status "berjalan"}}var(--color-status-running){{else}}var(--color-status-done){{end}};">
                             {{.Status}}
@@ -31,12 +33,23 @@
                     <td style="padding: 15px;">{{if eq .ButtonMode "kartu_link"}}{{ call $.T "campaign.mode_card_link" }}{{else}}{{ call $.T "campaign.mode_native_btn" }}{{end}}</td>
                     <td style="padding: 15px;">{{.CreatedAt.Format "02 Jan 06 15:04"}}</td>
                     <td style="padding: 15px;">
-                        {{if eq .Status "draf"}}
-                        <a href="/admin/campaigns/{{.ID}}/edit" class="link-action" style="color: var(--color-accent);">{{ call $.T "campaign.action_edit" }}</a>
-                        <a href="/admin/campaigns/{{.ID}}/numbers" class="link-action" style="color: var(--color-warning);">{{ call $.T "campaign.action_numbers" }}</a>
-                        {{else}}
-                        <a href="/admin/campaigns/{{.ID}}/numbers" class="link-action" style="color: var(--color-muted);">{{ call $.T "campaign.action_report" }}</a>
-                        {{end}}
+                        <div style="display: inline-flex; align-items: center; gap: 8px;">
+                            <a href="/admin/campaigns/{{.ID}}" class="link-action" style="color: var(--color-accent);">Detail</a>
+                            {{if eq .Status "draf"}}
+                            <a href="/admin/campaigns/{{.ID}}/edit" class="link-action" style="color: var(--color-accent);">{{ call $.T "campaign.action_edit" }}</a>
+                            <a href="/admin/campaigns/{{.ID}}/numbers" class="link-action" style="color: var(--color-warning);">{{ call $.T "campaign.action_numbers" }}</a>
+                            {{else}}
+                            <a href="/admin/campaigns/{{.ID}}/numbers" class="link-action" style="color: var(--color-muted);">{{ call $.T "campaign.action_report" }}</a>
+                            {{end}}
+                            {{if or (eq .Status "draf") (eq .Status "selesai")}}
+                            <form method="POST" action="/admin/campaigns/{{.ID}}/delete" style="display: inline; margin: 0;" onsubmit="return confirm('{{ call $.T "campaign.delete_confirm" }}');">
+                                <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                                <button type="submit" class="btn btn-secondary" style="padding: 2px 8px; font-size: 11px; color: var(--color-danger); border-color: var(--color-danger); cursor: pointer;">
+                                    {{ call $.T "campaign.delete_btn" }}
+                                </button>
+                            </form>
+                            {{end}}
+                        </div>
                     </td>
                 </tr>
                 {{else}}

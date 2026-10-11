@@ -17,6 +17,7 @@ import (
 	"goblast/internal/auth"
 	"goblast/internal/db"
 	"goblast/internal/i18n"
+	"goblast/internal/withdraw"
 )
 
 type fakeWorkController struct {
@@ -132,9 +133,9 @@ func TestAdminSettingsValidationRejected(t *testing.T) {
 			},
 		},
 		{
-			name: "daily_limits too high (5001)",
+			name: "daily_limits negative (-1)",
 			mutate: func(v url.Values) {
-				v.Set("daily_limit_slow", "5001")
+				v.Set("daily_limit_slow", "-1")
 			},
 		},
 		{
@@ -463,7 +464,7 @@ func TestOpenDecisionKeysRenderedEmptyWithoutDefaults(t *testing.T) {
 	checks := []string{
 		`id="rate_wage_idr" name="rate_wage_idr" class="input" min="1" value="" placeholder="wajib diisi"`,
 		`id="rate_wage_usdt" name="rate_wage_usdt" class="input" min="1" value="" placeholder="wajib diisi"`,
-		`id="daily_limit_fast" name="daily_limit_fast" class="input" min="1" max="5000" value="" placeholder="wajib diisi"`,
+		`id="daily_limit_fast" name="daily_limit_fast" class="input" min="0" value="" placeholder="wajib diisi"`,
 		`id="max_attempts" name="max_attempts" class="input" min="1" max="10" value="" placeholder="wajib diisi"`,
 		`id="max_consecutive_failures" name="max_consecutive_failures" class="input" min="1" max="50" value="" placeholder="wajib diisi"`,
 		`id="max_accounts_per_worker" name="max_accounts_per_worker" class="input" min="1" max="50" value="" placeholder="wajib diisi"`,
@@ -646,3 +647,188 @@ func TestDisableWorkerStopsAccountAndClearsWebSessions(t *testing.T) {
 		t.Errorf("Audit log for worker_disable not found: %v", err)
 	}
 }
+
+func TestAdminWithdrawalsApproveAndReject(t *testing.T) {
+	srv, pool, adminID, workerID := setupAdminTest(t)
+	ctx := context.Background()
+
+	// Initial balance for worker: 500,000 IDR
+	_, err := pool.Exec(ctx, `
+		INSERT INTO ledger_entries (user_id, kind, currency, amount, note)
+		VALUES ($1, 'upah', 'IDR', 500000, 'saldo awal test')
+	`, workerID)
+	if err != nil {
+		t.Fatalf("Failed to credit initial balance: %v", err)
+	}
+
+	encDest, _ := withdraw.EncryptDestination("BCA 12345678 (Budi)", srv.EncryptionKey)
+
+	// Create withdrawal 1 (100,000 IDR)
+	var w1ID int64
+	err = pool.QueryRow(ctx, `
+		INSERT INTO withdrawals (user_id, currency, amount, method, destination_encrypted, status)
+		VALUES ($1, 'IDR', 100000, 'bca', $2, 'menunggu')
+		RETURNING id
+	`, workerID, encDest).Scan(&w1ID)
+	if err != nil {
+		t.Fatalf("Failed to create withdrawal 1: %v", err)
+	}
+	_, _ = pool.Exec(ctx, `
+		INSERT INTO ledger_entries (user_id, kind, currency, amount, note)
+		VALUES ($1, 'penarikan', 'IDR', -100000, 'Pengajuan penarikan #1')
+	`, workerID)
+
+	// Create withdrawal 2 (50,000 IDR)
+	var w2ID int64
+	err = pool.QueryRow(ctx, `
+		INSERT INTO withdrawals (user_id, currency, amount, method, destination_encrypted, status)
+		VALUES ($1, 'IDR', 50000, 'bca', $2, 'menunggu')
+		RETURNING id
+	`, workerID, encDest).Scan(&w2ID)
+	if err != nil {
+		t.Fatalf("Failed to create withdrawal 2: %v", err)
+	}
+	_, _ = pool.Exec(ctx, `
+		INSERT INTO ledger_entries (user_id, kind, currency, amount, note)
+		VALUES ($1, 'penarikan', 'IDR', -50000, 'Pengajuan penarikan #2')
+	`, workerID)
+
+	// Verify current balance is 350,000
+	var curBal int64
+	_ = pool.QueryRow(ctx, "SELECT user_balance($1, 'IDR')", workerID).Scan(&curBal)
+	if curBal != 350000 {
+		t.Fatalf("Expected worker balance 350000, got %d", curBal)
+	}
+
+	// 1. GET /admin/withdrawals
+	reqGet := httptest.NewRequest("GET", "/admin/withdrawals", nil)
+	ctxAdmin := context.WithValue(reqGet.Context(), userContextKey, UserSession{ID: adminID, Role: "admin", Language: "id"})
+	reqGet = reqGet.WithContext(ctxAdmin)
+	rrGet := httptest.NewRecorder()
+	srv.HandleAdminWithdrawalsGET(rrGet, reqGet)
+	if rrGet.Code != http.StatusOK {
+		t.Errorf("Expected GET /admin/withdrawals 200 OK, got %d", rrGet.Code)
+	}
+
+	// 2. Approve withdrawal 1
+	reqApprove := httptest.NewRequest("POST", fmt.Sprintf("/admin/withdrawals/%d/approve", w1ID), nil)
+	reqApprove.SetPathValue("id", fmt.Sprintf("%d", w1ID))
+	reqApprove = reqApprove.WithContext(ctxAdmin)
+	rrApprove := httptest.NewRecorder()
+	srv.HandleAdminWithdrawalApprovePOST(rrApprove, reqApprove)
+	if rrApprove.Code != http.StatusSeeOther {
+		t.Errorf("Expected 303 after approve, got %d", rrApprove.Code)
+	}
+
+	var status1 string
+	_ = pool.QueryRow(ctx, "SELECT status FROM withdrawals WHERE id = $1", w1ID).Scan(&status1)
+	if status1 != "selesai" {
+		t.Errorf("Expected status selesai for withdrawal 1, got %s", status1)
+	}
+
+	// 3. Reject withdrawal 2 (must refund 50,000)
+	reqReject := httptest.NewRequest("POST", fmt.Sprintf("/admin/withdrawals/%d/reject", w2ID), nil)
+	reqReject.SetPathValue("id", fmt.Sprintf("%d", w2ID))
+	reqReject = reqReject.WithContext(ctxAdmin)
+	rrReject := httptest.NewRecorder()
+	srv.HandleAdminWithdrawalRejectPOST(rrReject, reqReject)
+	if rrReject.Code != http.StatusSeeOther {
+		t.Errorf("Expected 303 after reject, got %d", rrReject.Code)
+	}
+
+	var status2 string
+	_ = pool.QueryRow(ctx, "SELECT status FROM withdrawals WHERE id = $1", w2ID).Scan(&status2)
+	if status2 != "ditolak" {
+		t.Errorf("Expected status ditolak for withdrawal 2, got %s", status2)
+	}
+
+	// Verify worker balance was refunded to 400,000 (350,000 + 50,000)
+	_ = pool.QueryRow(ctx, "SELECT user_balance($1, 'IDR')", workerID).Scan(&curBal)
+	if curBal != 400000 {
+		t.Errorf("Expected worker balance refunded to 400000, got %d", curBal)
+	}
+
+	// Verify refund entry exists in ledger
+	var refundCount int
+	_ = pool.QueryRow(ctx, "SELECT COUNT(*) FROM ledger_entries WHERE user_id = $1 AND kind = 'koreksi' AND amount = 50000", workerID).Scan(&refundCount)
+	if refundCount != 1 {
+		t.Errorf("Expected 1 refund entry in ledger, got %d", refundCount)
+	}
+}
+
+func TestAdminCampaignDelete(t *testing.T) {
+	srv, pool, adminID, _ := setupAdminTest(t)
+	ctx := context.Background()
+	ctxAdmin := context.WithValue(context.Background(), userContextKey, UserSession{ID: adminID, Role: "admin", Language: "id"})
+
+	// 1. Create a draft campaign
+	var draftID int64
+	err := pool.QueryRow(ctx, `
+		INSERT INTO campaigns (name, status, button_mode, body, elements, created_by)
+		VALUES ('Draft Campaign Test', 'draf', 'kartu_link', 'Test body', '{}', $1)
+		RETURNING id
+	`, adminID).Scan(&draftID)
+	if err != nil {
+		t.Fatalf("Failed to create draft campaign: %v", err)
+	}
+
+	// Delete draft campaign -> must succeed
+	reqDel := httptest.NewRequest("POST", fmt.Sprintf("/admin/campaigns/%d/delete", draftID), nil)
+	reqDel.SetPathValue("id", fmt.Sprintf("%d", draftID))
+	reqDel = reqDel.WithContext(ctxAdmin)
+	rrDel := httptest.NewRecorder()
+	srv.HandleAdminCampaignDelete(rrDel, reqDel)
+
+	if rrDel.Code != http.StatusSeeOther {
+		t.Errorf("Expected 303 after deleting draft campaign, got %d", rrDel.Code)
+	}
+
+	var count int
+	_ = pool.QueryRow(ctx, "SELECT COUNT(*) FROM campaigns WHERE id = $1", draftID).Scan(&count)
+	if count != 0 {
+		t.Errorf("Draft campaign was not deleted from DB!")
+	}
+
+	// 2. Create a running campaign
+	var runningID int64
+	err = pool.QueryRow(ctx, `
+		INSERT INTO campaigns (name, status, button_mode, body, elements, created_by)
+		VALUES ('Running Campaign Test', 'berjalan', 'kartu_link', 'Test body', '{}', $1)
+		RETURNING id
+	`, adminID).Scan(&runningID)
+	if err != nil {
+		t.Fatalf("Failed to create running campaign: %v", err)
+	}
+
+	// Attempt delete running campaign -> must be blocked!
+	reqDelRun := httptest.NewRequest("POST", fmt.Sprintf("/admin/campaigns/%d/delete", runningID), nil)
+	reqDelRun.SetPathValue("id", fmt.Sprintf("%d", runningID))
+	reqDelRun = reqDelRun.WithContext(ctxAdmin)
+	rrDelRun := httptest.NewRecorder()
+	srv.HandleAdminCampaignDelete(rrDelRun, reqDelRun)
+
+	if !strings.Contains(rrDelRun.Header().Get("Location"), "err=") {
+		t.Errorf("Expected redirect with err for running campaign deletion, got location: %s", rrDelRun.Header().Get("Location"))
+	}
+
+	_ = pool.QueryRow(ctx, "SELECT COUNT(*) FROM campaigns WHERE id = $1", runningID).Scan(&count)
+	if count != 1 {
+		t.Errorf("Running campaign should NOT be deleted!")
+	}
+}
+
+func TestAdminWorkersSearch(t *testing.T) {
+	srv, _, adminID, _ := setupAdminTest(t)
+
+	req := httptest.NewRequest("GET", "/admin/workers?q=Worker+Test", nil)
+	ctx := context.WithValue(req.Context(), userContextKey, UserSession{ID: adminID, Role: "admin", Language: "id"})
+	req = req.WithContext(ctx)
+
+	rr := httptest.NewRecorder()
+	srv.HandleAdminWorkers(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("Expected 200 OK for search workers, got %d", rr.Code)
+	}
+}
+

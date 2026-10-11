@@ -621,6 +621,81 @@ func (s *Server) HandleAdminCampaignFinish(w http.ResponseWriter, r *http.Reques
 	http.Redirect(w, r, fmt.Sprintf("/admin/campaigns/%d", id), http.StatusSeeOther)
 }
 
+func (s *Server) HandleAdminCampaignDelete(w http.ResponseWriter, r *http.Request) {
+	user, ok := currentUser(r)
+	if !ok || user.Role != "admin" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	idStr := r.PathValue("id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		http.Error(w, "ID tidak valid", http.StatusBadRequest)
+		return
+	}
+
+	ctx := r.Context()
+	tx, err := s.DB.Pool.Begin(ctx)
+	if err != nil {
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+	defer tx.Rollback(ctx)
+
+	var status string
+	var imagePath *string
+	err = tx.QueryRow(ctx, "SELECT status, image_path FROM campaigns WHERE id = $1 FOR UPDATE", id).Scan(&status, &imagePath)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+
+	// Campaign berjalan tidak boleh dihapus!
+	if status == campaign.StatusBerjalan {
+		http.Redirect(w, r, fmt.Sprintf("/admin/campaigns/%d?err=Kampanye+yang+sedang+berjalan+tidak+dapat+dihapus", id), http.StatusSeeOther)
+		return
+	}
+
+	// 1. Unlink ledger entries foreign key to prevent constraint violation
+	_, err = tx.Exec(ctx, `
+		UPDATE ledger_entries 
+		SET campaign_number_id = NULL 
+		WHERE campaign_number_id IN (SELECT id FROM campaign_numbers WHERE campaign_id = $1)
+	`, id)
+	if err != nil {
+		http.Error(w, "Gagal melepaskan relasi buku besar: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// 2. Delete campaign numbers
+	_, err = tx.Exec(ctx, "DELETE FROM campaign_numbers WHERE campaign_id = $1", id)
+	if err != nil {
+		http.Error(w, "Gagal menghapus nomor kampanye: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// 3. Delete campaign
+	_, err = tx.Exec(ctx, "DELETE FROM campaigns WHERE id = $1", id)
+	if err != nil {
+		http.Error(w, "Gagal menghapus kampanye: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		http.Error(w, "Gagal menyelesaikan penghapusan kampanye", http.StatusInternalServerError)
+		return
+	}
+
+	// Remove uploaded image file if present
+	if imagePath != nil && *imagePath != "" {
+		_ = os.Remove(*imagePath)
+	}
+
+	s.logAudit(&user.ID, "campaign_delete", "campaign", strconv.FormatInt(id, 10), "campaign deleted")
+	http.Redirect(w, r, "/admin/campaigns", http.StatusSeeOther)
+}
+
 func (s *Server) HandleServeUpload(w http.ResponseWriter, r *http.Request) {
 	filename := r.PathValue("filename")
 	// Prevent directory traversal

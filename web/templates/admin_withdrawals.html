@@ -1,0 +1,144 @@
+{{define "content"}}
+{{ template "admin_nav" . }}
+
+<main style="max-width: 1200px; margin: 0 auto; padding: 20px;">
+    <!-- Header -->
+    <div style="margin-bottom: 20px;">
+        <h1 style="font-size: 24px; font-weight: 700; margin: 0 0 6px 0; color: var(--color-text);">{{ call .T "admin.withdrawals_title" }}</h1>
+        <p style="font-size: 13px; color: var(--color-muted); margin: 0;">{{ call .T "admin.withdrawals_desc" }}</p>
+    </div>
+
+    {{if .Message}}
+    <div style="background-color: var(--color-surface-muted); border: 1px solid var(--color-success); color: var(--color-success); padding: 12px 16px; border-radius: 8px; margin-bottom: 20px; font-size: 14px;">
+        {{.Message}}
+    </div>
+    {{end}}
+
+    {{if .Error}}
+    <div style="background-color: var(--color-surface-muted); border: 1px solid var(--color-danger); color: var(--color-danger); padding: 12px 16px; border-radius: 8px; margin-bottom: 20px; font-size: 14px;">
+        {{.Error}}
+    </div>
+    {{end}}
+
+    <!-- Stat Cards -->
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 24px;">
+        <div class="card" style="margin: 0; padding: 18px;">
+            <div style="font-size: 12px; color: var(--color-muted); font-weight: 500; margin-bottom: 6px;">Antrean Menunggu (IDR)</div>
+            <div style="font-size: 24px; font-weight: 800; color: var(--color-warning);">Rp {{.PendingIDRTotal}}</div>
+            <div style="font-size: 12px; color: var(--color-muted); margin-top: 4px;">{{.PendingIDRCount}} permintaan menunggu transfer</div>
+        </div>
+
+        <div class="card" style="margin: 0; padding: 18px;">
+            <div style="font-size: 12px; color: var(--color-muted); font-weight: 500; margin-bottom: 6px;">Antrean Menunggu (USDT)</div>
+            <div style="font-size: 24px; font-weight: 800; color: var(--color-accent);">{{.PendingUSDTTotal}} USDT</div>
+            <div style="font-size: 12px; color: var(--color-muted); margin-top: 4px;">{{.PendingUSDTCount}} permintaan menunggu transfer</div>
+        </div>
+    </div>
+
+    <!-- Filter Tabs -->
+    <div style="display: flex; gap: 8px; margin-bottom: 16px; overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 4px;">
+        <a href="/admin/withdrawals?status=menunggu" class="btn btn-secondary{{if eq .CurrentStatus "menunggu"}} btn-primary{{end}}" style="padding: 6px 14px; font-size: 13px; text-decoration: none; border-radius: 6px; flex-shrink: 0;">
+            {{ call .T "admin.withdraw_pending" }}
+        </a>
+        <a href="/admin/withdrawals?status=selesai" class="btn btn-secondary{{if eq .CurrentStatus "selesai"}} btn-primary{{end}}" style="padding: 6px 14px; font-size: 13px; text-decoration: none; border-radius: 6px; flex-shrink: 0;">
+            {{ call .T "admin.withdraw_approved" }}
+        </a>
+        <a href="/admin/withdrawals?status=ditolak" class="btn btn-secondary{{if eq .CurrentStatus "ditolak"}} btn-primary{{end}}" style="padding: 6px 14px; font-size: 13px; text-decoration: none; border-radius: 6px; flex-shrink: 0;">
+            {{ call .T "admin.withdraw_rejected" }}
+        </a>
+        <a href="/admin/withdrawals?status=semua" class="btn btn-secondary{{if eq .CurrentStatus "semua"}} btn-primary{{end}}" style="padding: 6px 14px; font-size: 13px; text-decoration: none; border-radius: 6px; flex-shrink: 0;">
+            {{ call .T "admin.withdraw_all" }}
+        </a>
+    </div>
+
+    <!-- Table of Withdrawals -->
+    <div class="card" style="margin: 0; padding: 0; overflow: hidden;">
+        <div style="overflow-x: auto;">
+            <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 13px;">
+                <thead style="background-color: var(--color-surface-muted); color: var(--color-muted);">
+                    <tr>
+                        <th style="padding: 12px 16px; border-bottom: 1px solid var(--color-border);">ID</th>
+                        <th style="padding: 12px 16px; border-bottom: 1px solid var(--color-border);">{{ call .T "admin.withdraw_time" }}</th>
+                        <th style="padding: 12px 16px; border-bottom: 1px solid var(--color-border);">{{ call .T "admin.withdraw_worker" }}</th>
+                        <th style="padding: 12px 16px; border-bottom: 1px solid var(--color-border);">{{ call .T "admin.withdraw_amount" }}</th>
+                        <th style="padding: 12px 16px; border-bottom: 1px solid var(--color-border);">{{ call .T "admin.withdraw_method" }}</th>
+                        <th style="padding: 12px 16px; border-bottom: 1px solid var(--color-border);">{{ call .T "admin.withdraw_dest" }}</th>
+                        <th style="padding: 12px 16px; border-bottom: 1px solid var(--color-border);">Status</th>
+                        <th style="padding: 12px 16px; border-bottom: 1px solid var(--color-border); text-align: right;">{{ call .T "admin.withdraw_action" }}</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range .Items}}
+                    <tr style="border-bottom: 1px solid var(--color-border);">
+                        <td style="padding: 12px 16px; font-weight: bold;">#{{.ID}}</td>
+                        <td style="padding: 12px 16px; color: var(--color-muted);">{{.RequestedAt.Format "02 Jan 06 15:04"}}</td>
+                        <td style="padding: 12px 16px;">
+                            <div style="font-weight: bold; color: var(--color-text);">{{.WorkerUsername}}</div>
+                            <div style="font-size: 11px; color: var(--color-muted);">{{.WorkerEmail}}</div>
+                        </td>
+                        <td style="padding: 12px 16px; font-weight: bold; font-size: 14px;">
+                            {{if eq .Currency "IDR"}}
+                            Rp {{.AmountFormatted}}
+                            {{else}}
+                            {{.AmountFormatted}} USDT
+                            {{end}}
+                        </td>
+                        <td style="padding: 12px 16px;">
+                            <span class="badge badge-muted" style="text-transform: uppercase; font-size: 11px;">{{.Method}}</span>
+                        </td>
+                        <td style="padding: 12px 16px; font-family: monospace; font-size: 13px;">
+                            <div style="background-color: var(--color-surface-muted); padding: 4px 8px; border-radius: 4px; display: inline-block;">
+                                {{.Destination}}
+                            </div>
+                        </td>
+                        <td style="padding: 12px 16px;">
+                            {{if eq .Status "menunggu"}}
+                            <span style="background-color: var(--color-surface-muted); color: var(--color-warning); border: 1px solid var(--color-warning); padding: 3px 8px; border-radius: 12px; font-size: 11px; font-weight: bold;">
+                                {{ call $.T "admin.withdraw_pending" }}
+                            </span>
+                            {{else if eq .Status "selesai"}}
+                            <span style="background-color: var(--color-surface-muted); color: var(--color-status-done); border: 1px solid var(--color-status-done); padding: 3px 8px; border-radius: 12px; font-size: 11px; font-weight: bold;">
+                                {{ call $.T "admin.withdraw_approved" }}
+                            </span>
+                            {{else}}
+                            <span style="background-color: var(--color-surface-muted); color: var(--color-danger); border: 1px solid var(--color-danger); padding: 3px 8px; border-radius: 12px; font-size: 11px; font-weight: bold;">
+                                {{ call $.T "admin.withdraw_rejected" }}
+                            </span>
+                            {{end}}
+                        </td>
+                        <td style="padding: 12px 16px; text-align: right;">
+                            {{if eq .Status "menunggu"}}
+                            <div style="display: inline-flex; gap: 8px;">
+                                <form method="POST" action="/admin/withdrawals/{{.ID}}/approve" onsubmit="return confirm('{{ call $.T "admin.withdraw_confirm_approve" }}');" style="margin: 0;">
+                                    <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                                    <button type="submit" class="btn btn-primary" style="padding: 5px 12px; font-size: 12px;">
+                                        {{ call $.T "admin.withdraw_approve_btn" }}
+                                    </button>
+                                </form>
+                                <form method="POST" action="/admin/withdrawals/{{.ID}}/reject" onsubmit="return confirm('{{ call $.T "admin.withdraw_confirm_reject" }}');" style="margin: 0;">
+                                    <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                                    <button type="submit" class="btn btn-secondary" style="padding: 5px 12px; font-size: 12px; color: var(--color-danger); border-color: var(--color-danger);">
+                                        {{ call $.T "admin.withdraw_reject_btn" }}
+                                    </button>
+                                </form>
+                            </div>
+                            {{else}}
+                            <span style="color: var(--color-muted); font-size: 12px;">
+                                {{if .ProcessedAt}}{{.ProcessedAt.Format "02/01/06 15:04"}}{{else}}-{{end}}
+                            </span>
+                            {{end}}
+                        </td>
+                    </tr>
+                    {{else}}
+                    <tr>
+                        <td colspan="8" style="padding: 40px; text-align: center; color: var(--color-muted);">
+                            {{ call .T "admin.withdraw_empty" }}
+                        </td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</main>
+{{end}}
