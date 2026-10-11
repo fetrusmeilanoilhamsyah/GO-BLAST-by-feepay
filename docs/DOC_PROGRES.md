@@ -168,6 +168,7 @@ Langkah uji sambung dan putus satu nomor cadangan:
 
 Terbaru di atas. Format: `tanggal: ringkasan satu baris` (Log Tahap 0 - 5 diarsipkan di [ARSIP_PROGRES.md](ARSIP_PROGRES.md)).
 
+- 2026-10-12: UI Akun WhatsApp: Tambahkan kartu ringkasan Database Nomor Tersedia (Sistem) dan Akun Terhubung di halaman /worker/accounts.
 - 2026-10-12: Tahap 11 selesai penuh: Audit dan implementasi lengkap panel pekerja (beranda agregat & saldo per mata uang, modal risiko banned & privasi, riwayat pesan tanpa nomor customer, referral Tahap 18 notice, ukuran < 50 KB, tes lulus 100%).
 - 2026-10-11: Penyempurnaan UI: Reposisi tombol navbar (Menu di kiri, Profil di kanan), drawer navigasi kiri & drawer profil kanan, serta pengelompokan form profil ke dalam accordion collapsible ringkas.
 - 2026-10-11: Penyempurnaan UI: Mode gelap pekat OLED Pitch Black (#0a0a0a), kartu mobile vertikal akun WhatsApp untuk layar Android, pembersihan total font hijau AI-slop, dan rekening penarikan global (SeaBank, BCA, DANA, USDT BEP20).

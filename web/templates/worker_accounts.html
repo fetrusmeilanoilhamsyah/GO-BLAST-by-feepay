@@ -11,6 +11,26 @@
                 <button type="button" onclick="openAddAccountModal();" class="btn btn-primary" style="padding: 10px 18px; font-weight: bold; cursor: pointer;">+ {{ call .T "wa.add_account" }}</button>
             </div>
 
+            <!-- STATISTIK DATABASE TERSEDIA & STATUS AKUN -->
+            <div class="stat-grid" style="margin-bottom: 24px;">
+                <div class="stat-card">
+                    <div class="stat-label">{{ call .T "worker.available_numbers_aggregate" }}</div>
+                    <div class="stat-value" style="display: flex; align-items: baseline; gap: 8px;">
+                        <span>{{.AvailableNumbers}}</span>
+                        <span style="font-size: 14px; font-weight: normal; color: var(--color-muted);">Nomor</span>
+                    </div>
+                    <p style="margin: 6px 0 0 0; font-size: 12px; color: var(--color-muted);">{{ call .T "worker.available_numbers_sub" }}</p>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">{{ call .T "worker.connected_accounts" }}</div>
+                    <div class="stat-value" style="display: flex; align-items: baseline; gap: 8px;">
+                        <span>{{.ConnectedAccounts}}</span>
+                        <span style="font-size: 14px; font-weight: normal; color: var(--color-muted);">/ {{len .Accounts}} Terhubung</span>
+                    </div>
+                    <p style="margin: 6px 0 0 0; font-size: 12px; color: var(--color-muted);">{{ call .T "worker.connected_accounts_sub" }}</p>
+                </div>
+            </div>
+
             {{if .Error}}
             <div style="background-color: var(--color-surface-muted); color: var(--color-danger); border-left: 4px solid var(--color-danger); padding: 12px 16px; margin-bottom: 20px; border-radius: 4px;">
                 {{.Error}}

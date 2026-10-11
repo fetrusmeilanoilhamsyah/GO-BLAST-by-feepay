@@ -191,5 +191,6 @@
   "worker.history_next": "Next",
   "worker.history_page": "Page",
   "worker.action_start": "Start Sending",
-  "worker.action_pause": "Pause"
+  "worker.action_pause": "Pause",
+  "worker.connected_accounts_sub": "Accounts ready and active for work"
 }

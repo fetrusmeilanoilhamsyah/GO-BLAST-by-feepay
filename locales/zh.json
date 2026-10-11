@@ -191,5 +191,6 @@
   "worker.history_next": "下一页",
   "worker.history_page": "页码",
   "worker.action_start": "开始发送",
-  "worker.action_pause": "暂停"
+  "worker.action_pause": "暂停",
+  "worker.connected_accounts_sub": "就绪并处于活跃工作状态的账号"
 }

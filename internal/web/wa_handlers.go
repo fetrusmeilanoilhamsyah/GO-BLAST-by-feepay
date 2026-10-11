@@ -56,25 +56,35 @@ func (s *Server) HandleWorkerAccounts(w http.ResponseWriter, r *http.Request) {
 
 	errMsg := r.URL.Query().Get("error")
 
+	var availableNumbers int64
+	_ = s.DB.Pool.QueryRow(r.Context(), "SELECT COUNT(*) FROM campaign_numbers WHERE status = 'tersedia'").Scan(&availableNumbers)
+
+	var connectedAccounts int64
+	_ = s.DB.Pool.QueryRow(r.Context(), "SELECT COUNT(*) FROM wa_accounts WHERE worker_id = $1 AND status = 'terhubung'", user.ID).Scan(&connectedAccounts)
+
 	data := struct {
-		Lang      string
-		Title     string
-		Theme     string
-		CSRFToken string
-		ActiveNav string
-		User      UserSession
-		Accounts  []WAAccountView
-		Error     string
-		T         func(string) string
+		Lang              string
+		Title             string
+		Theme             string
+		CSRFToken         string
+		ActiveNav         string
+		User              UserSession
+		Accounts          []WAAccountView
+		AvailableNumbers  int64
+		ConnectedAccounts int64
+		Error             string
+		T                 func(string) string
 	}{
-		Lang:      lang,
-		Title:     i18n.T(lang, "wa.accounts_title"),
-		Theme:     getTheme(r),
-		CSRFToken: getCSRF(r),
-		ActiveNav: "accounts",
-		User:      user,
-		Accounts:  accounts,
-		Error:     errMsg,
+		Lang:              lang,
+		Title:             i18n.T(lang, "wa.accounts_title"),
+		Theme:             getTheme(r),
+		CSRFToken:         getCSRF(r),
+		ActiveNav:         "accounts",
+		User:              user,
+		Accounts:          accounts,
+		AvailableNumbers:  availableNumbers,
+		ConnectedAccounts: connectedAccounts,
+		Error:             errMsg,
 		T: func(key string) string {
 			return i18n.T(lang, key)
 		},

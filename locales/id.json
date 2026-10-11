@@ -190,5 +190,6 @@
   "worker.history_next": "Selanjutnya",
   "worker.history_page": "Halaman",
   "worker.action_start": "Mulai Kirim",
-  "worker.action_pause": "Jeda"
+  "worker.action_pause": "Jeda",
+  "worker.connected_accounts_sub": "Akun siap dan aktif bekerja"
 }
