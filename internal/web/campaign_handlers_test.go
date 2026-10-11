@@ -38,7 +38,7 @@ func TestCampaignHandlers(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	s, _ := NewServer(&db.DB{Pool: pool}, "test")
+	s, _ := NewServer(&db.DB{Pool: pool}, "test", nil, nil)
 
 	withUser := func(h http.HandlerFunc) http.HandlerFunc {
 		return func(w http.ResponseWriter, r *http.Request) {

@@ -24,7 +24,7 @@ func setupTestServer(t *testing.T) (*Server, *db.DB) {
 	database.Pool.Exec(context.Background(), "DELETE FROM web_sessions")
 	database.Pool.Exec(context.Background(), "DELETE FROM users")
 
-	srv, err := NewServer(database, "test")
+	srv, err := NewServer(database, "test", nil, nil)
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}

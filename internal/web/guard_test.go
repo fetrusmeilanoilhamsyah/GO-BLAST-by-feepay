@@ -197,7 +197,7 @@ func TestCampaignFormTombolAsliDisabled(t *testing.T) {
 			_ = os.Chdir(root)
 			defer os.Chdir(cwd)
 
-			srv, err := NewServer(&db.DB{Pool: pool}, "test")
+			srv, err := NewServer(&db.DB{Pool: pool}, "test", nil, nil)
 			if err == nil {
 				req := httptest.NewRequest("GET", "/admin/campaigns/new", nil)
 				req = req.WithContext(context.WithValue(req.Context(), userContextKey, UserSession{ID: 1, Role: "admin", Language: "id"}))
@@ -378,7 +378,7 @@ func TestThemeEndpoint(t *testing.T) {
 	_ = os.Chdir(root)
 	defer os.Chdir(cwd)
 
-	srv, err := NewServer(nil, "test")
+	srv, err := NewServer(nil, "test", nil, nil)
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
@@ -507,7 +507,7 @@ func TestThemePageRendering(t *testing.T) {
 	_ = os.Chdir(root)
 	defer os.Chdir(cwd)
 
-	srv, err := NewServer(nil, "test")
+	srv, err := NewServer(nil, "test", nil, nil)
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}

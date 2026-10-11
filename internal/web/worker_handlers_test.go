@@ -9,6 +9,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -18,6 +19,41 @@ import (
 	"goblast/internal/db"
 	"goblast/internal/i18n"
 )
+
+type mockWorkController struct {
+	mu         sync.Mutex
+	running    map[int64]bool
+	startCount map[int64]int
+	stopCount  map[int64]int
+}
+
+func newMockWorkController() *mockWorkController {
+	return &mockWorkController{
+		running:    make(map[int64]bool),
+		startCount: make(map[int64]int),
+		stopCount:  make(map[int64]int),
+	}
+}
+
+func (m *mockWorkController) StartAccount(accountID, workerID int64, currency string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.startCount[accountID]++
+	m.running[accountID] = true
+}
+
+func (m *mockWorkController) StopAccount(accountID int64) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.stopCount[accountID]++
+	delete(m.running, accountID)
+}
+
+func (m *mockWorkController) IsRunning(accountID int64) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.running[accountID]
+}
 
 func TestWorkerPanelFlows(t *testing.T) {
 	root := findProjectRoot(t)
@@ -58,7 +94,7 @@ func TestWorkerPanelFlows(t *testing.T) {
 		t.Fatalf("Failed to insert test worker: %v", err)
 	}
 
-	srv, err := NewServer(&db.DB{Pool: pool}, "test")
+	srv, err := NewServer(&db.DB{Pool: pool}, "test", nil, nil)
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
@@ -506,6 +542,148 @@ func TestWorkerPanelFlows(t *testing.T) {
 		}
 	})
 
+	t.Run("Worker account work start and stop controller tests", func(t *testing.T) {
+		mockCtrl := newMockWorkController()
+		srvWithWork, err := NewServer(&db.DB{Pool: pool}, "test", nil, mockCtrl)
+		if err != nil {
+			t.Fatalf("Failed to create server with work controller: %v", err)
+		}
+
+		// 1. Buat akun milik Worker A (workerID) dengan status 'terhubung'
+		var accAID int64
+		err = pool.QueryRow(context.Background(), `
+			INSERT INTO wa_accounts (worker_id, label, jid_hash, speed, status)
+			VALUES ($1, 'Akun Kerja A', 'hash_work_a', 'medium', 'terhubung')
+			RETURNING id
+		`, workerID).Scan(&accAID)
+		if err != nil {
+			t.Fatalf("Failed to insert account for worker A: %v", err)
+		}
+
+		// 2. Buat akun milik Worker A dengan status 'menunggu_scan' (tidak terhubung)
+		var accDisconnectedID int64
+		err = pool.QueryRow(context.Background(), `
+			INSERT INTO wa_accounts (worker_id, label, jid_hash, speed, status)
+			VALUES ($1, 'Akun Putus A', 'hash_work_putus', 'medium', 'menunggu_scan')
+			RETURNING id
+		`, workerID).Scan(&accDisconnectedID)
+		if err != nil {
+			t.Fatalf("Failed to insert disconnected account: %v", err)
+		}
+
+		// 3. Buat worker B
+		var workerBID int64
+		_ = pool.QueryRow(context.Background(), `
+			INSERT INTO users (email, password_hash, role, display_name, language, currency, referral_code)
+			VALUES ($1, 'hash_b2', 'worker', 'Pekerja B2', 'id', 'IDR', $2)
+			RETURNING id
+		`, fmt.Sprintf("worker_b2_%d@example.com", time.Now().UnixNano()), fmt.Sprintf("RFB2%d", time.Now().UnixNano())).Scan(&workerBID)
+
+		sessB := UserSession{
+			ID:       workerBID,
+			Role:     "worker",
+			Currency: "IDR",
+		}
+		withWorkerB := func(req *http.Request) *http.Request {
+			return req.WithContext(context.WithValue(req.Context(), userContextKey, sessB))
+		}
+
+		// Test A: Pekerja B tidak bisa memulai akun milik Pekerja A (403 atau 404)
+		{
+			req := httptest.NewRequest("POST", fmt.Sprintf("/worker/accounts/%d/work/start", accAID), nil)
+			req.SetPathValue("id", strconv.FormatInt(accAID, 10))
+			req = withWorkerB(req)
+			rr := httptest.NewRecorder()
+			srvWithWork.HandleWorkerAccountWorkStart(rr, req)
+
+			if rr.Code != http.StatusForbidden && rr.Code != http.StatusNotFound {
+				t.Errorf("Expected 403 or 404 when Worker B starts Worker A's account, got %d", rr.Code)
+			}
+			if mockCtrl.IsRunning(accAID) {
+				t.Errorf("Account A should not be running after unauthorized start attempt")
+			}
+		}
+
+		// Test B: Pekerja B tidak bisa menghentikan akun milik Pekerja A (403 atau 404)
+		{
+			mockCtrl.running[accAID] = true
+			req := httptest.NewRequest("POST", fmt.Sprintf("/worker/accounts/%d/work/stop", accAID), nil)
+			req.SetPathValue("id", strconv.FormatInt(accAID, 10))
+			req = withWorkerB(req)
+			rr := httptest.NewRecorder()
+			srvWithWork.HandleWorkerAccountWorkStop(rr, req)
+
+			if rr.Code != http.StatusForbidden && rr.Code != http.StatusNotFound {
+				t.Errorf("Expected 403 or 404 when Worker B stops Worker A's account, got %d", rr.Code)
+			}
+			mockCtrl.running[accAID] = false
+		}
+
+		// Test C: Akun tidak terhubung ditolak saat start
+		{
+			req := httptest.NewRequest("POST", fmt.Sprintf("/worker/accounts/%d/work/start", accDisconnectedID), nil)
+			req.SetPathValue("id", strconv.FormatInt(accDisconnectedID, 10))
+			req = withWorker(req)
+			rr := httptest.NewRecorder()
+			srvWithWork.HandleWorkerAccountWorkStart(rr, req)
+
+			if rr.Code != http.StatusBadRequest {
+				t.Errorf("Expected 400 Bad Request when starting disconnected account, got %d", rr.Code)
+			}
+			if mockCtrl.IsRunning(accDisconnectedID) {
+				t.Errorf("Disconnected account should not be started")
+			}
+		}
+
+		// Test D: Pekerja A memulai akun miliknya yang terhubung
+		{
+			req := httptest.NewRequest("POST", fmt.Sprintf("/worker/accounts/%d/work/start", accAID), nil)
+			req.SetPathValue("id", strconv.FormatInt(accAID, 10))
+			req = withWorker(req)
+			rr := httptest.NewRecorder()
+			srvWithWork.HandleWorkerAccountWorkStart(rr, req)
+
+			if rr.Code != http.StatusSeeOther {
+				t.Errorf("Expected redirect 303 after starting account, got %d", rr.Code)
+			}
+			if !mockCtrl.IsRunning(accAID) {
+				t.Errorf("Account A should be running after worker A started it")
+			}
+		}
+
+		// Test E: Start dua kali tidak membuat dua goroutine
+		{
+			req2 := httptest.NewRequest("POST", fmt.Sprintf("/worker/accounts/%d/work/start", accAID), nil)
+			req2.SetPathValue("id", strconv.FormatInt(accAID, 10))
+			req2 = withWorker(req2)
+			rr2 := httptest.NewRecorder()
+			srvWithWork.HandleWorkerAccountWorkStart(rr2, req2)
+
+			if rr2.Code != http.StatusSeeOther {
+				t.Errorf("Expected redirect 303 after second start, got %d", rr2.Code)
+			}
+			if !mockCtrl.IsRunning(accAID) {
+				t.Errorf("Account A should still be running")
+			}
+		}
+
+		// Test F: Pekerja A menghentikan kerja akun miliknya
+		{
+			req := httptest.NewRequest("POST", fmt.Sprintf("/worker/accounts/%d/work/stop", accAID), nil)
+			req.SetPathValue("id", strconv.FormatInt(accAID, 10))
+			req = withWorker(req)
+			rr := httptest.NewRecorder()
+			srvWithWork.HandleWorkerAccountWorkStop(rr, req)
+
+			if rr.Code != http.StatusSeeOther {
+				t.Errorf("Expected redirect 303 after stopping account, got %d", rr.Code)
+			}
+			if mockCtrl.IsRunning(accAID) {
+				t.Errorf("Account A should not be running after stop")
+			}
+		}
+	})
+
 	t.Run("Risk notice and translations present in all 3 languages", func(t *testing.T) {
 		langs := []string{"id", "en", "zh"}
 		keys := []string{
@@ -518,6 +696,12 @@ func TestWorkerPanelFlows(t *testing.T) {
 			"worker.speed_fast_warning",
 			"worker.referral_pending_notice",
 			"worker.history_title",
+			"wa.work_status",
+			"wa.working",
+			"wa.not_working",
+			"wa.action_start_work",
+			"wa.action_stop_work",
+			"wa.stop_reason_label",
 		}
 
 		for _, l := range langs {

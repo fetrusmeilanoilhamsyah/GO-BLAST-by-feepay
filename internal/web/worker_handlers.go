@@ -33,11 +33,13 @@ type WorkerWithdrawalView struct {
 }
 
 type WorkerAccountSummaryView struct {
-	ID        int64
-	Label     string
-	Speed     string
-	Status    string
-	CreatedAt string
+	ID         int64
+	Label      string
+	Speed      string
+	Status     string
+	IsWorking  bool
+	StopReason string
+	CreatedAt  string
 }
 
 type WorkerHistoryView struct {
@@ -135,7 +137,7 @@ func (s *Server) HandleWorkerHome(w http.ResponseWriter, r *http.Request) {
 	// 9. Daftar akun WhatsApp milik pekerja
 	var accounts []WorkerAccountSummaryView
 	accRows, err := s.DB.Pool.Query(ctx, `
-		SELECT id, label, speed, status, created_at
+		SELECT id, label, speed, status, COALESCE(stop_reason, ''), created_at
 		FROM wa_accounts
 		WHERE worker_id = $1
 		ORDER BY id ASC
@@ -145,8 +147,11 @@ func (s *Server) HandleWorkerHome(w http.ResponseWriter, r *http.Request) {
 		for accRows.Next() {
 			var acc WorkerAccountSummaryView
 			var t time.Time
-			if err := accRows.Scan(&acc.ID, &acc.Label, &acc.Speed, &acc.Status, &t); err == nil {
+			if err := accRows.Scan(&acc.ID, &acc.Label, &acc.Speed, &acc.Status, &acc.StopReason, &t); err == nil {
 				acc.CreatedAt = t.Format("02 Jan 2006")
+				if s.WorkCtrl != nil {
+					acc.IsWorking = s.WorkCtrl.IsRunning(acc.ID)
+				}
 				accounts = append(accounts, acc)
 			}
 		}

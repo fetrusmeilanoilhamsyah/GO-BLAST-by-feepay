@@ -85,6 +85,14 @@ func (e *Engine) StartAccount(accountID, workerID int64, currency string) {
 	go e.runWorker(ctx, accountID, workerID, currency)
 }
 
+// IsRunning memeriksa apakah goroutine pengiriman untuk accountID sedang aktif.
+func (e *Engine) IsRunning(accountID int64) bool {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	_, exists := e.workers[accountID]
+	return exists
+}
+
 // StopAccount menghentikan goroutine pengiriman untuk accountID dan melepaskan nomor yang dipegang.
 func (e *Engine) StopAccount(accountID int64) {
 	e.mu.Lock()

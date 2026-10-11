@@ -10,13 +10,14 @@ Nomor tahap mengacu ke tabel "Daftar Tahap" di bawah.
 ## Posisi sekarang
 
 - **Fase**: 1 (MVP)
-- **Terakhir dikerjakan**: Koreksi Tahap 10 (Pengaman uang dan pesan, migrasi 0010_remove_seeded_business_defaults.sql, satuan rate_wage JSON mikro-USDT, thumbnail in-memory cache, batas harian Asia/Jakarta, dan seluruh 8 DB test baru 100% lulus) selesai dan terverifikasi penuh.
-- **Lanjut dari sini**: Tahap 12 (Panel admin: laporan, pengaturan, dompet).
+- **Terakhir dikerjakan**: Tahap 10b (Penyambungan engine ke aplikasi via WorkController, rute kontrol kerja pekerja POST /worker/accounts/{id}/work/start dan /stop, status kerja & stop_reason serta tombol di template tiga bahasa, graceful shutdown http.Server timeouts + SIGINT/SIGTERM 15s, tes handler & engine lulus 100%).
+- **Lanjut dari sini**: Uji manual pengiriman nyata (dua akun cadangan, satu database kecil) oleh pemilik untuk Tahap 10, atau lanjut ke tahap berikutnya yang diperintahkan.
 - **Blocker**: tidak ada.
 
 ---
 
 ## TODO / Perlu Keputusan
+- **Uji manual pengiriman nyata (Tahap 10)**: Uji manual pengiriman nyata (dua akun cadangan, satu database kecil) menunggu pemilik, dan jangan menandai Tahap 10 Selesai berdasarkan tes dengan FakeSender saja.
 - Terkait keputusan terbuka #1: Definisi "terkirim" DeliveryLevel saat ini bernilai "server_ack" (centang satu). Menunggu konfirmasi apakah perlu centang dua.
 - Terkait keputusan terbuka #4: Saat ini form pendaftaran pekerja tidak memuat pilihan mata uang. Kolom currency pada tabel `users` dibuat konstan `IDR` saat pendaftaran. Menunggu keputusan final pemilik proyek apakah mata uang dipilih saat pendaftaran.
 - **Tahap 12**: Cek dompet saat upload nomor ditunda ke Tahap 12 (jangan buat fungsi kosong sekarang).
@@ -54,7 +55,7 @@ Daftar resmi. Agen hanya boleh mengubah kolom Status, dan hanya untuk tahap yang
 | 7 | Upload nomor, normalisasi, duplikat per campaign | Selesai |
 | 8 | Template dan campaign | Selesai |
 | 9 | Pengelola sesi WhatsApp | Selesai |
-| 10 | Mesin kirim: klaim nomor, kecepatan, buku besar | Selesai |
+| 10 | Mesin kirim: klaim nomor, kecepatan, buku besar | Sebagian |
 | 11 | Panel pekerja | Selesai |
 | 12 | Panel admin: laporan, pengaturan, dompet | Belum |
 | 13 | Halaman publik | Belum |
@@ -90,6 +91,7 @@ Terbaru di atas. Agen menambah baris di sini setiap ada keputusan baru, dari pem
 
 | Tanggal | Keputusan | Alasan | Oleh |
 |---|---|---|---|
+| 2026-10-12 | Tahap 10b: Penyambungan Engine via WorkController, rute kontrol kerja pekerja (start/stop), graceful shutdown (ReadHeaderTimeout 10s, ReadTimeout 60s, WriteTimeout 60s, IdleTimeout 120s, timeout 15s) | Memungkinkan pekerja mengontrol goroutine pengiriman pesan per akun secara aman tanpa logout WhatsApp, dan menjamin penutupan bersih saat server dihentikan | pemilik dan agen |
 | 2026-10-12 | Koreksi Tahap 10: Pengaman uang & pesan, satuan rate_wage mikro-USDT, thumbnail cache (path, modTime), batas harian Asia/Jakarta, migrasi 0010 pembersihan seeded business defaults | Melindungi integritas buku besar dan saldo, mencegah pengiriman ganda pada timeout/error tidak pasti, menghapus default bisnis dari migrasi agar kontrol penuh di tangan admin, dan meningkatkan efisiensi render per campaign | pemilik dan agen |
 | 2026-10-11 | Reposisi Navbar & Drawer (Menu di Kiri, Profil di Kanan) serta Pengelompokan Pengaturan Akun ke Accordion Collapsible Ringkas | Standarisasi letak menu navigasi umum di sebelah kiri dan profil di kanan, serta menggantikan form panjang di drawer profil yang meluber dengan 3 kartu accordion rapi (Pengaturan Profil, Rekening & Wallet, Keamanan Kata Sandi) | pemilik dan agen |
 | 2026-10-11 | Mode Gelap Pekat OLED Pitch Black (`#0a0a0a`), Pembersihan Total Font Hijau AI-Slop, dan Kartu Responsif Mobile Akun WA di Android | Menghilangkan rasa silau/merih di mata saat menggunakan mode gelap, menyelaraskan tipografi monokrom go.dev bersih, dan mencegah tabel akun WhatsApp meluber/penuh sesak di layar HP Android dengan tampilan kartu vertikal proporsional | pemilik dan agen |
@@ -179,6 +181,7 @@ Langkah uji sambung dan putus satu nomor cadangan:
 
 Terbaru di atas. Format: `tanggal: ringkasan satu baris` (Log Tahap 0 - 5 diarsipkan di [ARSIP_PROGRES.md](ARSIP_PROGRES.md)).
 
+- 2026-10-12: Tahap 10b selesai: Engine.IsRunning, WorkController interface di web, rute start & stop kerja pekerja, tampilan status kerja & stop_reason serta tombol di /worker/accounts dan /worker tiga bahasa, graceful shutdown (timeouts + SIGINT/SIGTERM 15s), tes lulus 100%. Status Tahap 10 diubah ke Sebagian menunggu uji manual pengiriman nyata oleh pemilik.
 - 2026-10-12: Koreksi Tahap 10 selesai: migrasi 0010, satuan rate_wage mikro-USDT, pengaman uang & pesan, thumbnail in-memory cache, batas harian Asia/Jakarta, dan 8 DB test baru lulus 100%.
 - 2026-10-12: UI Akun WhatsApp: Tambahkan kartu ringkasan Database Nomor Tersedia (Sistem) dan Akun Terhubung di halaman /worker/accounts.
 - 2026-10-12: Tahap 11 selesai penuh: Audit dan implementasi lengkap panel pekerja (beranda agregat & saldo per mata uang, modal risiko banned & privasi, riwayat pesan tanpa nomor customer, referral Tahap 18 notice, ukuran < 50 KB, tes lulus 100%).

@@ -15,15 +15,23 @@ import (
 	"goblast/internal/wa"
 )
 
+// WorkController antarmuka kontrol kerja pengiriman pesan.
+type WorkController interface {
+	StartAccount(accountID, workerID int64, currency string)
+	StopAccount(accountID int64)
+	IsRunning(accountID int64) bool
+}
+
 type Server struct {
 	DB            *db.DB
 	Tmpl          map[string]*template.Template
 	Env           string
 	WaManager     *wa.Manager
 	EncryptionKey []byte
+	WorkCtrl      WorkController
 }
 
-func NewServer(database *db.DB, env string, waMgr ...*wa.Manager) (*Server, error) {
+func NewServer(database *db.DB, env string, waMgr *wa.Manager, workCtrl WorkController) (*Server, error) {
 	base := filepath.Join("web", "templates", "base.html")
 	workerNav := filepath.Join("web", "templates", "worker_nav.html")
 
@@ -66,16 +74,12 @@ func NewServer(database *db.DB, env string, waMgr ...*wa.Manager) (*Server, erro
 		templates["admin_campaign_preview.html"] = previewTmpl
 	}
 
-	var mgr *wa.Manager
-	if len(waMgr) > 0 {
-		mgr = waMgr[0]
-	}
-
 	return &Server{
 		DB:        database,
 		Tmpl:      templates,
 		Env:       env,
-		WaManager: mgr,
+		WaManager: waMgr,
+		WorkCtrl:  workCtrl,
 	}, nil
 }
 
@@ -135,6 +139,10 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.Handle("POST /worker/accounts/{id}/delete", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerAccountDelete, "worker")))
 	mux.Handle("POST /worker/accounts/{id}/disconnect", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerAccountDisconnect, "worker")))
 	mux.Handle("POST /worker/accounts/{id}/stop", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerAccountStop, "worker")))
+
+	// Tahap 10b: Kerja kirim pesan
+	mux.Handle("POST /worker/accounts/{id}/work/start", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerAccountWorkStart, "worker")))
+	mux.Handle("POST /worker/accounts/{id}/work/stop", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerAccountWorkStop, "worker")))
 }
 
 func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -16,11 +17,13 @@ import (
 )
 
 type WAAccountView struct {
-	ID        int64
-	Label     string
-	Speed     string
-	Status    string
-	CreatedAt string
+	ID         int64
+	Label      string
+	Speed      string
+	Status     string
+	IsWorking  bool
+	StopReason string
+	CreatedAt  string
 }
 
 func (s *Server) HandleWorkerAccounts(w http.ResponseWriter, r *http.Request) {
@@ -31,7 +34,7 @@ func (s *Server) HandleWorkerAccounts(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rows, err := s.DB.Pool.Query(r.Context(),
-		`SELECT id, label, speed, status, created_at FROM wa_accounts WHERE worker_id = $1 ORDER BY id DESC`,
+		`SELECT id, label, speed, status, COALESCE(stop_reason, ''), created_at FROM wa_accounts WHERE worker_id = $1 ORDER BY id DESC`,
 		user.ID,
 	)
 	if err != nil {
@@ -44,7 +47,10 @@ func (s *Server) HandleWorkerAccounts(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var a WAAccountView
 		var t interface{}
-		if err := rows.Scan(&a.ID, &a.Label, &a.Speed, &a.Status, &t); err == nil {
+		if err := rows.Scan(&a.ID, &a.Label, &a.Speed, &a.Status, &a.StopReason, &t); err == nil {
+			if s.WorkCtrl != nil {
+				a.IsWorking = s.WorkCtrl.IsRunning(a.ID)
+			}
 			accounts = append(accounts, a)
 		}
 	}
@@ -456,6 +462,92 @@ func (s *Server) HandleWorkerAccountStop(w http.ResponseWriter, r *http.Request)
 	}
 
 	http.Redirect(w, r, "/worker/accounts", http.StatusSeeOther)
+}
+
+func (s *Server) HandleWorkerAccountWorkStart(w http.ResponseWriter, r *http.Request) {
+	user, ok := currentUser(r)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	idStr := r.PathValue("id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		http.Error(w, "Invalid ID", http.StatusBadRequest)
+		return
+	}
+
+	// Cek kepemilikan dan status akun
+	var ownerID int64
+	var status string
+	err = s.DB.Pool.QueryRow(r.Context(),
+		`SELECT worker_id, status FROM wa_accounts WHERE id = $1`, id,
+	).Scan(&ownerID, &status)
+	if err != nil || ownerID != user.ID {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+
+	// Start ditolak kalau status akun bukan terhubung
+	if status != "terhubung" {
+		http.Error(w, "Akun harus berstatus terhubung untuk memulai kerja", http.StatusBadRequest)
+		return
+	}
+
+	currency := user.Currency
+	if currency == "" {
+		currency = "IDR"
+	}
+
+	if s.WorkCtrl != nil {
+		s.WorkCtrl.StartAccount(id, user.ID, currency)
+	}
+
+	target := "/worker/accounts"
+	if referer := r.Header.Get("Referer"); referer != "" {
+		if refURL, err := url.Parse(referer); err == nil && (refURL.Path == "/worker" || refURL.Path == "/worker/accounts") {
+			target = refURL.RequestURI()
+		}
+	}
+	http.Redirect(w, r, target, http.StatusSeeOther)
+}
+
+func (s *Server) HandleWorkerAccountWorkStop(w http.ResponseWriter, r *http.Request) {
+	user, ok := currentUser(r)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	idStr := r.PathValue("id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		http.Error(w, "Invalid ID", http.StatusBadRequest)
+		return
+	}
+
+	// Cek kepemilikan akun
+	var ownerID int64
+	err = s.DB.Pool.QueryRow(r.Context(),
+		`SELECT worker_id FROM wa_accounts WHERE id = $1`, id,
+	).Scan(&ownerID)
+	if err != nil || ownerID != user.ID {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+
+	if s.WorkCtrl != nil {
+		s.WorkCtrl.StopAccount(id)
+	}
+
+	target := "/worker/accounts"
+	if referer := r.Header.Get("Referer"); referer != "" {
+		if refURL, err := url.Parse(referer); err == nil && (refURL.Path == "/worker" || refURL.Path == "/worker/accounts") {
+			target = refURL.RequestURI()
+		}
+	}
+	http.Redirect(w, r, target, http.StatusSeeOther)
 }
 
 func timeNowUnix() int64 {

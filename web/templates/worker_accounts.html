@@ -46,6 +46,7 @@
                             <th>{{ call .T "wa.label" }}</th>
                             <th>{{ call .T "wa.speed" }}</th>
                             <th>{{ call .T "wa.status" }}</th>
+                            <th>{{ call .T "wa.work_status" }}</th>
                             <th>Aksi</th>
                         </tr>
                     </thead>
@@ -71,6 +72,22 @@
                                 {{end}}
                             </td>
                             <td>
+                                {{if eq .Status "terhubung"}}
+                                    {{if .IsWorking}}
+                                    <span class="badge badge-success">{{ call $.T "wa.working" }}</span>
+                                    {{else}}
+                                    <span class="badge badge-muted">{{ call $.T "wa.not_working" }}</span>
+                                    {{end}}
+                                {{else}}
+                                    <span class="badge badge-muted">-</span>
+                                {{end}}
+                                {{if .StopReason}}
+                                <div style="font-size: 11px; color: var(--color-muted); margin-top: 4px; max-width: 220px; line-height: 1.3;" title="{{.StopReason}}">
+                                    <span style="font-weight: 600;">{{ call $.T "wa.stop_reason_label" }}</span> {{.StopReason}}
+                                </div>
+                                {{end}}
+                            </td>
+                            <td>
                                 <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
                                     {{if eq .Status "menunggu_scan"}}
                                     <button type="button" onclick="openAddAccountModal({{.ID}})" style="background-color: var(--color-primary); color: var(--color-on-primary); border: none; padding: 4px 10px; border-radius: 4px; font-size: 12px; font-weight: bold; cursor: pointer;">
@@ -83,9 +100,20 @@
                                     {{end}}
 
                                     {{if eq .Status "terhubung"}}
+                                        {{if .IsWorking}}
+                                        <form method="POST" action="/worker/accounts/{{.ID}}/work/stop" style="display: inline;">
+                                            <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                                            <button type="submit" style="background: none; border: 1px solid var(--color-warning); color: var(--color-warning); padding: 3px 8px; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: bold;">{{ call $.T "wa.action_stop_work" }}</button>
+                                        </form>
+                                        {{else}}
+                                        <form method="POST" action="/worker/accounts/{{.ID}}/work/start" style="display: inline;">
+                                            <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                                            <button type="submit" style="background-color: var(--color-primary); color: var(--color-on-primary); border: none; padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: bold;">{{ call $.T "wa.action_start_work" }}</button>
+                                        </form>
+                                        {{end}}
                                     <form method="POST" action="/worker/accounts/{{.ID}}/disconnect" style="display: inline;">
                                         <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
-                                        <button type="submit" style="background: none; border: 1px solid var(--color-warning); color: var(--color-warning); padding: 3px 8px; border-radius: 4px; cursor: pointer; font-size: 12px;">{{ call $.T "wa.action_disconnect" }}</button>
+                                        <button type="submit" style="background: none; border: 1px solid var(--color-border); color: var(--color-muted); padding: 3px 8px; border-radius: 4px; cursor: pointer; font-size: 12px;">{{ call $.T "wa.action_disconnect" }}</button>
                                     </form>
                                     <form method="POST" action="/worker/accounts/{{.ID}}/stop" style="display: inline;">
                                         <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
@@ -107,7 +135,7 @@
                         </tr>
                         {{else}}
                         <tr>
-                            <td colspan="5" style="padding: 30px; text-align: center; color: var(--color-muted);">
+                            <td colspan="6" style="padding: 30px; text-align: center; color: var(--color-muted);">
                                 {{ call .T "wa.empty_accounts" }}
                             </td>
                         </tr>
@@ -125,7 +153,22 @@
                             <div class="account-card-title">{{.Label}} <span style="font-size: 12px; font-weight: normal; color: var(--color-muted);">#{{.ID}}</span></div>
                             <div class="account-card-meta">
                                 <span>{{ call $.T "wa.speed" }}: <strong style="text-transform: uppercase;">{{.Speed}}</strong></span>
+                                {{if eq .Status "terhubung"}}
+                                <span style="margin: 0 4px;">•</span>
+                                <span>{{ call $.T "wa.work_status" }}:
+                                    {{if .IsWorking}}
+                                    <strong style="color: var(--color-success);">{{ call $.T "wa.working" }}</strong>
+                                    {{else}}
+                                    <strong style="color: var(--color-muted);">{{ call $.T "wa.not_working" }}</strong>
+                                    {{end}}
+                                </span>
+                                {{end}}
                             </div>
+                            {{if .StopReason}}
+                            <div style="font-size: 11px; color: var(--color-muted); margin-top: 4px; line-height: 1.3;">
+                                <span style="font-weight: 600;">{{ call $.T "wa.stop_reason_label" }}</span> {{.StopReason}}
+                            </div>
+                            {{end}}
                         </div>
                         <div>
                             {{if eq .Status "terhubung"}}
@@ -154,9 +197,20 @@
                         {{end}}
 
                         {{if eq .Status "terhubung"}}
+                            {{if .IsWorking}}
+                            <form method="POST" action="/worker/accounts/{{.ID}}/work/stop" style="flex: 1;">
+                                <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                                <button type="submit" style="width: 100%; background: none; border: 1px solid var(--color-warning); color: var(--color-warning); padding: 7px 12px; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: bold;">{{ call $.T "wa.action_stop_work" }}</button>
+                            </form>
+                            {{else}}
+                            <form method="POST" action="/worker/accounts/{{.ID}}/work/start" style="flex: 1;">
+                                <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                                <button type="submit" style="width: 100%; background-color: var(--color-primary); color: var(--color-on-primary); border: none; padding: 7px 12px; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: bold;">{{ call $.T "wa.action_start_work" }}</button>
+                            </form>
+                            {{end}}
                         <form method="POST" action="/worker/accounts/{{.ID}}/disconnect" style="flex: 1;">
                             <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
-                            <button type="submit" style="width: 100%; background: none; border: 1px solid var(--color-warning); color: var(--color-warning); padding: 7px 12px; border-radius: 4px; cursor: pointer; font-size: 13px;">{{ call $.T "wa.action_disconnect" }}</button>
+                            <button type="submit" style="width: 100%; background: none; border: 1px solid var(--color-border); color: var(--color-muted); padding: 7px 12px; border-radius: 4px; cursor: pointer; font-size: 13px;">{{ call $.T "wa.action_disconnect" }}</button>
                         </form>
                         <form method="POST" action="/worker/accounts/{{.ID}}/stop" style="flex: 1;">
                             <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">

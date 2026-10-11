@@ -69,21 +69,49 @@
                 <div style="display: flex; flex-direction: column; gap: 8px;">
                     {{range .Accounts}}
                     <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; background-color: var(--color-surface-muted); border: 1px solid var(--color-border); border-radius: 6px; flex-wrap: wrap; gap: 8px;">
-                        <div style="display: flex; align-items: center; gap: 10px;">
-                            <span style="font-weight: 700; font-size: 14px;">{{.Label}}</span>
-                            <span style="font-size: 11px; color: var(--color-muted); text-transform: uppercase;">{{.Speed}}</span>
+                        <div>
+                            <div style="display: flex; align-items: center; gap: 10px;">
+                                <span style="font-weight: 700; font-size: 14px;">{{.Label}}</span>
+                                <span style="font-size: 11px; color: var(--color-muted); text-transform: uppercase;">{{.Speed}}</span>
+                                {{if eq .Status "terhubung"}}
+                                <span style="margin: 0 2px; color: var(--color-muted);">•</span>
+                                <span>
+                                    {{if .IsWorking}}
+                                    <strong style="font-size: 12px; color: var(--color-success);">{{ call $.T "wa.working" }}</strong>
+                                    {{else}}
+                                    <span style="font-size: 12px; color: var(--color-muted);">{{ call $.T "wa.not_working" }}</span>
+                                    {{end}}
+                                </span>
+                                {{end}}
+                            </div>
+                            {{if .StopReason}}
+                            <div style="font-size: 11px; color: var(--color-muted); margin-top: 2px;">
+                                <span style="font-weight: 600;">{{ call $.T "wa.stop_reason_label" }}</span> {{.StopReason}}
+                            </div>
+                            {{end}}
                         </div>
-                        <div style="display: flex; align-items: center; gap: 10px;">
+                        <div style="display: flex; align-items: center; gap: 8px;">
                             {{if eq .Status "terhubung"}}
-                            <span class="badge badge-success">{{ call $.T "wa.connected" }}</span>
+                                <span class="badge badge-success">{{ call $.T "wa.connected" }}</span>
+                                {{if .IsWorking}}
+                                <form method="POST" action="/worker/accounts/{{.ID}}/work/stop" style="display: inline; margin: 0;">
+                                    <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                                    <button type="submit" style="background: none; border: 1px solid var(--color-warning); color: var(--color-warning); padding: 3px 8px; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: bold;">{{ call $.T "wa.action_stop_work" }}</button>
+                                </form>
+                                {{else}}
+                                <form method="POST" action="/worker/accounts/{{.ID}}/work/start" style="display: inline; margin: 0;">
+                                    <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                                    <button type="submit" style="background-color: var(--color-primary); color: var(--color-on-primary); border: none; padding: 4px 10px; border-radius: 4px; font-size: 12px; font-weight: bold;">{{ call $.T "wa.action_start_work" }}</button>
+                                </form>
+                                {{end}}
                             {{else if eq .Status "menunggu_scan"}}
-                            <span class="badge badge-warning">{{ call $.T "wa.waiting_scan" }}</span>
+                                <span class="badge badge-warning">{{ call $.T "wa.waiting_scan" }}</span>
                             {{else if eq .Status "antre"}}
-                            <span class="badge badge-muted">{{ call $.T "wa.queued" }}</span>
+                                <span class="badge badge-muted">{{ call $.T "wa.queued" }}</span>
                             {{else if eq .Status "terputus"}}
-                            <span class="badge badge-danger">{{ call $.T "wa.disconnected" }}</span>
+                                <span class="badge badge-danger">{{ call $.T "wa.disconnected" }}</span>
                             {{else}}
-                            <span class="badge badge-muted">{{ call $.T "wa.stopped" }}</span>
+                                <span class="badge badge-muted">{{ call $.T "wa.stopped" }}</span>
                             {{end}}
                             <a href="/worker/accounts" class="btn btn-secondary" style="padding: 4px 10px; font-size: 12px; text-decoration: none;">Atur</a>
                         </div>

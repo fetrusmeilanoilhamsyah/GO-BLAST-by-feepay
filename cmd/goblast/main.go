@@ -6,6 +6,9 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"goblast/internal/campaign"
 	"goblast/internal/config"
@@ -64,7 +67,7 @@ func main() {
 	waManager.SetDisconnectCallback(eng.StopAccount)
 	eng.StartCleaner(context.Background())
 
-	srv, err := web.NewServer(database, cfg.AppEnv, waManager)
+	srv, err := web.NewServer(database, cfg.AppEnv, waManager, eng)
 	if err != nil {
 		slog.Error("Failed to initialize server", "err", err)
 		os.Exit(1)
@@ -74,9 +77,40 @@ func main() {
 	mux := http.NewServeMux()
 	srv.RegisterRoutes(mux)
 
-	slog.Info("Starting server", "addr", cfg.AppAddr)
-	if err := http.ListenAndServe(cfg.AppAddr, mux); err != nil {
-		slog.Error("Server failed", "err", err)
-		os.Exit(1)
+	httpServer := &http.Server{
+		Addr:              cfg.AppAddr,
+		Handler:           mux,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       60 * time.Second,
+		WriteTimeout:      60 * time.Second,
+		IdleTimeout:       120 * time.Second,
 	}
+
+	stopCtx, stopCancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stopCancel()
+
+	go func() {
+		slog.Info("Starting server", "addr", cfg.AppAddr)
+		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			slog.Error("Server failed", "err", err)
+			os.Exit(1)
+		}
+	}()
+
+	<-stopCtx.Done()
+	slog.Info("Menerima sinyal shutdown, menghentikan proses...")
+
+	// 1. Panggil eng.StopAll
+	eng.StopAll()
+
+	// 2. Hentikan server dengan batas waktu 15 detik
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer shutdownCancel()
+	if err := httpServer.Shutdown(shutdownCtx); err != nil {
+		slog.Error("Server shutdown forced", "err", err)
+	}
+
+	// 3. Tutup pool database
+	database.Pool.Close()
+	slog.Info("Shutdown selesai dengan rapi.")
 }

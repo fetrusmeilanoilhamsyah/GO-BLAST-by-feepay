@@ -1281,3 +1281,65 @@ func TestCampaignAutoCompletedWithAuditLog(t *testing.T) {
 	}
 }
 
+func TestEngine_IsRunningAndNoDuplicateGoroutine(t *testing.T) {
+	sqlDB, pool, ok := getTestDB(t)
+	if !ok {
+		t.Skip("Database tidak tersedia untuk tes integrasi")
+	}
+	defer sqlDB.Close()
+	defer pool.Close()
+	ctx := context.Background()
+
+	var workerID int64
+	err := pool.QueryRow(ctx,
+		`INSERT INTO users (email, password_hash, role, display_name, language, currency, referral_code)
+		 VALUES ($1, 'hash', 'worker', 'Worker Engine Double', 'id', 'IDR', $2) RETURNING id`,
+		fmt.Sprintf("w_eng_double_%d@test.com", time.Now().UnixNano()),
+		fmt.Sprintf("RF_ENG_%d", time.Now().UnixNano()),
+	).Scan(&workerID)
+	if err != nil {
+		t.Fatalf("insert user error: %v", err)
+	}
+
+	var accID int64
+	err = pool.QueryRow(ctx,
+		`INSERT INTO wa_accounts (worker_id, label, jid_hash, speed, status)
+		 VALUES ($1, 'Acc Double', 'hash_double', 'medium', 'terhubung') RETURNING id`,
+		workerID,
+	).Scan(&accID)
+	if err != nil {
+		t.Fatalf("insert wa_account error: %v", err)
+	}
+
+	settings := newTestSettings()
+	settings.SetJSON("daily_limits", `{"medium": 100}`)
+	settings.SetInt("max_attempts", 3)
+	settings.SetJSON("rate_wage", `{"IDR": 50}`)
+
+	sender := &wa.FakeSender{}
+	eng := engine.New(&db.DB{Pool: pool}, sender, nil, settings)
+
+	// Sebelum start: IsRunning harus false
+	if eng.IsRunning(accID) {
+		t.Fatal("akun seharusnya belum berjalan")
+	}
+
+	// Start pertama
+	eng.StartAccount(accID, workerID, "IDR")
+	if !eng.IsRunning(accID) {
+		t.Fatal("akun seharusnya sudah berjalan setelah start")
+	}
+
+	// Start kedua: tidak boleh error dan tidak membuat goroutine ganda
+	eng.StartAccount(accID, workerID, "IDR")
+	if !eng.IsRunning(accID) {
+		t.Fatal("akun harus tetap berjalan")
+	}
+
+	// Stop akun
+	eng.StopAccount(accID)
+	if eng.IsRunning(accID) {
+		t.Fatal("akun seharusnya berhenti setelah StopAccount")
+	}
+}
+
