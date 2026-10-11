@@ -55,10 +55,19 @@ type Button struct {
 	Payload string
 }
 
+// Preview menyimpan metadata pratinjau tautan untuk kartu_link.
+type Preview struct {
+	Title       string
+	Description string
+	URL         string
+	Thumbnail   []byte // JPEG bytes, lebar 300px, kualitas 70 (ThumbnailSpec)
+}
+
 type Message struct {
 	Text      string
 	ImagePath string
 	Buttons   []Button
+	Preview   *Preview // Diisi untuk mode kartu_link jika terdapat tautan
 }
 
 func ValidateTemplate(body string, mode string, elements Elements, defaultCC ...string) error {
@@ -265,6 +274,51 @@ func Render(body string, imagePath string, elements Elements, mode string, recip
 		}
 
 		msg.Text = strings.TrimRight(sb.String(), "\n")
+
+		var previewURL string
+		if elements.LinkWebActive && elements.LinkWebURL != "" {
+			previewURL = elements.LinkWebURL
+		} else if elements.PromoActive && elements.PromoURL != "" {
+			previewURL = elements.PromoURL
+		} else if elements.CSActive && csLink != "" {
+			previewURL = csLink
+		}
+
+		if previewURL != "" {
+			title := ""
+			if len(lines) > 0 {
+				title = strings.Trim(lines[0], "* \t")
+			}
+			desc := ""
+			if len(lines) > 1 {
+				var descParts []string
+				for _, l := range lines[1:] {
+					t := strings.TrimSpace(l)
+					if t != "" {
+						descParts = append(descParts, t)
+					}
+				}
+				desc = strings.Join(descParts, " ")
+				if len(desc) > 120 {
+					desc = desc[:120] + "..."
+				}
+			}
+			if desc == "" {
+				desc = "Klik tautan untuk informasi selengkapnya."
+			}
+
+			var thumb []byte
+			if imagePath != "" {
+				thumb, _ = GenerateThumbnail(imagePath, DefaultThumbWidth, DefaultThumbQuality)
+			}
+
+			msg.Preview = &Preview{
+				Title:       title,
+				Description: desc,
+				URL:         previewURL,
+				Thumbnail:   thumb,
+			}
+		}
 	}
 
 	return msg

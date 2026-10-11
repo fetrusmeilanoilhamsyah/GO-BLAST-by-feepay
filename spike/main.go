@@ -1,8 +1,12 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"image"
+	"image/jpeg"
+	_ "image/jpeg" // daftar decoder JPEG
 	"log"
 	"os"
 	"os/signal"
@@ -18,6 +22,7 @@ import (
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 	waLog "go.mau.fi/whatsmeow/util/log"
+	"golang.org/x/image/draw"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -25,7 +30,7 @@ func main() {
 	godotenv.Load()
 
 	if len(os.Args) < 2 {
-		fmt.Println("Gunakan sub-perintah: pair-code, send-text, send-image, send-card, send-buttons, status, logout")
+		fmt.Println("Gunakan sub-perintah: pair-code, send-text, send-image, send-card, send-card-thumb, send-buttons, status, logout")
 		return
 	}
 
@@ -267,6 +272,51 @@ wa.me/6281234567890`, linkURL)
 		fmt.Printf("Status: Terhubung sebagai %v\n", client.Store.ID)
 		waitForInterrupt()
 
+	case "send-card-thumb":
+		// Butir 0b: Uji thumbnail kartu dengan tiga ukuran berbeda.
+		// Tiga pesan dikirim berurutan ke nomor yang sama agar pemilik bisa membandingkan
+		// tampilan thumbnail di Android dan iPhone.
+		requireLogin(client)
+		if len(os.Args) < 3 {
+			log.Fatal("Format: send-card-thumb <nomor_tujuan>")
+		}
+		target := parseJID(os.Args[2])
+
+		srcBytes, err := os.ReadFile("full.jpg")
+		if err != nil {
+			log.Fatalf("Gagal membaca full.jpg: %v", err)
+		}
+
+		linkURL := "https://feepay.web.id"
+		widths := []int{160, 300, 480}
+		for _, w := range widths {
+			thumb, err := resizeJPEG(srcBytes, w, 70)
+			if err != nil {
+				log.Fatalf("Gagal resize ke %dpx: %v", w, err)
+			}
+			fmt.Printf("Thumbnail %dpx: %d bytes\n", w, len(thumb))
+
+			textMsg := fmt.Sprintf("Uji thumbnail kartu %dpx — harap catat apakah gambar muncul di Android/iPhone. URL: %s", w, linkURL)
+			msg := &waProto.Message{
+				ExtendedTextMessage: &waProto.ExtendedTextMessage{
+					Text:          proto.String(textMsg),
+					Title:         proto.String(fmt.Sprintf("GO BLAST — thumbnail %dpx", w)),
+					Description:   proto.String("Uji ukuran thumbnail kartu link untuk DOC_KONSEP ThumbnailSpec."),
+					MatchedText:   proto.String(linkURL),
+					PreviewType:   waProto.ExtendedTextMessage_NONE.Enum(),
+					JPEGThumbnail: thumb,
+				},
+			}
+			resp, err := client.SendMessage(context.Background(), target, msg)
+			if err != nil {
+				log.Fatalf("Gagal kirim kartu %dpx: %v", w, err)
+			}
+			fmt.Printf("Kartu %dpx terkirim. ID: %s\n", w, resp.ID)
+			// Jeda singkat antar pesan agar tidak masuk spam filter
+			time.Sleep(1 * time.Second)
+		}
+		fmt.Println("Ketiga kartu terkirim. Isi tabel di spike/HASIL.md setelah melihat hasilnya di HP.")
+
 	case "logout":
 		requireLogin(client)
 		err := client.Logout(context.Background())
@@ -306,4 +356,35 @@ func waitForInterrupt() {
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 	<-c
+}
+
+// resizeJPEG memperkecil gambar JPEG srcBytes hingga lebar targetW piksel
+// (tinggi menyesuaikan proporsional) lalu mengompresi dengan kualitas quality (0-100).
+// Menggunakan golang.org/x/image/draw dengan BiLinear untuk kualitas yang wajar.
+func resizeJPEG(srcBytes []byte, targetW int, quality int) ([]byte, error) {
+	src, _, err := image.Decode(bytes.NewReader(srcBytes))
+	if err != nil {
+		return nil, fmt.Errorf("decode: %w", err)
+	}
+	srcBounds := src.Bounds()
+	srcW := srcBounds.Dx()
+	srcH := srcBounds.Dy()
+	if srcW == 0 {
+		return nil, fmt.Errorf("gambar sumber lebar 0")
+	}
+
+	// Hitung tinggi proporsional
+	targetH := targetW * srcH / srcW
+	if targetH < 1 {
+		targetH = 1
+	}
+
+	dst := image.NewRGBA(image.Rect(0, 0, targetW, targetH))
+	draw.BiLinear.Scale(dst, dst.Bounds(), src, src.Bounds(), draw.Over, nil)
+
+	var buf bytes.Buffer
+	if err := jpeg.Encode(&buf, dst, &jpeg.Options{Quality: quality}); err != nil {
+		return nil, fmt.Errorf("encode: %w", err)
+	}
+	return buf.Bytes(), nil
 }

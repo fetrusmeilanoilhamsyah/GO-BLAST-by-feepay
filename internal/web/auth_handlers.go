@@ -213,8 +213,7 @@ func (s *Server) handleAdminHome(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleWorkerHome(w http.ResponseWriter, r *http.Request) {
-	user, _ := currentUser(r)
-	w.Write([]byte("Panel Pekerja - Tahap 11 akan mengisi halaman ini. Halo " + user.Email))
+	http.Redirect(w, r, "/worker/accounts", http.StatusSeeOther)
 }
 
 func (s *Server) logAudit(actorID *int64, action, entity, entityID, meta string) {

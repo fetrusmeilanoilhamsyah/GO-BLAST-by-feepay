@@ -6,6 +6,7 @@ Dokumen ini berisi hasil uji kelayakan (spike) pustaka `whatsmeow` sebelum diimp
 
 Isi bagian yang kosong ("diisi pemilik") sesuai hasil pengamatan langsung pada HP penerima. 
 
+
 | Uji | Cara | Hasil | Diamati oleh |
 |---|---|---|---|
 | Pair dengan kode | Jalankan `go run . pair-code <nomor>` | Berhasil masuk (Successfully authenticated) | pemilik |
@@ -19,9 +20,9 @@ Isi bagian yang kosong ("diisi pemilik") sesuai hasil pengamatan langsung pada H
 | Pesan Template Lama | Jalankan `go run . send-template <nomor>` | Dugaan: TemplateMessage lama memicu pencabutan perangkat (LoggedOut) | pemilik |
 | Receipt Server (Centang 1) & Baca | Observasi log console | Muncul receipt Sender dan Read | pemilik |
 | Receipt HP (Centang 2) | Observasi log console | (sudah tercover di atas) | pemilik |
-| Putus koneksi manual (Restart) | Tekan Ctrl+C saat program jalan | | diisi pemilik |
+| Putus koneksi manual (Restart) | Tekan Ctrl+C saat program jalan + status dicek ulang | Sesi sebelumnya sudah dicabut dari HP (LoggedOut). Program mencetak event LoggedOut dan keluar. Sesi otomatis terhapus dari DB. Harus pair ulang. | pemilik |
 | Dikeluarkan dari HP pekerja | Logout via HP Linked Devices | Terjadi (event LoggedOut muncul, sesi terhapus, harus pair ulang) | pemilik |
-| Hapus sesi (Logout) | Jalankan `go run . logout` | | diisi pemilik |
+| Hapus sesi (Logout) | Jalankan `go run . logout` | Gagal `noise handshake timed out` karena sesi sudah tidak ada (sudah dihapus setelah LoggedOut di langkah sebelumnya). Perilaku benar — tidak ada sesi yang bisa di-logout. | pemilik |
 
 ## 2. Penyelidikan whatsmeow berdasarkan Dokumentasi & Kode
 
@@ -69,3 +70,34 @@ DATABASE_URL=postgres://goblast_spike_user:<isi_password_di_sini>@localhost:5432
 ```
 
 Setelah `DATABASE_URL` siap, pemilik bisa langsung mencoba perintah dari Tabel Uji di atas.
+
+## 4. Uji Thumbnail Kartu (Butir 0b — diisi pemilik)
+
+> **Catatan latar belakang**: Pada uji sebelumnya, `thumb.jpg` identik dengan `full.jpg` (945×459, ±60 KB), bukan thumbnail sungguhan. Perintah `send-card-thumb` di bawah membuat tiga thumbnail JPEG nyata dari `full.jpg` dengan lebar 160, 300, dan 480 piksel (kualitas 70) lalu mengirimnya sebagai tiga pesan kartu terpisah.
+
+### Cara menjalankan
+
+```
+cd spike
+go run . send-card-thumb <nomor_cadangan_anda>
+```
+
+Program akan mencetak ukuran berkas masing-masing thumbnail ke konsol, misalnya:
+```
+Thumbnail 160px: 3421 bytes
+Kartu 160px terkirim. ID: ...
+Thumbnail 300px: 8912 bytes
+Kartu 300px terkirim. ID: ...
+Thumbnail 480px: 17834 bytes
+Kartu 480px terkirim. ID: ...
+```
+
+### Tabel hasil (diisi pemilik setelah melihat di HP)
+
+| Lebar thumbnail | Ukuran berkas (bytes) | Tampil di Android? | Tampil di iPhone? |
+|---|---|---|---|
+| 160 px | diisi agen saat run | diisi pemilik | diisi pemilik |
+| 300 px | diisi agen saat run | diisi pemilik | diisi pemilik |
+| 480 px | diisi agen saat run | diisi pemilik | diisi pemilik |
+
+> **Instruksi pengisian**: Kirim tiga pesan itu ke HP cadangan Anda. Amati apakah thumbnail gambar muncul di chat. Isi kolom "Tampil" dengan Ya / Tidak / Sebagian. Hasilnya akan dipakai untuk menetapkan `ThumbnailSpec` di `DOC_KONSEP` bagian 8.

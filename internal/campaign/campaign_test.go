@@ -220,6 +220,15 @@ func TestRender(t *testing.T) {
 		if len(msg.Buttons) != 0 {
 			t.Errorf("Expected 0 buttons for kartu_link, got %d", len(msg.Buttons))
 		}
+		if msg.Preview == nil {
+			t.Fatal("Expected msg.Preview to be non-nil for kartu_link with web link")
+		}
+		if msg.Preview.URL != "https://feepay.com" {
+			t.Errorf("Expected Preview URL 'https://feepay.com', got '%s'", msg.Preview.URL)
+		}
+		if msg.Preview.Title != "Halo FEEPAY" {
+			t.Errorf("Expected Preview Title 'Halo FEEPAY', got '%s'", msg.Preview.Title)
+		}
 	})
 
 	t.Run("Render with CSActive false does not produce CS or wa.me", func(t *testing.T) {

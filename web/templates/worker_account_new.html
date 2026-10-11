@@ -1,0 +1,161 @@
+{{define "content"}}
+<div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+    <div style="margin-bottom: 20px;">
+        <a href="/worker/accounts" style="color: var(--color-link); text-decoration: none; font-size: 14px;">&larr; Kembali ke Daftar Akun</a>
+        <h2 style="margin-top: 10px;">{{ call .T "wa.new_account_title" }}</h2>
+    </div>
+
+    {{if .Error}}
+    <div style="background-color: var(--color-surface-muted); color: var(--color-danger); border-left: 4px solid var(--color-danger); padding: 12px 16px; margin-bottom: 20px; border-radius: 4px;">
+        {{.Error}}
+    </div>
+    {{end}}
+
+    {{if .ActiveAccountID}}
+    <!-- TAMPILAN PROSES SAMBUNG & POLLING -->
+    <div style="background-color: var(--color-card); border: 1px solid var(--color-border); border-radius: 8px; padding: 24px; text-align: center;">
+        <h3 style="margin-top: 0; margin-bottom: 8px;">Menghubungkan Akun: {{.AccountLabel}}</h3>
+        <p id="status-badge" style="display: inline-block; padding: 4px 12px; border-radius: 12px; font-size: 13px; font-weight: bold; background-color: var(--color-surface-muted); color: var(--color-warning); border: 1px solid var(--color-warning); margin-bottom: 20px;">
+            {{ call .T "wa.waiting_scan" }}
+        </p>
+
+        {{if eq .PairingMode "pairing_code"}}
+        <div style="margin: 20px 0;">
+            <p style="color: var(--color-muted); font-size: 14px; margin-bottom: 12px;">
+                {{ call .T "wa.code_instruction" }}
+            </p>
+            <div id="code-box" style="font-size: 28px; font-family: monospace; font-weight: bold; letter-spacing: 4px; padding: 16px; background-color: var(--color-surface-muted); border: 2px dashed var(--color-primary); border-radius: 8px; display: inline-block;">
+                {{if .PairingCode}}{{.PairingCode}}{{else}}Memuat kode...{{end}}
+            </div>
+        </div>
+        {{else}}
+        <div style="margin: 20px 0;">
+            <p style="color: var(--color-muted); font-size: 14px; margin-bottom: 12px;">
+                {{ call .T "wa.qr_instruction" }}
+            </p>
+            <div id="qr-container" style="display: inline-block; padding: 16px; background-color: var(--color-card); border: 1px solid var(--color-border); border-radius: 8px;">
+                {{if .QRImageB64}}
+                <img id="qr-img" src="data:image/png;base64,{{.QRImageB64}}" alt="QR Code" style="width: 256px; height: 256px; display: block;" />
+                {{else}}
+                <div id="qr-loading" style="width: 256px; height: 256px; display: flex; align-items: center; justify-content: center; color: var(--color-muted);">
+                    Menunggu QR...
+                </div>
+                {{end}}
+            </div>
+        </div>
+        {{end}}
+
+        <p style="color: var(--color-muted); font-size: 12px; margin-top: 20px;">
+            Halaman ini otomatis mengecek status setiap 3 detik. Jangan tutup halaman ini sampai status terhubung.
+        </p>
+    </div>
+
+    <script>
+        const accountId = {{.ActiveAccountID}};
+        const pollInterval = setInterval(async () => {
+            try {
+                const res = await fetch('/worker/accounts/' + accountId + '/status');
+                if (!res.ok) return;
+                const data = await res.json();
+                
+                const badge = document.getElementById('status-badge');
+                if (badge) {
+                    badge.innerText = 'Status: ' + data.status;
+                }
+
+                if (data.status === 'terhubung') {
+                    clearInterval(pollInterval);
+                    if (badge) {
+                        badge.style.color = 'var(--color-success)';
+                        badge.style.borderColor = 'var(--color-success)';
+                        badge.innerText = 'Berhasil terhubung! Mengalihkan...';
+                    }
+                    setTimeout(() => {
+                        window.location.href = '/worker/accounts';
+                    }, 1200);
+                } else if (data.status === 'berhenti' || data.status === 'terputus') {
+                    clearInterval(pollInterval);
+                    if (badge) {
+                        badge.style.color = 'var(--color-danger)';
+                        badge.style.borderColor = 'var(--color-danger)';
+                        badge.innerText = 'Sesi berhenti/terputus: ' + (data.stop_reason || '');
+                    }
+                } else if (data.qr_image_b64) {
+                    const img = document.getElementById('qr-img');
+                    if (img) {
+                        img.src = 'data:image/png;base64,' + data.qr_image_b64;
+                    } else {
+                        const container = document.getElementById('qr-container');
+                        if (container) {
+                            container.innerHTML = '<img id="qr-img" src="data:image/png;base64,' + data.qr_image_b64 + '" alt="QR Code" style="width: 256px; height: 256px; display: block;" />';
+                        }
+                    }
+                }
+            } catch (err) {
+                console.error('Polling error:', err);
+            }
+        }, 3000);
+    </script>
+
+    {{else}}
+    <!-- FORM TAMBAH AKUN BARU -->
+    <div style="background-color: var(--color-card); border: 1px solid var(--color-border); border-radius: 8px; padding: 24px;">
+        <form method="POST" action="/worker/accounts/new">
+            <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+            {{if .ResumeID}}<input type="hidden" name="resume_id" value="{{.ResumeID}}">{{end}}
+
+            <div style="margin-bottom: 16px;">
+                <label for="label" style="display: block; font-weight: bold; margin-bottom: 6px;">{{ call .T "wa.label" }}</label>
+                <input type="text" id="label" name="label" required placeholder="cth: WA Pribadi 1" value="{{.FormLabel}}" style="width: 100%; padding: 8px 12px; border: 1px solid var(--color-border); border-radius: 4px; background-color: var(--color-input-bg); color: var(--color-input-text); box-sizing: border-box;">
+            </div>
+
+            <div style="margin-bottom: 16px;">
+                <label for="speed" style="display: block; font-weight: bold; margin-bottom: 6px;">{{ call .T "wa.speed" }}</label>
+                <select id="speed" name="speed" style="width: 100%; padding: 8px 12px; border: 1px solid var(--color-border); border-radius: 4px; background-color: var(--color-input-bg); color: var(--color-input-text); box-sizing: border-box;">
+                    <option value="medium" selected>Medium (sedang)</option>
+                    <option value="slow">Slow (santai)</option>
+                    <option value="over_slow">Over Slow (sangat santai)</option>
+                    <option value="fast">Fast (cepat - risiko banned lebih tinggi)</option>
+                </select>
+            </div>
+
+            <div style="margin-bottom: 16px;">
+                <label style="display: block; font-weight: bold; margin-bottom: 6px;">{{ call .T "wa.pairing_mode" }}</label>
+                <div style="display: flex; gap: 20px; align-items: center; margin-top: 8px;">
+                    <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                        <input type="radio" name="mode" value="qr" checked onchange="togglePairingMode('qr')">
+                        {{ call .T "wa.mode_qr" }}
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                        <input type="radio" name="mode" value="pairing_code" onchange="togglePairingMode('code')">
+                        {{ call .T "wa.mode_code" }}
+                    </label>
+                </div>
+            </div>
+
+            <div id="phone-container" style="display: none; margin-bottom: 20px;">
+                <label for="phone" style="display: block; font-weight: bold; margin-bottom: 6px;">{{ call .T "wa.phone_label" }}</label>
+                <input type="text" id="phone" name="phone" placeholder="628123456789" style="width: 100%; padding: 8px 12px; border: 1px solid var(--color-border); border-radius: 4px; background-color: var(--color-input-bg); color: var(--color-input-text); box-sizing: border-box;">
+            </div>
+
+            <button type="submit" style="width: 100%; padding: 10px; background-color: var(--color-primary); color: var(--color-on-primary); border: none; border-radius: 4px; font-weight: bold; font-size: 15px; cursor: pointer;">
+                {{ call .T "wa.btn_start" }}
+            </button>
+        </form>
+    </div>
+
+    <script>
+        function togglePairingMode(mode) {
+            const phoneBox = document.getElementById('phone-container');
+            if (mode === 'code') {
+                phoneBox.style.display = 'block';
+                document.getElementById('phone').required = true;
+            } else {
+                phoneBox.style.display = 'none';
+                document.getElementById('phone').required = false;
+            }
+        }
+    </script>
+    {{end}}
+</div>
+{{end}}

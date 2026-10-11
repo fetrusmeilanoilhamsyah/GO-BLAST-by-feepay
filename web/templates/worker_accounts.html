@@ -1,0 +1,90 @@
+{{define "content"}}
+<div style="max-width: 1000px; margin: 0 auto; padding: 20px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <h2>{{ call .T "wa.accounts_title" }}</h2>
+        <a href="/worker/accounts/new" class="btn btn-primary" style="padding: 8px 16px; background-color: var(--color-primary); color: var(--color-on-primary); text-decoration: none; border-radius: 4px; font-weight: bold;">+ {{ call .T "wa.add_account" }}</a>
+    </div>
+
+    {{if .Error}}
+    <div style="background-color: var(--color-surface-muted); color: var(--color-danger); border-left: 4px solid var(--color-danger); padding: 12px 16px; margin-bottom: 20px; border-radius: 4px;">
+        {{.Error}}
+    </div>
+    {{end}}
+
+    <div style="background-color: var(--color-card); border-radius: 8px; overflow: hidden; border: 1px solid var(--color-border); box-shadow: 0 2px 4px var(--color-surface-muted);">
+        <table style="width: 100%; border-collapse: collapse; text-align: left;">
+            <thead style="background-color: var(--color-surface-muted);">
+                <tr>
+                    <th style="padding: 12px 16px; border-bottom: 1px solid var(--color-border);">ID</th>
+                    <th style="padding: 12px 16px; border-bottom: 1px solid var(--color-border);">{{ call .T "wa.label" }}</th>
+                    <th style="padding: 12px 16px; border-bottom: 1px solid var(--color-border);">{{ call .T "wa.speed" }}</th>
+                    <th style="padding: 12px 16px; border-bottom: 1px solid var(--color-border);">{{ call .T "wa.status" }}</th>
+                    <th style="padding: 12px 16px; border-bottom: 1px solid var(--color-border);">Aksi</th>
+                </tr>
+            </thead>
+            <tbody>
+                {{range .Accounts}}
+                <tr style="border-bottom: 1px solid var(--color-border);">
+                    <td style="padding: 12px 16px;">#{{.ID}}</td>
+                    <td style="padding: 12px 16px; font-weight: bold;">{{.Label}}</td>
+                    <td style="padding: 12px 16px;">
+                        <span style="font-size: 13px; text-transform: uppercase; color: var(--color-muted);">{{.Speed}}</span>
+                    </td>
+                    <td style="padding: 12px 16px;">
+                        {{if eq .Status "terhubung"}}
+                        <span style="display: inline-block; padding: 3px 8px; border-radius: 12px; font-size: 12px; font-weight: bold; background-color: var(--color-surface-muted); color: var(--color-success); border: 1px solid var(--color-success);">
+                            {{ call $.T "wa.connected" }}
+                        </span>
+                        {{else if eq .Status "menunggu_scan"}}
+                        <span style="display: inline-block; padding: 3px 8px; border-radius: 12px; font-size: 12px; font-weight: bold; background-color: var(--color-surface-muted); color: var(--color-warning); border: 1px solid var(--color-warning);">
+                            {{ call $.T "wa.waiting_scan" }}
+                        </span>
+                        {{else if eq .Status "antre"}}
+                        <span style="display: inline-block; padding: 3px 8px; border-radius: 12px; font-size: 12px; font-weight: bold; background-color: var(--color-surface-muted); color: var(--color-muted); border: 1px solid var(--color-border);">
+                            {{ call $.T "wa.queued" }}
+                        </span>
+                        {{else if eq .Status "terputus"}}
+                        <span style="display: inline-block; padding: 3px 8px; border-radius: 12px; font-size: 12px; font-weight: bold; background-color: var(--color-surface-muted); color: var(--color-danger); border: 1px solid var(--color-danger);">
+                            {{ call $.T "wa.disconnected" }}
+                        </span>
+                        {{else}}
+                        <span style="display: inline-block; padding: 3px 8px; border-radius: 12px; font-size: 12px; font-weight: bold; background-color: var(--color-surface-muted); color: var(--color-muted); border: 1px solid var(--color-border);">
+                            {{ call $.T "wa.stopped" }}
+                        </span>
+                        {{end}}
+                    </td>
+                    <td style="padding: 12px 16px;">
+                        <div style="display: flex; gap: 8px; align-items: center;">
+                            {{if eq .Status "menunggu_scan"}}
+                            <a href="/worker/accounts/new?id={{.ID}}" style="color: var(--color-primary); font-size: 13px; font-weight: bold; text-decoration: none;">Lihat QR / Pairing</a>
+                            {{end}}
+
+                            {{if eq .Status "terhubung"}}
+                            <form method="POST" action="/worker/accounts/{{.ID}}/disconnect" style="display: inline;">
+                                <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                                <button type="submit" style="background: none; border: 1px solid var(--color-warning); color: var(--color-warning); padding: 3px 8px; border-radius: 4px; cursor: pointer; font-size: 12px;">{{ call $.T "wa.action_disconnect" }}</button>
+                            </form>
+                            <form method="POST" action="/worker/accounts/{{.ID}}/stop" style="display: inline;">
+                                <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                                <button type="submit" style="background: none; border: 1px solid var(--color-danger); color: var(--color-danger); padding: 3px 8px; border-radius: 4px; cursor: pointer; font-size: 12px;">{{ call $.T "wa.action_stop" }}</button>
+                            </form>
+                            {{end}}
+
+                            {{if or (eq .Status "terputus") (eq .Status "berhenti")}}
+                            <a href="/worker/accounts/new?resume_id={{.ID}}" style="color: var(--color-primary); font-size: 13px; text-decoration: none;">{{ call $.T "wa.action_connect" }}</a>
+                            {{end}}
+                        </div>
+                    </td>
+                </tr>
+                {{else}}
+                <tr>
+                    <td colspan="5" style="padding: 30px; text-align: center; color: var(--color-muted);">
+                        {{ call .T "wa.empty_accounts" }}
+                    </td>
+                </tr>
+                {{end}}
+            </tbody>
+        </table>
+    </div>
+</div>
+{{end}}

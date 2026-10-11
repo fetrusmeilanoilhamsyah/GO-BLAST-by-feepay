@@ -11,20 +11,26 @@ import (
 
 	"goblast/internal/db"
 	"goblast/internal/i18n"
+	"goblast/internal/wa"
 )
 
 type Server struct {
-	DB   *db.DB
-	Tmpl map[string]*template.Template
-	Env  string
+	DB        *db.DB
+	Tmpl      map[string]*template.Template
+	Env       string
+	WaManager *wa.Manager
 }
 
-func NewServer(database *db.DB, env string) (*Server, error) {
+func NewServer(database *db.DB, env string, waMgr ...*wa.Manager) (*Server, error) {
 	base := filepath.Join("web", "templates", "base.html")
 
 	templates := make(map[string]*template.Template)
 
-	pages := []string{"index.html", "login.html", "register.html", "admin_campaigns.html", "admin_campaign_form.html", "admin_campaign_detail.html"}
+	pages := []string{
+		"index.html", "login.html", "register.html",
+		"admin_campaigns.html", "admin_campaign_form.html", "admin_campaign_detail.html",
+		"worker_accounts.html", "worker_account_new.html",
+	}
 	for _, page := range pages {
 		tmpl, err := template.ParseFiles(base, filepath.Join("web", "templates", page))
 		if err != nil {
@@ -39,10 +45,16 @@ func NewServer(database *db.DB, env string) (*Server, error) {
 		templates["admin_campaign_preview.html"] = previewTmpl
 	}
 
+	var mgr *wa.Manager
+	if len(waMgr) > 0 {
+		mgr = waMgr[0]
+	}
+
 	return &Server{
-		DB:   database,
-		Tmpl: templates,
-		Env:  env,
+		DB:        database,
+		Tmpl:      templates,
+		Env:       env,
+		WaManager: mgr,
 	}, nil
 }
 
@@ -81,6 +93,14 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.Handle("GET /admin/campaigns/{id}/numbers/rejected/{previewId}", s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignNumbersRejected, "admin")))
 
 	mux.Handle("/worker", s.CSRFMiddleware(s.RequireRole(s.handleWorkerHome, "worker")))
+
+	// Tahap 9
+	mux.Handle("GET /worker/accounts", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerAccounts, "worker")))
+	mux.Handle("GET /worker/accounts/new", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerAccountNewGET, "worker")))
+	mux.Handle("POST /worker/accounts/new", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerAccountNewPOST, "worker")))
+	mux.Handle("GET /worker/accounts/{id}/status", s.RequireRole(s.HandleWorkerAccountStatus, "worker"))
+	mux.Handle("POST /worker/accounts/{id}/disconnect", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerAccountDisconnect, "worker")))
+	mux.Handle("POST /worker/accounts/{id}/stop", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerAccountStop, "worker")))
 }
 
 func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
