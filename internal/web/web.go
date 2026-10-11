@@ -15,24 +15,42 @@ import (
 )
 
 type Server struct {
-	DB        *db.DB
-	Tmpl      map[string]*template.Template
-	Env       string
-	WaManager *wa.Manager
+	DB            *db.DB
+	Tmpl          map[string]*template.Template
+	Env           string
+	WaManager     *wa.Manager
+	EncryptionKey []byte
 }
 
 func NewServer(database *db.DB, env string, waMgr ...*wa.Manager) (*Server, error) {
 	base := filepath.Join("web", "templates", "base.html")
+	workerNav := filepath.Join("web", "templates", "worker_nav.html")
 
 	templates := make(map[string]*template.Template)
+
+	workerPages := map[string]bool{
+		"worker_home.html":        true,
+		"worker_accounts.html":    true,
+		"worker_account_new.html": true,
+		"worker_withdrawals.html": true,
+		"worker_referral.html":    true,
+	}
 
 	pages := []string{
 		"index.html", "login.html", "register.html",
 		"admin_campaigns.html", "admin_campaign_form.html", "admin_campaign_detail.html",
 		"worker_accounts.html", "worker_account_new.html",
+		"worker_home.html", "worker_withdrawals.html", "worker_referral.html",
 	}
 	for _, page := range pages {
-		tmpl, err := template.ParseFiles(base, filepath.Join("web", "templates", page))
+		var tmpl *template.Template
+		var err error
+		pagePath := filepath.Join("web", "templates", page)
+		if workerPages[page] {
+			tmpl, err = template.ParseFiles(base, workerNav, pagePath)
+		} else {
+			tmpl, err = template.ParseFiles(base, pagePath)
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -92,13 +110,21 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.Handle("POST /admin/campaigns/{id}/numbers/confirm", s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignNumbersConfirm, "admin")))
 	mux.Handle("GET /admin/campaigns/{id}/numbers/rejected/{previewId}", s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignNumbersRejected, "admin")))
 
-	mux.Handle("/worker", s.CSRFMiddleware(s.RequireRole(s.handleWorkerHome, "worker")))
+	// Tahap 11: Worker Panel
+	mux.Handle("GET /worker", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerHome, "worker")))
+	mux.Handle("GET /worker/withdrawals", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerWithdrawalsGET, "worker")))
+	mux.Handle("POST /worker/withdrawals", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerWithdrawalsPOST, "worker")))
+	mux.Handle("GET /worker/referral", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerReferralGET, "worker")))
 
 	// Tahap 9
 	mux.Handle("GET /worker/accounts", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerAccounts, "worker")))
+	mux.Handle("POST /worker/accounts/init", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerAccountInitPOST, "worker")))
 	mux.Handle("GET /worker/accounts/new", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerAccountNewGET, "worker")))
 	mux.Handle("POST /worker/accounts/new", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerAccountNewPOST, "worker")))
 	mux.Handle("GET /worker/accounts/{id}/status", s.RequireRole(s.HandleWorkerAccountStatus, "worker"))
+	mux.Handle("POST /worker/accounts/{id}/pair", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerAccountPairPOST, "worker")))
+	mux.Handle("POST /worker/accounts/{id}/settings", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerAccountSettingsPOST, "worker")))
+	mux.Handle("POST /worker/accounts/{id}/delete", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerAccountDelete, "worker")))
 	mux.Handle("POST /worker/accounts/{id}/disconnect", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerAccountDisconnect, "worker")))
 	mux.Handle("POST /worker/accounts/{id}/stop", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerAccountStop, "worker")))
 }

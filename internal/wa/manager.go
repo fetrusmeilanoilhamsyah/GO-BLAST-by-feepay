@@ -27,6 +27,7 @@ type SettingsReader interface {
 
 // Session menyimpan satu koneksi WhatsApp beserta status dan metadata-nya.
 type Session struct {
+	mu        sync.RWMutex
 	AccountID int64
 	Client    *whatsmeow.Client
 	Status    string // menunggu_scan | terhubung | berhenti | terputus | antre
@@ -34,7 +35,9 @@ type Session struct {
 	cancel    context.CancelFunc
 
 	// qrChan dikirim dari goroutine event ke caller Connect saat QR tersedia.
-	qrChan chan string
+	qrChan    chan string
+	lastQR    string
+	pairingFn func(phone string) (string, error)
 }
 
 // Manager memegang peta sesi aktif (accountID → *Session).
@@ -86,27 +89,29 @@ func (m *Manager) GetClient(accountID int64) *whatsmeow.Client {
 // Mengembalikan channel QR (string base64 PNG) dan fungsi pairing.
 // Caller harus membaca qrChan di goroutine lain karena pengiriman non-blocking.
 func (m *Manager) Connect(ctx context.Context, accountID, workerID int64) (<-chan string, func(phone string) (string, error), error) {
+	// Cek apakah sesi untuk accountID sudah aktif berjalan
+	m.mu.RLock()
+	if existing, ok := m.sessions[accountID]; ok && existing != nil {
+		m.mu.RUnlock()
+		return existing.qrChan, existing.pairingFn, nil
+	}
+	m.mu.RUnlock()
+
 	// --- Cek batas dari settings ---
 	maxPerWorker, okPerWorker, err := m.settings.GetInt(ctx, "max_accounts_per_worker")
-	if err != nil {
-		return nil, nil, fmt.Errorf("gagal membaca pengaturan max_accounts_per_worker: %w", err)
+	if err != nil || !okPerWorker || maxPerWorker <= 0 {
+		maxPerWorker = 5
 	}
 	maxActive, okActive, err := m.settings.GetInt(ctx, "max_active_sessions")
-	if err != nil {
-		return nil, nil, fmt.Errorf("gagal membaca pengaturan max_active_sessions: %w", err)
-	}
-	if !okPerWorker {
-		return nil, nil, errors.New("pengaturan max_accounts_per_worker belum diisi admin")
-	}
-	if !okActive {
-		return nil, nil, errors.New("pengaturan max_active_sessions belum diisi admin")
+	if err != nil || !okActive || maxActive <= 0 {
+		maxActive = 50
 	}
 
-	// Hitung sesi aktif milik workerID (status menunggu_scan atau terhubung)
+	// Hitung sesi aktif milik workerID (selain akun ini sendiri)
 	var countPerWorker int
 	err = m.db.Pool.QueryRow(ctx,
-		`SELECT COUNT(*) FROM wa_accounts WHERE worker_id = $1 AND status IN ('terhubung','menunggu_scan')`,
-		workerID,
+		`SELECT COUNT(*) FROM wa_accounts WHERE worker_id = $1 AND status IN ('terhubung','menunggu_scan') AND id != $2`,
+		workerID, accountID,
 	).Scan(&countPerWorker)
 	if err != nil {
 		return nil, nil, fmt.Errorf("gagal menghitung akun pekerja: %w", err)
@@ -136,11 +141,8 @@ func (m *Manager) Connect(ctx context.Context, accountID, workerID int64) (<-cha
 		return nil, nil, fmt.Errorf("gagal membuat sqlstore: %w", err)
 	}
 
-	deviceStore, err := container.GetFirstDevice(ctx)
-	if err != nil {
-		// Tidak ada perangkat tersimpan, buat baru
-		deviceStore = container.NewDevice()
-	}
+	// Untuk setiap sesi baru yang discan, buat deviceStore baru yang unauthenticated (ID == nil)
+	deviceStore := container.NewDevice()
 
 	client := whatsmeow.NewClient(deviceStore, waLog.Noop)
 
@@ -158,8 +160,20 @@ func (m *Manager) Connect(ctx context.Context, accountID, workerID int64) (<-cha
 		Status:    "menunggu_scan",
 		WorkerID:  workerID,
 		cancel:    cancel,
-		qrChan:    make(chan string, 5),
+		qrChan:    make(chan string, 10),
 	}
+
+	pairingFn := func(phone string) (string, error) {
+		if client.IsLoggedIn() {
+			return "", errors.New("sudah terhubung, tidak perlu pairing")
+		}
+		code, err := client.PairPhone(context.Background(), phone, true, whatsmeow.PairClientChrome, "Chrome (Linux)")
+		if err != nil {
+			return "", fmt.Errorf("pairing gagal: %w", err)
+		}
+		return code, nil
+	}
+	sess.pairingFn = pairingFn
 
 	m.mu.Lock()
 	m.sessions[accountID] = sess
@@ -177,6 +191,10 @@ func (m *Manager) Connect(ctx context.Context, accountID, workerID int64) (<-cha
 		go func() {
 			for qr := range qrChan {
 				if qr.Event == "code" {
+					sess.mu.Lock()
+					sess.lastQR = qr.Code
+					sess.mu.Unlock()
+
 					select {
 					case sess.qrChan <- qr.Code:
 					default:
@@ -195,17 +213,6 @@ func (m *Manager) Connect(ctx context.Context, accountID, workerID int64) (<-cha
 			m.removeSession(accountID)
 			return nil, nil, fmt.Errorf("gagal mulai koneksi: %w", err)
 		}
-	}
-
-	pairingFn := func(phone string) (string, error) {
-		if client.IsLoggedIn() {
-			return "", errors.New("sudah terhubung, tidak perlu pairing")
-		}
-		code, err := client.PairPhone(context.Background(), phone, true, whatsmeow.PairClientChrome, "Chrome (Linux)")
-		if err != nil {
-			return "", fmt.Errorf("pairing gagal: %w", err)
-		}
-		return code, nil
 	}
 
 	return sess.qrChan, pairingFn, nil
@@ -453,8 +460,8 @@ func (m *Manager) GetStatusForAccount(ctx context.Context, accountID int64) (str
 	return status, nil
 }
 
-// GetQRImage mengambil QR terakhir untuk accountID sebagai string kode (bukan PNG).
-// Caller bertanggung jawab mengubah ke PNG menggunakan go-qrcode.
+// GetQRCode mengambil QR terakhir untuk accountID sebagai string kode (bukan PNG).
+// Mengambil dari cache in-memory terlebih dahulu tanpa mengosongkan channel.
 func (m *Manager) GetQRCode(accountID int64) (string, bool) {
 	m.mu.RLock()
 	sess, ok := m.sessions[accountID]
@@ -462,10 +469,64 @@ func (m *Manager) GetQRCode(accountID int64) (string, bool) {
 	if !ok || sess == nil {
 		return "", false
 	}
-	select {
-	case code := <-sess.qrChan:
+
+	sess.mu.RLock()
+	code := sess.lastQR
+	sess.mu.RUnlock()
+	if code != "" {
 		return code, true
-	case <-time.After(100 * time.Millisecond):
+	}
+
+	// Jika belum ada di lastQR, tunggu maksimal 2 detik untuk event pertama
+	select {
+	case c := <-sess.qrChan:
+		sess.mu.Lock()
+		sess.lastQR = c
+		sess.mu.Unlock()
+		return c, true
+	case <-time.After(2 * time.Second):
 		return "", false
 	}
 }
+
+// PairPhone meminta kode pairing 8 karakter untuk nomor HP tertentu pada akun yang sedang menunggu scan.
+func (m *Manager) PairPhone(accountID int64, phone string) (string, error) {
+	m.mu.RLock()
+	sess, ok := m.sessions[accountID]
+	m.mu.RUnlock()
+	if !ok || sess == nil {
+		return "", errors.New("sesi tidak ditemukan atau belum dimulai")
+	}
+	sess.mu.RLock()
+	fn := sess.pairingFn
+	sess.mu.RUnlock()
+	if fn == nil {
+		return "", errors.New("fungsi pairing tidak tersedia")
+	}
+	return fn(phone)
+}
+
+// Delete menghapus sesi dan catatan akun dari database.
+// callerWorkerID harus cocok dengan worker_id di DB.
+func (m *Manager) Delete(ctx context.Context, accountID, callerWorkerID int64) error {
+	if err := m.checkOwnership(ctx, accountID, callerWorkerID); err != nil {
+		return err
+	}
+	m.mu.Lock()
+	sess, ok := m.sessions[accountID]
+	m.mu.Unlock()
+	if ok && sess != nil {
+		sess.cancel()
+		if sess.Client != nil {
+			sess.Client.Disconnect()
+			if sess.Client.Store != nil {
+				_ = sess.Client.Store.Delete(ctx)
+			}
+		}
+	}
+	m.removeSession(accountID)
+	m.releaseNumbers(ctx, accountID)
+	_, err := m.db.Pool.Exec(ctx, `DELETE FROM wa_accounts WHERE id = $1`, accountID)
+	return err
+}
+

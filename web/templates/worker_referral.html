@@ -1,0 +1,123 @@
+{{define "content"}}
+<div class="worker-layout">
+    {{ template "worker_nav" . }}
+
+    <main class="worker-main">
+        <div class="worker-content">
+            <div class="worker-page-header">
+                <div>
+                    <h1 class="worker-page-title">{{ call .T "worker.referral_title" }}</h1>
+                    <p style="margin: 4px 0 0 0; color: var(--color-muted); font-size: 14px;">Ajak rekan pekerja lain dan dapatkan bonus per pesan dari kiriman rekan Anda.</p>
+                </div>
+            </div>
+
+            <!-- STATISTIK REFERRAL -->
+            <div class="stat-grid">
+                <div class="stat-card">
+                    <div class="stat-label">{{ call .T "worker.referral_friends_count" }}</div>
+                    <div class="stat-value">{{.FriendsCount}} Orang</div>
+                    <p style="margin: 6px 0 0 0; font-size: 12px; color: var(--color-muted);">Rekan tingkat 1 yang terdaftar</p>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-label">{{ call .T "worker.total_referral" }}</div>
+                    <div class="stat-value stat-value-success">
+                        {{if eq .User.Currency "IDR"}}Rp {{.TotalBonus}}{{else}}{{.TotalBonus}} USDT{{end}}
+                    </div>
+                    <p style="margin: 6px 0 0 0; font-size: 12px; color: var(--color-muted);">Masuk otomatis ke saldo Anda</p>
+                </div>
+            </div>
+
+            <!-- TAUTAN & KODE REFERRAL -->
+            <div class="card" style="margin: 0 0 24px 0; padding: 24px;">
+                <h3 style="margin-top: 0; margin-bottom: 12px; font-size: 18px;">{{ call .T "worker.referral_link_label" }}</h3>
+                <p style="margin: 0 0 16px 0; font-size: 14px; color: var(--color-muted); line-height: 1.5;">
+                    {{ call .T "worker.referral_desc" }}
+                </p>
+
+                <div style="background-color: var(--color-surface-muted); padding: 14px 18px; border-radius: 6px; margin-bottom: 16px; border: 1px solid var(--color-border); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
+                    <div>
+                        <span style="font-size: 12px; color: var(--color-muted); display: block;">{{ call .T "worker.referral_code_label" }}</span>
+                        <span style="font-size: 20px; font-weight: 800; letter-spacing: 1px; color: var(--color-primary);">{{.ReferralCode}}</span>
+                    </div>
+                </div>
+
+                <div class="field">
+                    <label for="ref-link-input" style="font-weight: 600; font-size: 14px;">Tautan Undangan:</label>
+                    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                        <input type="text" id="ref-link-input" class="input" value="{{.ReferralLink}}" readonly style="flex: 1; min-width: 240px; background-color: var(--color-surface-muted);">
+                        <button type="button" id="copy-btn" onclick="copyReferralLink()" class="btn btn-primary" style="padding: 10px 20px; font-weight: bold; cursor: pointer;">
+                            {{ call .T "worker.referral_copy" }}
+                        </button>
+                    </div>
+                    <span id="copy-feedback" style="display: none; margin-top: 6px; font-size: 13px; font-weight: bold; color: var(--color-success);">
+                        {{ call .T "worker.referral_copied" }}
+                    </span>
+                </div>
+            </div>
+
+            <!-- RIWAYAT KOMISI REFERRAL -->
+            <div class="card" style="margin: 0; padding: 24px;">
+                <h3 style="margin-top: 0; margin-bottom: 16px; font-size: 18px;">{{ call .T "worker.referral_history_title" }}</h3>
+
+                <div class="responsive-table-container">
+                    <table class="responsive-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Nominal</th>
+                                <th>Tanggal</th>
+                                <th>Keterangan</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {{range .BonusList}}
+                            <tr>
+                                <td>{{.ID}}</td>
+                                <td style="font-weight: bold; color: var(--color-success);">
+                                    +{{.Amount}} {{.Currency}}
+                                </td>
+                                <td style="font-size: 13px; color: var(--color-muted);">{{.CreatedAt}}</td>
+                                <td style="font-size: 13px;">{{.Note}}</td>
+                            </tr>
+                            {{else}}
+                            <tr>
+                                <td colspan="4" style="text-align: center; padding: 28px; color: var(--color-muted);">
+                                    {{ call $.T "worker.referral_no_history" }}
+                                </td>
+                            </tr>
+                            {{end}}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </main>
+</div>
+
+<script>
+function copyReferralLink() {
+    const input = document.getElementById('ref-link-input');
+    input.select();
+    input.setSelectionRange(0, 99999);
+
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(input.value).then(showFeedback);
+    } else {
+        document.execCommand('copy');
+        showFeedback();
+    }
+}
+
+function showFeedback() {
+    const fb = document.getElementById('copy-feedback');
+    const btn = document.getElementById('copy-btn');
+    fb.style.display = 'inline-block';
+    btn.innerText = 'Tersalin!';
+    setTimeout(() => {
+        fb.style.display = 'none';
+        btn.innerText = '{{ call .T "worker.referral_copy" }}';
+    }, 2500);
+}
+</script>
+{{end}}

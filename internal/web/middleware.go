@@ -22,11 +22,12 @@ const (
 )
 
 type UserSession struct {
-	ID       int64
-	Role     string
-	Email    string
-	Language string
-	Currency string
+	ID          int64
+	Role        string
+	Email       string
+	DisplayName string
+	Language    string
+	Currency    string
 }
 
 func currentUser(r *http.Request) (UserSession, bool) {
@@ -137,11 +138,11 @@ func (s *Server) RequireRole(next http.HandlerFunc, roles ...string) http.Handle
 		var expiresAt time.Time
 
 		err = s.DB.Pool.QueryRow(context.Background(), `
-			SELECT u.id, u.role, u.email, u.language, u.currency, ws.expires_at
+			SELECT u.id, u.role, u.email, COALESCE(u.display_name, u.email), u.language, u.currency, ws.expires_at
 			FROM web_sessions ws
 			JOIN users u ON u.id = ws.user_id
 			WHERE ws.token_hash = $1
-		`, hash).Scan(&user.ID, &user.Role, &user.Email, &user.Language, &user.Currency, &expiresAt)
+		`, hash).Scan(&user.ID, &user.Role, &user.Email, &user.DisplayName, &user.Language, &user.Currency, &expiresAt)
 
 		if err != nil || time.Now().After(expiresAt) {
 			// Clean up invalid cookie

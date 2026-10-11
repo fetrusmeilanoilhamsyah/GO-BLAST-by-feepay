@@ -10,8 +10,8 @@ Nomor tahap mengacu ke tabel "Daftar Tahap" di bawah.
 ## Posisi sekarang
 
 - **Fase**: 1 (MVP)
-- **Terakhir dikerjakan**: Tahap 9 (Pengelola sesi WhatsApp) dan Tahap 10 (Mesin kirim: klaim nomor, kecepatan, buku besar) selesai.
-- **Lanjut dari sini**: Tahap 11 (Panel pekerja).
+- **Terakhir dikerjakan**: Tahap 11 (Panel pekerja: layout simetris responsif, sidebar kiri, pemisahan Beranda, Akun WA, Penarikan, dan Referral) selesai dan lulus verifikasi.
+- **Lanjut dari sini**: Tahap 12 (Panel admin: laporan, pengaturan, dompet).
 - **Blocker**: tidak ada.
 
 ---
@@ -55,7 +55,7 @@ Daftar resmi. Agen hanya boleh mengubah kolom Status, dan hanya untuk tahap yang
 | 8 | Template dan campaign | Selesai |
 | 9 | Pengelola sesi WhatsApp | Selesai |
 | 10 | Mesin kirim: klaim nomor, kecepatan, buku besar | Selesai |
-| 11 | Panel pekerja | Belum |
+| 11 | Panel pekerja | Selesai |
 | 12 | Panel admin: laporan, pengaturan, dompet | Belum |
 | 13 | Halaman publik | Belum |
 | 14 | Penarikan manual | Belum |
@@ -90,6 +90,8 @@ Terbaru di atas. Agen menambah baris di sini setiap ada keputusan baru, dari pem
 
 | Tanggal | Keputusan | Alasan | Oleh |
 |---|---|---|---|
+| 2026-10-11 | Panel pekerja simetris & pemisahan 4 modul halaman (Beranda, Akun WA, Penarikan, Referral) dengan sidebar kiri (desktop) dan horizontal tabs (mobile) | Memenuhi UI simetris dan rapi di semua ukuran perangkat sesuai DOC_AI_SLOP (tanpa emoji, tanpa hardcoded colors, sistem font, identitas GO BLAST by feepay) | pemilik dan agen |
+| 2026-10-11 | Enkripsi data tujuan penarikan dengan AES-256-GCM (destination_encrypted) dan proteksi saldo negatif berbasis DB trigger | Menjaga kerahasiaan nomor rekening pekerja serta menjamin penarikan tidak bisa membuat saldo negatif (DOC_AI_SLOP bagian 6) | agen |
 | 2026-10-11 | Definisi "terkirim" ditaruh sebagai konstanta DeliveryLevel = "server_ack" (TODO keputusan terbuka #1) | Bawaan aman: centang satu dari server WA. Menunggu keputusan apakah perlu centang dua (delivered) | agen |
 | 2026-10-11 | ThumbnailSpec kartu_link sementara: lebar 300px, kualitas JPEG 70 | Pilihan sementara untuk implementasi Tahap 9 & 10 sambil menunggu konfirmasi uji send-card-thumb | pemilik dan agen |
 | 2026-10-11 | Penyimpanan kunci perangkat whatsmeow: Opsi A — enkripsi at-rest di level PostgreSQL/disk VPS, tanpa wrapper aplikasi | Data sesi WA sudah dilindungi kriptografis oleh Noise protocol. Enkripsi disk VPS + TLS koneksi DB cukup untuk fase 1. Wrapper driver (B) dan sqlstore kustom (C) over-engineering dan berisiko salah implementasi. | pemilik (memilih "terbaik untuk produksi", agen merekomendasikan A) |
@@ -114,6 +116,7 @@ Terbaru di atas. Agen menambah baris di sini setiap ada keputusan baru, dari pem
 
 Hasil uji dan hal yang ditemukan saat bekerja (Tahap 0 - 5 diarsipkan di [ARSIP_PROGRES.md](ARSIP_PROGRES.md)). Terbaru di atas.
 
+- 2026-10-11 (Tahap 11 — Panel Pekerja): Selesai dan diverifikasi penuh. UI panel pekerja ditata simetris dan seimbang untuk semua perangkat (layar desktop memiliki sidebar navigasi kiri 240px dengan info pekerja & logout; layar mobile mengadopsi navigasi atas dengan scroll horizontal tab pills). Empat halaman terpisah diimplementasikan: Beranda (/worker) untuk ringkasan saldo, pesan terkirim, dan aktivitas terbaru; Akun WhatsApp (/worker/accounts) dengan modal QR & pairing interaktif dan tabel responsif; Penarikan (/worker/withdrawals) dengan form penarikan (DANA, Seabank, Bank Lokal, USDT BEP20) terenkripsi AES-256-GCM dan proteksi saldo negatif; serta Referral (/worker/referral) dengan tautan undangan unik, salin tautan, dan riwayat komisi. Seluruh guard test (TestNoEmojiGuard, TestNoHardcodedColorsInTemplates, TestThemeContrast) dan unit test lulus 100%.
 - 2026-10-11 (Tahap 10 — Mesin Kirim): Selesai dan diverifikasi penuh. Uji klaim atomik konkuren 50 akun mengklaim 1000 nomor berhasil (0 duplikat, semua terklaim tepat 1 kali). Uji buku besar idempoten lulus (ON CONFLICT DO NOTHING via unique index). Uji pelepasan nomor saat putus sesi dan pembersih stale numbers (make_interval) lulus. Uji rate_snapshot immutability dan empty settings rejection lulus. Catatan race detector: `go test -race` di Windows membutuhkan cgo dan C compiler (`gcc`) yang belum terpasang di %PATH% mesin pengembang.
 - 2026-10-11 (Tahap 9 — Pengelola Sesi WA): Selesai dan diverifikasi. `internal/wa.Manager` memegang peta sesi aktif, membatasi akun per pekerja dan total sesi aktif dari settings, menangani QR via `go-qrcode` dan pairing phone code, mengabaikan event pesan masuk untuk privasi. Handlers dan template HTML (`worker_accounts.html`, `worker_account_new.html`) selesai dengan polling JSON 3 detik. Migrasi 0006 menambahkan kolom auto-stop dan device ID.
 
@@ -150,6 +153,7 @@ Langkah uji sambung dan putus satu nomor cadangan:
 
 Terbaru di atas. Format: `tanggal: ringkasan satu baris` (Log Tahap 0 - 5 diarsipkan di [ARSIP_PROGRES.md](ARSIP_PROGRES.md)).
 
+- 2026-10-11: Tahap 11 selesai: Panel pekerja simetris dan responsif dengan sidebar kiri rapi sesuai DOC_AI_SLOP. Pemisahan halaman Beranda (/worker), Akun WhatsApp (/worker/accounts), Penarikan (/worker/withdrawals), dan Referral (/worker/referral), modul enkripsi withdraw (AES-256-GCM), dan tes lulus 100%.
 - 2026-10-11: Tahap 10 selesai: Mesin kirim internal/engine (klaim atomik FOR UPDATE SKIP LOCKED, jeda kecepatan ±20%, daily_limits, buku besar idempoten, pembersih stale numbers, dan auto-stop). Tes lulus 100%.
 - 2026-10-11: Tahap 9 selesai: Pengelola sesi WhatsApp internal/wa (Manager, RealSender, FakeSender, Preview kartu_link, generator thumbnail 300px), handler worker accounts, migrasi 0006_wa_sessions.sql, template HTML dan polling status 3 detik.
 - 2026-10-11 (Tahap 9 butir 0b): Tambah `send-card-thumb` ke `spike/main.go` + `golang.org/x/image` ke spike/go.mod. Tambah tabel uji thumbnail di `spike/HASIL.md` bagian 4. Build lulus. Menunggu pemilik: isi hasil uji thumbnail, isi dua baris uji lama, dan putuskan penyimpanan kunci perangkat whatsmeow.

@@ -66,6 +66,7 @@ func main() {
 		slog.Error("Failed to initialize server", "err", err)
 		os.Exit(1)
 	}
+	srv.EncryptionKey = cfg.EncryptionKey
 
 	mux := http.NewServeMux()
 	srv.RegisterRoutes(mux)

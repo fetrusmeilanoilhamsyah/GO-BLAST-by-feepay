@@ -1,0 +1,122 @@
+{{define "content"}}
+<div class="worker-layout">
+    {{ template "worker_nav" . }}
+
+    <main class="worker-main">
+        <div class="worker-content">
+            <div class="worker-page-header">
+                <div>
+                    <h1 class="worker-page-title">{{ call .T "worker.greeting" }}, {{ .User.DisplayName }}</h1>
+                    <p style="margin: 4px 0 0 0; color: var(--color-muted); font-size: 14px;">Ringkasan aktivitas dan kinerja pengiriman Anda.</p>
+                </div>
+            </div>
+
+            <!-- STATISTIK UTAMA -->
+            <div class="stat-grid">
+                <div class="stat-card">
+                    <div class="stat-label">{{ call .T "worker.available_balance" }}</div>
+                    <div class="stat-value stat-value-success">
+                        {{if eq .User.Currency "IDR"}}Rp {{.Balance}}{{else}}{{.Balance}} USDT{{end}}
+                    </div>
+                    <div style="margin-top: 10px;">
+                        <a href="/worker/withdrawals" class="btn btn-primary" style="padding: 6px 14px; font-size: 13px;">{{ call .T "worker.action_withdraw" }}</a>
+                    </div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-label">{{ call .T "worker.total_earned" }}</div>
+                    <div class="stat-value">
+                        {{if eq .User.Currency "IDR"}}Rp {{.TotalWage}}{{else}}{{.TotalWage}} USDT{{end}}
+                    </div>
+                    <p style="margin: 6px 0 0 0; font-size: 12px; color: var(--color-muted);">Dari {{.TotalSent}} pesan sukses</p>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-label">{{ call .T "worker.total_referral" }}</div>
+                    <div class="stat-value">
+                        {{if eq .User.Currency "IDR"}}Rp {{.TotalReferral}}{{else}}{{.TotalReferral}} USDT{{end}}
+                    </div>
+                    <div style="margin-top: 10px;">
+                        <a href="/worker/referral" style="font-size: 13px; font-weight: bold; color: var(--color-link); text-decoration: none;">Lihat Tim &gt;</a>
+                    </div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-label">{{ call .T "worker.connected_accounts" }}</div>
+                    <div class="stat-value">
+                        {{.ConnectedAccounts}} <span style="font-size: 15px; color: var(--color-muted); font-weight: normal;">/ {{.TotalAccounts}}</span>
+                    </div>
+                    <div style="margin-top: 10px;">
+                        <a href="/worker/accounts" style="font-size: 13px; font-weight: bold; color: var(--color-link); text-decoration: none;">Kelola Akun &gt;</a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- MENU AKSI CEPAT -->
+            <div class="card" style="margin: 0 0 24px 0; padding: 20px;">
+                <h3 style="margin-top: 0; margin-bottom: 14px; font-size: 16px;">{{ call .T "worker.quick_actions" }}</h3>
+                <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+                    <a href="/worker/accounts" class="btn btn-primary" style="padding: 10px 18px; font-size: 14px;">+ {{ call .T "worker.action_add_wa" }}</a>
+                    <a href="/worker/withdrawals" class="btn btn-secondary" style="padding: 10px 18px; font-size: 14px;">{{ call .T "worker.action_withdraw" }}</a>
+                    <a href="/worker/referral" class="btn btn-secondary" style="padding: 10px 18px; font-size: 14px;">{{ call .T "worker.action_referral" }}</a>
+                </div>
+            </div>
+
+            <!-- AKTIVITAS SALDO TERKINI -->
+            <div class="card" style="margin: 0; padding: 20px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                    <h3 style="margin: 0; font-size: 16px;">{{ call .T "worker.recent_activity" }}</h3>
+                    <a href="/worker/withdrawals" style="font-size: 13px; color: var(--color-link); text-decoration: none;">Riwayat Penarikan &gt;</a>
+                </div>
+
+                <div class="responsive-table-container">
+                    <table class="responsive-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Jenis</th>
+                                <th>Nominal</th>
+                                <th>Tanggal</th>
+                                <th>Keterangan</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {{range .Activities}}
+                            <tr>
+                                <td>{{.ID}}</td>
+                                <td>
+                                    {{if eq .Kind "upah"}}
+                                    <span class="badge badge-success">Upah Kirim</span>
+                                    {{else if eq .Kind "referral"}}
+                                    <span class="badge badge-success">Bonus Referral</span>
+                                    {{else if eq .Kind "penarikan"}}
+                                    <span class="badge badge-warning">Penarikan</span>
+                                    {{else}}
+                                    <span class="badge badge-muted">{{.Kind}}</span>
+                                    {{end}}
+                                </td>
+                                <td style="font-weight: bold;">
+                                    {{if lt .Amount 0}}
+                                    <span style="color: var(--color-danger);">{{.Amount}} {{.Currency}}</span>
+                                    {{else}}
+                                    <span style="color: var(--color-success);">+{{.Amount}} {{.Currency}}</span>
+                                    {{end}}
+                                </td>
+                                <td style="color: var(--color-muted); font-size: 13px;">{{.CreatedAt}}</td>
+                                <td style="font-size: 13px;">{{.Note}}</td>
+                            </tr>
+                            {{else}}
+                            <tr>
+                                <td colspan="5" style="text-align: center; padding: 24px; color: var(--color-muted);">
+                                    {{ call $.T "worker.no_activity" }}
+                                </td>
+                            </tr>
+                            {{end}}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </main>
+</div>
+{{end}}

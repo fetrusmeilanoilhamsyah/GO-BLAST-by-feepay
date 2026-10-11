@@ -61,6 +61,8 @@ func (s *Server) HandleWorkerAccounts(w http.ResponseWriter, r *http.Request) {
 		Title     string
 		Theme     string
 		CSRFToken string
+		ActiveNav string
+		User      UserSession
 		Accounts  []WAAccountView
 		Error     string
 		T         func(string) string
@@ -69,6 +71,8 @@ func (s *Server) HandleWorkerAccounts(w http.ResponseWriter, r *http.Request) {
 		Title:     i18n.T(lang, "wa.accounts_title"),
 		Theme:     getTheme(r),
 		CSRFToken: getCSRF(r),
+		ActiveNav: "accounts",
+		User:      user,
 		Accounts:  accounts,
 		Error:     errMsg,
 		T: func(key string) string {
@@ -80,84 +84,98 @@ func (s *Server) HandleWorkerAccounts(w http.ResponseWriter, r *http.Request) {
 	s.Tmpl["worker_accounts.html"].ExecuteTemplate(w, "base.html", data)
 }
 
+func (s *Server) HandleWorkerAccountInitPOST(w http.ResponseWriter, r *http.Request) {
+	user, ok := currentUser(r)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	var activeAccountID int64
+	var label, speed string
+	idStr := r.URL.Query().Get("id")
+	if idStr != "" {
+		if id, err := strconv.ParseInt(idStr, 10, 64); err == nil {
+			var ownerID int64
+			_ = s.DB.Pool.QueryRow(r.Context(),
+				`SELECT worker_id, label, speed FROM wa_accounts WHERE id = $1`, id,
+			).Scan(&ownerID, &label, &speed)
+			if ownerID == user.ID {
+				activeAccountID = id
+			}
+		}
+	}
+
+	if activeAccountID == 0 {
+		_ = s.DB.Pool.QueryRow(r.Context(),
+			`SELECT id, label, speed FROM wa_accounts 
+			 WHERE worker_id = $1 AND status = 'menunggu_scan' 
+			 ORDER BY id DESC LIMIT 1`, user.ID,
+		).Scan(&activeAccountID, &label, &speed)
+	}
+
+	if activeAccountID == 0 {
+		var countExisting int
+		_ = s.DB.Pool.QueryRow(r.Context(),
+			`SELECT COUNT(*) FROM wa_accounts WHERE worker_id = $1`, user.ID,
+		).Scan(&countExisting)
+		label = fmt.Sprintf("WhatsApp %d", countExisting+1)
+		speed = "medium"
+
+		dummyHash := hex.EncodeToString(sha256.New().Sum([]byte(fmt.Sprintf("%d-wa-%d", user.ID, timeNowUnix()))))
+		err := s.DB.Pool.QueryRow(r.Context(),
+			`INSERT INTO wa_accounts (worker_id, label, jid_hash, speed, status)
+			 VALUES ($1, $2, $3, $4, 'menunggu_scan')
+			 RETURNING id`,
+			user.ID, label, dummyHash, speed,
+		).Scan(&activeAccountID)
+		if err != nil {
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"ok":    false,
+				"error": "Gagal membuat akun: " + err.Error(),
+			})
+			return
+		}
+	}
+
+	var qrImageB64 string
+	if s.WaManager != nil && activeAccountID > 0 {
+		sess := s.WaManager.GetSession(activeAccountID)
+		if sess == nil {
+			_, _, _ = s.WaManager.Connect(r.Context(), activeAccountID, user.ID)
+		}
+		if code, ok := s.WaManager.GetQRCode(activeAccountID); ok {
+			if pngBytes, err := qrcode.Encode(code, qrcode.Medium, 256); err == nil {
+				qrImageB64 = base64.StdEncoding.EncodeToString(pngBytes)
+			}
+		}
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"ok":           true,
+		"account_id":   activeAccountID,
+		"label":        label,
+		"speed":        speed,
+		"qr_image_b64": qrImageB64,
+	})
+}
+
 func (s *Server) HandleWorkerAccountNewGET(w http.ResponseWriter, r *http.Request) {
 	user, ok := currentUser(r)
 	if !ok {
 		http.Redirect(w, r, "/login", http.StatusSeeOther)
 		return
 	}
+	_ = user
 
-	lang := user.Language
-	if lang == "" {
-		lang = "id"
-	}
-
-	// Check if viewing an existing connecting account
 	idStr := r.URL.Query().Get("id")
-	var activeAccountID int64
-	var label string
-	var qrImageB64 string
-	pairingMode := "qr"
-	pairingCode := ""
-
 	if idStr != "" {
-		id, err := strconv.ParseInt(idStr, 10, 64)
-		if err == nil {
-			// Verify ownership
-			var ownerID int64
-			var status string
-			err = s.DB.Pool.QueryRow(r.Context(),
-				`SELECT worker_id, label, status FROM wa_accounts WHERE id = $1`, id,
-			).Scan(&ownerID, &label, &status)
-
-			if err == nil && ownerID == user.ID {
-				activeAccountID = id
-				// Try get QR code from manager
-				if s.WaManager != nil {
-					if code, ok := s.WaManager.GetQRCode(id); ok {
-						if pngBytes, err := qrcode.Encode(code, qrcode.Medium, 256); err == nil {
-							qrImageB64 = base64.StdEncoding.EncodeToString(pngBytes)
-						}
-					}
-				}
-			}
-		}
+		http.Redirect(w, r, fmt.Sprintf("/worker/accounts?open=%s", urlQueryEscape(idStr)), http.StatusSeeOther)
+		return
 	}
-
-	data := struct {
-		Lang            string
-		Title           string
-		Theme           string
-		CSRFToken       string
-		ActiveAccountID int64
-		AccountLabel    string
-		PairingMode     string
-		PairingCode     string
-		QRImageB64      string
-		ResumeID        string
-		FormLabel       string
-		Error           string
-		T               func(string) string
-	}{
-		Lang:            lang,
-		Title:           i18n.T(lang, "wa.new_account_title"),
-		Theme:           getTheme(r),
-		CSRFToken:       getCSRF(r),
-		ActiveAccountID: activeAccountID,
-		AccountLabel:    label,
-		PairingMode:     pairingMode,
-		PairingCode:     pairingCode,
-		QRImageB64:      qrImageB64,
-		ResumeID:        r.URL.Query().Get("resume_id"),
-		FormLabel:       "",
-		Error:           r.URL.Query().Get("error"),
-		T: func(key string) string {
-			return i18n.T(lang, key)
-		},
-	}
-
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	s.Tmpl["worker_account_new.html"].ExecuteTemplate(w, "base.html", data)
+	http.Redirect(w, r, "/worker/accounts?open=add", http.StatusSeeOther)
 }
 
 func (s *Server) HandleWorkerAccountNewPOST(w http.ResponseWriter, r *http.Request) {
@@ -167,11 +185,9 @@ func (s *Server) HandleWorkerAccountNewPOST(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	idStr := strings.TrimSpace(r.FormValue("id"))
 	label := strings.TrimSpace(r.FormValue("label"))
 	speed := strings.TrimSpace(r.FormValue("speed"))
-	mode := strings.TrimSpace(r.FormValue("mode"))
-	phone := strings.TrimSpace(r.FormValue("phone"))
-	resumeIDStr := strings.TrimSpace(r.FormValue("resume_id"))
 
 	if label == "" {
 		label = "WhatsApp"
@@ -182,108 +198,158 @@ func (s *Server) HandleWorkerAccountNewPOST(w http.ResponseWriter, r *http.Reque
 		speed = "medium"
 	}
 
-	var accountID int64
-	if resumeIDStr != "" {
-		resID, err := strconv.ParseInt(resumeIDStr, 10, 64)
-		if err == nil {
-			var ownerID int64
-			err = s.DB.Pool.QueryRow(r.Context(),
-				`SELECT worker_id FROM wa_accounts WHERE id = $1`, resID,
-			).Scan(&ownerID)
-			if err == nil && ownerID == user.ID {
-				accountID = resID
-				_, _ = s.DB.Pool.Exec(r.Context(),
-					`UPDATE wa_accounts SET label = $1, speed = $2, status = 'menunggu_scan' WHERE id = $3`,
-					label, speed, accountID)
-			}
+	if idStr != "" {
+		if id, err := strconv.ParseInt(idStr, 10, 64); err == nil {
+			_, _ = s.DB.Pool.Exec(r.Context(),
+				`UPDATE wa_accounts SET label = $1, speed = $2 WHERE id = $3 AND worker_id = $4`,
+				label, speed, id, user.ID)
+			http.Redirect(w, r, "/worker/accounts", http.StatusSeeOther)
+			return
 		}
 	}
 
-	if accountID == 0 {
-		dummyHash := hex.EncodeToString(sha256.New().Sum([]byte(fmt.Sprintf("%d-%s-%d", user.ID, label, timeNowUnix()))))
-		err := s.DB.Pool.QueryRow(r.Context(),
-			`INSERT INTO wa_accounts (worker_id, label, jid_hash, speed, status)
-			 VALUES ($1, $2, $3, $4, 'menunggu_scan')
-			 RETURNING id`,
-			user.ID, label, dummyHash, speed,
-		).Scan(&accountID)
-		if err != nil {
-			http.Redirect(w, r, "/worker/accounts?error=Gagal+membuat+akun+di+database", http.StatusSeeOther)
+	http.Redirect(w, r, "/worker/accounts", http.StatusSeeOther)
+}
+
+func (s *Server) HandleWorkerAccountSettingsPOST(w http.ResponseWriter, r *http.Request) {
+	user, ok := currentUser(r)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	idStr := r.PathValue("id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		http.Error(w, "Invalid ID", http.StatusBadRequest)
+		return
+	}
+
+	label := strings.TrimSpace(r.FormValue("label"))
+	speed := strings.TrimSpace(r.FormValue("speed"))
+
+	if label == "" {
+		label = "WhatsApp"
+	}
+	switch speed {
+	case "fast", "medium", "slow", "over_slow":
+	default:
+		speed = "medium"
+	}
+
+	_, err = s.DB.Pool.Exec(r.Context(),
+		`UPDATE wa_accounts SET label = $1, speed = $2 WHERE id = $3 AND worker_id = $4`,
+		label, speed, id, user.ID)
+
+	w.Header().Set("Content-Type", "application/json")
+	if err != nil {
+		json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
+		return
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "label": label, "speed": speed})
+}
+
+func (s *Server) HandleWorkerAccountPairPOST(w http.ResponseWriter, r *http.Request) {
+	user, ok := currentUser(r)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	idStr := r.PathValue("id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		http.Error(w, "Invalid ID", http.StatusBadRequest)
+		return
+	}
+
+	phone := strings.TrimSpace(r.FormValue("phone"))
+	phone = strings.ReplaceAll(phone, "+", "")
+	phone = strings.ReplaceAll(phone, "-", "")
+	phone = strings.ReplaceAll(phone, " ", "")
+	if strings.HasPrefix(phone, "0") {
+		phone = "62" + phone[1:]
+	}
+
+	isJSON := strings.Contains(r.Header.Get("Accept"), "application/json") || r.FormValue("format") == "json"
+
+	if phone == "" {
+		if isJSON {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": "Nomor HP wajib diisi"})
 			return
 		}
+		http.Redirect(w, r, fmt.Sprintf("/worker/accounts?open=%d&error=%s", id, urlQueryEscape("Nomor HP wajib diisi")), http.StatusSeeOther)
+		return
 	}
 
 	if s.WaManager == nil {
-		http.Redirect(w, r, "/worker/accounts?error=WhatsApp+manager+tidak+tersedia", http.StatusSeeOther)
-		return
-	}
-
-	qrChan, pairFn, err := s.WaManager.Connect(r.Context(), accountID, user.ID)
-	if err != nil {
-		http.Redirect(w, r, fmt.Sprintf("/worker/accounts?error=%s", urlQueryEscape(err.Error())), http.StatusSeeOther)
-		return
-	}
-
-	lang := user.Language
-	if lang == "" {
-		lang = "id"
-	}
-
-	var qrImageB64 string
-	var pairingCode string
-
-	if mode == "pairing_code" && phone != "" {
-		code, err := pairFn(phone)
-		if err != nil {
-			http.Redirect(w, r, fmt.Sprintf("/worker/accounts?error=%s", urlQueryEscape(err.Error())), http.StatusSeeOther)
+		if isJSON {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": "WhatsApp manager tidak tersedia"})
 			return
 		}
-		pairingCode = code
-	} else {
-		// Wait brief moment for first QR code
-		select {
-		case code := <-qrChan:
-			if pngBytes, err := qrcode.Encode(code, qrcode.Medium, 256); err == nil {
-				qrImageB64 = base64.StdEncoding.EncodeToString(pngBytes)
+		http.Redirect(w, r, fmt.Sprintf("/worker/accounts?open=%d&error=%s", id, urlQueryEscape("WhatsApp manager tidak tersedia")), http.StatusSeeOther)
+		return
+	}
+
+	// Pastikan sesi aktif berjalan
+	sess := s.WaManager.GetSession(id)
+	if sess == nil {
+		_, _, err = s.WaManager.Connect(r.Context(), id, user.ID)
+		if err != nil {
+			if isJSON {
+				w.Header().Set("Content-Type", "application/json")
+				json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
+				return
 			}
-		default:
+			http.Redirect(w, r, fmt.Sprintf("/worker/accounts?open=%d&error=%s", id, urlQueryEscape(err.Error())), http.StatusSeeOther)
+			return
 		}
 	}
 
-	data := struct {
-		Lang            string
-		Title           string
-		Theme           string
-		CSRFToken       string
-		ActiveAccountID int64
-		AccountLabel    string
-		PairingMode     string
-		PairingCode     string
-		QRImageB64      string
-		ResumeID        string
-		FormLabel       string
-		Error           string
-		T               func(string) string
-	}{
-		Lang:            lang,
-		Title:           i18n.T(lang, "wa.new_account_title"),
-		Theme:           getTheme(r),
-		CSRFToken:       getCSRF(r),
-		ActiveAccountID: accountID,
-		AccountLabel:    label,
-		PairingMode:     mode,
-		PairingCode:     pairingCode,
-		QRImageB64:      qrImageB64,
-		ResumeID:        "",
-		FormLabel:       label,
-		Error:           "",
-		T: func(key string) string {
-			return i18n.T(lang, key)
-		},
+	code, err := s.WaManager.PairPhone(id, phone)
+	if err != nil {
+		if isJSON {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
+			return
+		}
+		http.Redirect(w, r, fmt.Sprintf("/worker/accounts?open=%d&error=%s", id, urlQueryEscape(err.Error())), http.StatusSeeOther)
+		return
 	}
 
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	s.Tmpl["worker_account_new.html"].ExecuteTemplate(w, "base.html", data)
+	if isJSON {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "pairing_code": code})
+		return
+	}
+
+	http.Redirect(w, r, fmt.Sprintf("/worker/accounts?open=%d&pairing_code=%s", id, urlQueryEscape(code)), http.StatusSeeOther)
+}
+
+func (s *Server) HandleWorkerAccountDelete(w http.ResponseWriter, r *http.Request) {
+	user, ok := currentUser(r)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	idStr := r.PathValue("id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		http.Error(w, "Invalid ID", http.StatusBadRequest)
+		return
+	}
+
+	if s.WaManager != nil {
+		_ = s.WaManager.Delete(r.Context(), id, user.ID)
+	} else {
+		_, _ = s.DB.Pool.Exec(r.Context(), `DELETE FROM wa_accounts WHERE id = $1 AND worker_id = $2`, id, user.ID)
+	}
+
+	http.Redirect(w, r, "/worker/accounts", http.StatusSeeOther)
 }
 
 func (s *Server) HandleWorkerAccountStatus(w http.ResponseWriter, r *http.Request) {

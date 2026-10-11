@@ -1,8 +1,9 @@
 {{define "content"}}
-<div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+<div style="max-width: 680px; margin: 0 auto; padding: 20px;">
     <div style="margin-bottom: 20px;">
         <a href="/worker/accounts" style="color: var(--color-link); text-decoration: none; font-size: 14px;">&larr; Kembali ke Daftar Akun</a>
-        <h2 style="margin-top: 10px;">{{ call .T "wa.new_account_title" }}</h2>
+        <h2 style="margin-top: 10px; margin-bottom: 4px;">{{ call .T "wa.new_account_title" }}</h2>
+        <p style="color: var(--color-muted); font-size: 14px; margin: 0;">Tautkan perangkat WhatsApp Anda secara langsung di bawah ini.</p>
     </div>
 
     {{if .Error}}
@@ -11,151 +12,186 @@
     </div>
     {{end}}
 
-    {{if .ActiveAccountID}}
-    <!-- TAMPILAN PROSES SAMBUNG & POLLING -->
-    <div style="background-color: var(--color-card); border: 1px solid var(--color-border); border-radius: 8px; padding: 24px; text-align: center;">
-        <h3 style="margin-top: 0; margin-bottom: 8px;">Menghubungkan Akun: {{.AccountLabel}}</h3>
-        <p id="status-badge" style="display: inline-block; padding: 4px 12px; border-radius: 12px; font-size: 13px; font-weight: bold; background-color: var(--color-surface-muted); color: var(--color-warning); border: 1px solid var(--color-warning); margin-bottom: 20px;">
-            {{ call .T "wa.waiting_scan" }}
-        </p>
-
-        {{if eq .PairingMode "pairing_code"}}
-        <div style="margin: 20px 0;">
-            <p style="color: var(--color-muted); font-size: 14px; margin-bottom: 12px;">
-                {{ call .T "wa.code_instruction" }}
-            </p>
-            <div id="code-box" style="font-size: 28px; font-family: monospace; font-weight: bold; letter-spacing: 4px; padding: 16px; background-color: var(--color-surface-muted); border: 2px dashed var(--color-primary); border-radius: 8px; display: inline-block;">
-                {{if .PairingCode}}{{.PairingCode}}{{else}}Memuat kode...{{end}}
+    <!-- KARTU UTAMA: QR CODE / PAIRING (LANGSUNG TAMPIL) -->
+    <div style="background-color: var(--color-card); border: 1px solid var(--color-border); border-radius: 8px; padding: 24px; text-align: center; margin-bottom: 24px; box-shadow: 0 2px 4px var(--color-surface-muted);">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 8px;">
+            <div style="text-align: left;">
+                <h3 style="margin: 0; font-size: 18px;">{{.AccountLabel}}</h3>
+                <span style="font-size: 12px; color: var(--color-muted); text-transform: uppercase;">Kecepatan: {{.AccountSpeed}}</span>
             </div>
-        </div>
-        {{else}}
-        <div style="margin: 20px 0;">
-            <p style="color: var(--color-muted); font-size: 14px; margin-bottom: 12px;">
-                {{ call .T "wa.qr_instruction" }}
+            <p id="status-badge" style="margin: 0; display: inline-block; padding: 4px 12px; border-radius: 12px; font-size: 13px; font-weight: bold; background-color: var(--color-surface-muted); color: var(--color-warning); border: 1px solid var(--color-warning);">
+                {{ call .T "wa.waiting_scan" }}
             </p>
-            <div id="qr-container" style="display: inline-block; padding: 16px; background-color: var(--color-card); border: 1px solid var(--color-border); border-radius: 8px;">
+        </div>
+
+        <!-- TAMPILAN QR (DEFAULT & UTAMA) -->
+        <div id="section-qr" style="{{if eq .PairingMode "pairing_code"}}display: none;{{else}}display: block;{{end}}">
+            <div style="text-align: left; background-color: var(--color-surface-muted); border-radius: 6px; padding: 14px 18px; margin-bottom: 20px; font-size: 14px; line-height: 1.6;">
+                <strong>Cara Memindai:</strong>
+                <ol style="margin: 8px 0 0 20px; padding: 0;">
+                    <li>Buka aplikasi WhatsApp di HP Anda.</li>
+                    <li>Ketuk <strong>Menu (⋮)</strong> di Android atau <strong>Pengaturan</strong> di iPhone.</li>
+                    <li>Pilih <strong>Perangkat Tertaut</strong>, lalu ketuk <strong>Tautkan Perangkat</strong>.</li>
+                    <li>Arahkan kamera HP Anda ke kode QR di bawah ini.</li>
+                </ol>
+            </div>
+
+            <div id="qr-container" style="display: inline-block; padding: 16px; background-color: var(--color-surface); border: 1px solid var(--color-border); border-radius: 8px;">
                 {{if .QRImageB64}}
-                <img id="qr-img" src="data:image/png;base64,{{.QRImageB64}}" alt="QR Code" style="width: 256px; height: 256px; display: block;" />
+                <img id="qr-img" src="data:image/png;base64,{{.QRImageB64}}" alt="QR Code WhatsApp" style="width: 256px; height: 256px; display: block;" />
                 {{else}}
-                <div id="qr-loading" style="width: 256px; height: 256px; display: flex; align-items: center; justify-content: center; color: var(--color-muted);">
-                    Menunggu QR...
+                <div id="qr-loading" style="width: 256px; height: 256px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; color: var(--color-muted);">
+                    <div style="font-size: 16px; font-weight: bold;">...</div>
+                    <span style="font-size: 13px;">Menyiapkan kode QR WhatsApp...</span>
                 </div>
                 {{end}}
             </div>
-        </div>
-        {{end}}
 
-        <p style="color: var(--color-muted); font-size: 12px; margin-top: 20px;">
-            Halaman ini otomatis mengecek status setiap 3 detik. Jangan tutup halaman ini sampai status terhubung.
+            <div style="margin-top: 16px;">
+                <button type="button" onclick="showPairingCodeSection()" style="background: none; border: none; color: var(--color-link); font-size: 14px; cursor: pointer; text-decoration: underline;">
+                    {{ call .T "wa.mode_code" }} (Tautkan dengan nomor HP) &rarr;
+                </button>
+            </div>
+        </div>
+
+        <!-- TAMPILAN PAIRING CODE (ALTERNATIF NOMOR TELEPON) -->
+        <div id="section-pairing-code" style="{{if eq .PairingMode "pairing_code"}}display: block;{{else}}display: none;{{end}}">
+            <div style="text-align: left; background-color: var(--color-surface-muted); border-radius: 6px; padding: 14px 18px; margin-bottom: 20px; font-size: 14px; line-height: 1.6;">
+                <strong>Tautkan dengan Nomor HP:</strong>
+                <ol style="margin: 8px 0 0 20px; padding: 0;">
+                    <li>Masukkan nomor WhatsApp Anda pada formulir di bawah.</li>
+                    <li>Buka WhatsApp di HP &gt; <strong>Perangkat Tertaut</strong> &gt; <strong>Tautkan dengan nomor telepon</strong>.</li>
+                    <li>Masukkan 8 digit kode yang muncul ke WhatsApp Anda.</li>
+                </ol>
+            </div>
+
+            {{if .PairingCode}}
+            <div style="margin: 20px 0;">
+                <p style="color: var(--color-muted); font-size: 13px; margin-bottom: 8px;">Masukkan kode 8 karakter ini di WhatsApp HP Anda:</p>
+                <div id="code-box" style="font-size: 32px; font-family: monospace; font-weight: bold; letter-spacing: 6px; padding: 16px 24px; background-color: var(--color-surface-muted); color: var(--color-primary); border: 2px dashed var(--color-primary); border-radius: 8px; display: inline-block;">
+                    {{.PairingCode}}
+                </div>
+            </div>
+            {{end}}
+
+            <form method="POST" action="/worker/accounts/{{.ActiveAccountID}}/pair" style="max-width: 380px; margin: 16px auto 0; text-align: left;">
+                <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+                <label for="phone" style="display: block; font-weight: bold; font-size: 13px; margin-bottom: 6px;">{{ call .T "wa.phone_label" }}</label>
+                <div style="display: flex; gap: 8px;">
+                    <input type="text" id="phone" name="phone" placeholder="08123456789 atau 62812..." required style="flex: 1; padding: 8px 12px; border: 1px solid var(--color-border); border-radius: 4px; background-color: var(--color-input-bg); color: var(--color-input-text); box-sizing: border-box; font-size: 14px;">
+                    <button type="submit" style="padding: 8px 16px; background-color: var(--color-primary); color: var(--color-on-primary); border: none; border-radius: 4px; font-weight: bold; font-size: 13px; cursor: pointer;">
+                        Dapatkan Kode
+                    </button>
+                </div>
+            </form>
+
+            <div style="margin-top: 16px;">
+                <button type="button" onclick="showQRSection()" style="background: none; border: none; color: var(--color-link); font-size: 14px; cursor: pointer; text-decoration: underline;">
+                    &larr; Kembali ke Pindai Kode QR
+                </button>
+            </div>
+        </div>
+
+        <p style="color: var(--color-muted); font-size: 12px; margin-top: 20px; margin-bottom: 0;">
+            Halaman ini otomatis mengecek status setiap 2 detik. Jangan tutup halaman ini sampai status terhubung.
         </p>
     </div>
 
-    <script>
-        const accountId = {{.ActiveAccountID}};
-        const pollInterval = setInterval(async () => {
-            try {
-                const res = await fetch('/worker/accounts/' + accountId + '/status');
-                if (!res.ok) return;
-                const data = await res.json();
-                
-                const badge = document.getElementById('status-badge');
-                if (badge) {
-                    badge.innerText = 'Status: ' + data.status;
-                }
-
-                if (data.status === 'terhubung') {
-                    clearInterval(pollInterval);
-                    if (badge) {
-                        badge.style.color = 'var(--color-success)';
-                        badge.style.borderColor = 'var(--color-success)';
-                        badge.innerText = 'Berhasil terhubung! Mengalihkan...';
-                    }
-                    setTimeout(() => {
-                        window.location.href = '/worker/accounts';
-                    }, 1200);
-                } else if (data.status === 'berhenti' || data.status === 'terputus') {
-                    clearInterval(pollInterval);
-                    if (badge) {
-                        badge.style.color = 'var(--color-danger)';
-                        badge.style.borderColor = 'var(--color-danger)';
-                        badge.innerText = 'Sesi berhenti/terputus: ' + (data.stop_reason || '');
-                    }
-                } else if (data.qr_image_b64) {
-                    const img = document.getElementById('qr-img');
-                    if (img) {
-                        img.src = 'data:image/png;base64,' + data.qr_image_b64;
-                    } else {
-                        const container = document.getElementById('qr-container');
-                        if (container) {
-                            container.innerHTML = '<img id="qr-img" src="data:image/png;base64,' + data.qr_image_b64 + '" alt="QR Code" style="width: 256px; height: 256px; display: block;" />';
-                        }
-                    }
-                }
-            } catch (err) {
-                console.error('Polling error:', err);
-            }
-        }, 3000);
-    </script>
-
-    {{else}}
-    <!-- FORM TAMBAH AKUN BARU -->
-    <div style="background-color: var(--color-card); border: 1px solid var(--color-border); border-radius: 8px; padding: 24px;">
+    <!-- KARTU PENGATURAN OPSIONAL AKUN -->
+    <div style="background-color: var(--color-card); border: 1px solid var(--color-border); border-radius: 8px; padding: 20px;">
+        <h4 style="margin-top: 0; margin-bottom: 12px;">Pengaturan Akun (Opsional)</h4>
         <form method="POST" action="/worker/accounts/new">
             <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-            {{if .ResumeID}}<input type="hidden" name="resume_id" value="{{.ResumeID}}">{{end}}
+            <input type="hidden" name="id" value="{{.ActiveAccountID}}">
 
-            <div style="margin-bottom: 16px;">
-                <label for="label" style="display: block; font-weight: bold; margin-bottom: 6px;">{{ call .T "wa.label" }}</label>
-                <input type="text" id="label" name="label" required placeholder="cth: WA Pribadi 1" value="{{.FormLabel}}" style="width: 100%; padding: 8px 12px; border: 1px solid var(--color-border); border-radius: 4px; background-color: var(--color-input-bg); color: var(--color-input-text); box-sizing: border-box;">
-            </div>
-
-            <div style="margin-bottom: 16px;">
-                <label for="speed" style="display: block; font-weight: bold; margin-bottom: 6px;">{{ call .T "wa.speed" }}</label>
-                <select id="speed" name="speed" style="width: 100%; padding: 8px 12px; border: 1px solid var(--color-border); border-radius: 4px; background-color: var(--color-input-bg); color: var(--color-input-text); box-sizing: border-box;">
-                    <option value="medium" selected>Medium (sedang)</option>
-                    <option value="slow">Slow (santai)</option>
-                    <option value="over_slow">Over Slow (sangat santai)</option>
-                    <option value="fast">Fast (cepat - risiko banned lebih tinggi)</option>
-                </select>
-            </div>
-
-            <div style="margin-bottom: 16px;">
-                <label style="display: block; font-weight: bold; margin-bottom: 6px;">{{ call .T "wa.pairing_mode" }}</label>
-                <div style="display: flex; gap: 20px; align-items: center; margin-top: 8px;">
-                    <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
-                        <input type="radio" name="mode" value="qr" checked onchange="togglePairingMode('qr')">
-                        {{ call .T "wa.mode_qr" }}
-                    </label>
-                    <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
-                        <input type="radio" name="mode" value="pairing_code" onchange="togglePairingMode('code')">
-                        {{ call .T "wa.mode_code" }}
-                    </label>
+            <div style="display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 16px;">
+                <div style="flex: 1; min-width: 200px;">
+                    <label for="label" style="display: block; font-weight: bold; font-size: 13px; margin-bottom: 6px;">{{ call .T "wa.label" }}</label>
+                    <input type="text" id="label" name="label" value="{{.AccountLabel}}" required style="width: 100%; padding: 8px 12px; border: 1px solid var(--color-border); border-radius: 4px; background-color: var(--color-input-bg); color: var(--color-input-text); box-sizing: border-box; font-size: 14px;">
+                </div>
+                <div style="flex: 1; min-width: 200px;">
+                    <label for="speed" style="display: block; font-weight: bold; font-size: 13px; margin-bottom: 6px;">{{ call .T "wa.speed" }}</label>
+                    <select id="speed" name="speed" style="width: 100%; padding: 8px 12px; border: 1px solid var(--color-border); border-radius: 4px; background-color: var(--color-input-bg); color: var(--color-input-text); box-sizing: border-box; font-size: 14px;">
+                        <option value="medium" {{if eq .AccountSpeed "medium"}}selected{{end}}>Medium (sedang)</option>
+                        <option value="slow" {{if eq .AccountSpeed "slow"}}selected{{end}}>Slow (santai)</option>
+                        <option value="over_slow" {{if eq .AccountSpeed "over_slow"}}selected{{end}}>Over Slow (sangat santai)</option>
+                        <option value="fast" {{if eq .AccountSpeed "fast"}}selected{{end}}>Fast (cepat)</option>
+                    </select>
                 </div>
             </div>
 
-            <div id="phone-container" style="display: none; margin-bottom: 20px;">
-                <label for="phone" style="display: block; font-weight: bold; margin-bottom: 6px;">{{ call .T "wa.phone_label" }}</label>
-                <input type="text" id="phone" name="phone" placeholder="628123456789" style="width: 100%; padding: 8px 12px; border: 1px solid var(--color-border); border-radius: 4px; background-color: var(--color-input-bg); color: var(--color-input-text); box-sizing: border-box;">
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px;">
+                <button type="submit" style="padding: 8px 16px; background-color: var(--color-primary); color: var(--color-on-primary); border: none; border-radius: 4px; font-weight: bold; font-size: 13px; cursor: pointer;">
+                    Simpan Pengaturan
+                </button>
             </div>
-
-            <button type="submit" style="width: 100%; padding: 10px; background-color: var(--color-primary); color: var(--color-on-primary); border: none; border-radius: 4px; font-weight: bold; font-size: 15px; cursor: pointer;">
-                {{ call .T "wa.btn_start" }}
-            </button>
         </form>
-    </div>
 
-    <script>
-        function togglePairingMode(mode) {
-            const phoneBox = document.getElementById('phone-container');
-            if (mode === 'code') {
-                phoneBox.style.display = 'block';
-                document.getElementById('phone').required = true;
-            } else {
-                phoneBox.style.display = 'none';
-                document.getElementById('phone').required = false;
-            }
-        }
-    </script>
-    {{end}}
+        <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--color-border); text-align: right;">
+            <form method="POST" action="/worker/accounts/{{.ActiveAccountID}}/delete" onsubmit="return confirm('Apakah Anda yakin ingin membatalkan dan menghapus akun ini?');" style="display: inline;">
+                <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+                <button type="submit" style="background: none; border: 1px solid var(--color-danger); color: var(--color-danger); padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px;">
+                    Batalkan &amp; Hapus Akun Ini
+                </button>
+            </form>
+        </div>
+    </div>
 </div>
+
+<script>
+    function showPairingCodeSection() {
+        document.getElementById('section-qr').style.display = 'none';
+        document.getElementById('section-pairing-code').style.display = 'block';
+    }
+
+    function showQRSection() {
+        document.getElementById('section-pairing-code').style.display = 'none';
+        document.getElementById('section-qr').style.display = 'block';
+    }
+
+    const accountId = {{.ActiveAccountID}};
+    const pollInterval = setInterval(async () => {
+        try {
+            const res = await fetch('/worker/accounts/' + accountId + '/status');
+            if (!res.ok) return;
+            const data = await res.json();
+            
+            const badge = document.getElementById('status-badge');
+            if (badge) {
+                badge.innerText = 'Status: ' + data.status;
+            }
+
+            if (data.status === 'terhubung') {
+                clearInterval(pollInterval);
+                if (badge) {
+                    badge.style.color = 'var(--color-success)';
+                    badge.style.borderColor = 'var(--color-success)';
+                    badge.innerText = 'Berhasil terhubung! Mengalihkan...';
+                }
+                setTimeout(() => {
+                    window.location.href = '/worker/accounts';
+                }, 1000);
+            } else if (data.status === 'berhenti' || data.status === 'terputus') {
+                clearInterval(pollInterval);
+                if (badge) {
+                    badge.style.color = 'var(--color-danger)';
+                    badge.style.borderColor = 'var(--color-danger)';
+                    badge.innerText = 'Sesi berhenti/terputus: ' + (data.stop_reason || '');
+                }
+            } else if (data.qr_image_b64) {
+                const img = document.getElementById('qr-img');
+                if (img) {
+                    img.src = 'data:image/png;base64,' + data.qr_image_b64;
+                } else {
+                    const container = document.getElementById('qr-container');
+                    if (container) {
+                        container.innerHTML = '<img id="qr-img" src="data:image/png;base64,' + data.qr_image_b64 + '" alt="QR Code WhatsApp" style="width: 256px; height: 256px; display: block;" />';
+                    }
+                }
+            }
+        } catch (err) {
+            console.error('Polling error:', err);
+        }
+    }, 2000);
+</script>
 {{end}}

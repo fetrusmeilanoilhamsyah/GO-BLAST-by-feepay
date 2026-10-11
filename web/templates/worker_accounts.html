@@ -1,90 +1,472 @@
 {{define "content"}}
-<div style="max-width: 1000px; margin: 0 auto; padding: 20px;">
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-        <h2>{{ call .T "wa.accounts_title" }}</h2>
-        <a href="/worker/accounts/new" class="btn btn-primary" style="padding: 8px 16px; background-color: var(--color-primary); color: var(--color-on-primary); text-decoration: none; border-radius: 4px; font-weight: bold;">+ {{ call .T "wa.add_account" }}</a>
-    </div>
+<div class="worker-layout">
+    {{ template "worker_nav" . }}
 
-    {{if .Error}}
-    <div style="background-color: var(--color-surface-muted); color: var(--color-danger); border-left: 4px solid var(--color-danger); padding: 12px 16px; margin-bottom: 20px; border-radius: 4px;">
-        {{.Error}}
-    </div>
-    {{end}}
+    <main class="worker-main">
+        <div class="worker-content">
+            <div class="worker-page-header">
+                <div>
+                    <h1 class="worker-page-title">{{ call .T "wa.accounts_title" }}</h1>
+                    <p style="margin: 4px 0 0 0; color: var(--color-muted); font-size: 14px;">Kelola akun WhatsApp yang terhubung untuk mengirim pesan.</p>
+                </div>
+                <button type="button" onclick="openAddAccountModal();" class="btn btn-primary" style="padding: 10px 18px; font-weight: bold; cursor: pointer;">+ {{ call .T "wa.add_account" }}</button>
+            </div>
 
-    <div style="background-color: var(--color-card); border-radius: 8px; overflow: hidden; border: 1px solid var(--color-border); box-shadow: 0 2px 4px var(--color-surface-muted);">
-        <table style="width: 100%; border-collapse: collapse; text-align: left;">
-            <thead style="background-color: var(--color-surface-muted);">
-                <tr>
-                    <th style="padding: 12px 16px; border-bottom: 1px solid var(--color-border);">ID</th>
-                    <th style="padding: 12px 16px; border-bottom: 1px solid var(--color-border);">{{ call .T "wa.label" }}</th>
-                    <th style="padding: 12px 16px; border-bottom: 1px solid var(--color-border);">{{ call .T "wa.speed" }}</th>
-                    <th style="padding: 12px 16px; border-bottom: 1px solid var(--color-border);">{{ call .T "wa.status" }}</th>
-                    <th style="padding: 12px 16px; border-bottom: 1px solid var(--color-border);">Aksi</th>
-                </tr>
-            </thead>
-            <tbody>
-                {{range .Accounts}}
-                <tr style="border-bottom: 1px solid var(--color-border);">
-                    <td style="padding: 12px 16px;">#{{.ID}}</td>
-                    <td style="padding: 12px 16px; font-weight: bold;">{{.Label}}</td>
-                    <td style="padding: 12px 16px;">
-                        <span style="font-size: 13px; text-transform: uppercase; color: var(--color-muted);">{{.Speed}}</span>
-                    </td>
-                    <td style="padding: 12px 16px;">
-                        {{if eq .Status "terhubung"}}
-                        <span style="display: inline-block; padding: 3px 8px; border-radius: 12px; font-size: 12px; font-weight: bold; background-color: var(--color-surface-muted); color: var(--color-success); border: 1px solid var(--color-success);">
-                            {{ call $.T "wa.connected" }}
-                        </span>
-                        {{else if eq .Status "menunggu_scan"}}
-                        <span style="display: inline-block; padding: 3px 8px; border-radius: 12px; font-size: 12px; font-weight: bold; background-color: var(--color-surface-muted); color: var(--color-warning); border: 1px solid var(--color-warning);">
-                            {{ call $.T "wa.waiting_scan" }}
-                        </span>
-                        {{else if eq .Status "antre"}}
-                        <span style="display: inline-block; padding: 3px 8px; border-radius: 12px; font-size: 12px; font-weight: bold; background-color: var(--color-surface-muted); color: var(--color-muted); border: 1px solid var(--color-border);">
-                            {{ call $.T "wa.queued" }}
-                        </span>
-                        {{else if eq .Status "terputus"}}
-                        <span style="display: inline-block; padding: 3px 8px; border-radius: 12px; font-size: 12px; font-weight: bold; background-color: var(--color-surface-muted); color: var(--color-danger); border: 1px solid var(--color-danger);">
-                            {{ call $.T "wa.disconnected" }}
-                        </span>
+            {{if .Error}}
+            <div style="background-color: var(--color-surface-muted); color: var(--color-danger); border-left: 4px solid var(--color-danger); padding: 12px 16px; margin-bottom: 20px; border-radius: 4px;">
+                {{.Error}}
+            </div>
+            {{end}}
+
+            <div class="responsive-table-container">
+                <table class="responsive-table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>{{ call .T "wa.label" }}</th>
+                            <th>{{ call .T "wa.speed" }}</th>
+                            <th>{{ call .T "wa.status" }}</th>
+                            <th>Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {{range .Accounts}}
+                        <tr>
+                            <td>#{{.ID}}</td>
+                            <td style="font-weight: bold;">{{.Label}}</td>
+                            <td>
+                                <span style="font-size: 13px; text-transform: uppercase; color: var(--color-muted);">{{.Speed}}</span>
+                            </td>
+                            <td>
+                                {{if eq .Status "terhubung"}}
+                                <span class="badge badge-success">{{ call $.T "wa.connected" }}</span>
+                                {{else if eq .Status "menunggu_scan"}}
+                                <span class="badge badge-warning">{{ call $.T "wa.waiting_scan" }}</span>
+                                {{else if eq .Status "antre"}}
+                                <span class="badge badge-muted">{{ call $.T "wa.queued" }}</span>
+                                {{else if eq .Status "terputus"}}
+                                <span class="badge badge-danger">{{ call $.T "wa.disconnected" }}</span>
+                                {{else}}
+                                <span class="badge badge-muted">{{ call $.T "wa.stopped" }}</span>
+                                {{end}}
+                            </td>
+                            <td>
+                                <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                                    {{if eq .Status "menunggu_scan"}}
+                                    <button type="button" onclick="openAddAccountModal({{.ID}})" style="background-color: var(--color-primary); color: var(--color-on-primary); border: none; padding: 4px 10px; border-radius: 4px; font-size: 12px; font-weight: bold; cursor: pointer;">
+                                        Pindai / Tautkan
+                                    </button>
+                                    <form method="POST" action="/worker/accounts/{{.ID}}/delete" onsubmit="return confirm('Hapus antrean akun ini?');" style="display: inline;">
+                                        <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                                        <button type="submit" style="background: none; border: 1px solid var(--color-danger); color: var(--color-danger); padding: 3px 8px; border-radius: 4px; cursor: pointer; font-size: 12px;">Hapus</button>
+                                    </form>
+                                    {{end}}
+
+                                    {{if eq .Status "terhubung"}}
+                                    <form method="POST" action="/worker/accounts/{{.ID}}/disconnect" style="display: inline;">
+                                        <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                                        <button type="submit" style="background: none; border: 1px solid var(--color-warning); color: var(--color-warning); padding: 3px 8px; border-radius: 4px; cursor: pointer; font-size: 12px;">{{ call $.T "wa.action_disconnect" }}</button>
+                                    </form>
+                                    <form method="POST" action="/worker/accounts/{{.ID}}/stop" style="display: inline;">
+                                        <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                                        <button type="submit" style="background: none; border: 1px solid var(--color-danger); color: var(--color-danger); padding: 3px 8px; border-radius: 4px; cursor: pointer; font-size: 12px;">{{ call $.T "wa.action_stop" }}</button>
+                                    </form>
+                                    {{end}}
+
+                                    {{if or (eq .Status "terputus") (eq .Status "berhenti")}}
+                                    <button type="button" onclick="openAddAccountModal({{.ID}})" style="background: none; border: 1px solid var(--color-primary); color: var(--color-primary); padding: 3px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; cursor: pointer;">
+                                        {{ call $.T "wa.action_connect" }}
+                                    </button>
+                                    <form method="POST" action="/worker/accounts/{{.ID}}/delete" onsubmit="return confirm('Hapus akun ini?');" style="display: inline;">
+                                        <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                                        <button type="submit" style="background: none; border: 1px solid var(--color-border); color: var(--color-muted); padding: 3px 8px; border-radius: 4px; cursor: pointer; font-size: 12px;">Hapus</button>
+                                    </form>
+                                    {{end}}
+                                </div>
+                            </td>
+                        </tr>
                         {{else}}
-                        <span style="display: inline-block; padding: 3px 8px; border-radius: 12px; font-size: 12px; font-weight: bold; background-color: var(--color-surface-muted); color: var(--color-muted); border: 1px solid var(--color-border);">
-                            {{ call $.T "wa.stopped" }}
-                        </span>
+                        <tr>
+                            <td colspan="5" style="padding: 30px; text-align: center; color: var(--color-muted);">
+                                {{ call .T "wa.empty_accounts" }}
+                            </td>
+                        </tr>
                         {{end}}
-                    </td>
-                    <td style="padding: 12px 16px;">
-                        <div style="display: flex; gap: 8px; align-items: center;">
-                            {{if eq .Status "menunggu_scan"}}
-                            <a href="/worker/accounts/new?id={{.ID}}" style="color: var(--color-primary); font-size: 13px; font-weight: bold; text-decoration: none;">Lihat QR / Pairing</a>
-                            {{end}}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+</div>
 
-                            {{if eq .Status "terhubung"}}
-                            <form method="POST" action="/worker/accounts/{{.ID}}/disconnect" style="display: inline;">
-                                <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
-                                <button type="submit" style="background: none; border: 1px solid var(--color-warning); color: var(--color-warning); padding: 3px 8px; border-radius: 4px; cursor: pointer; font-size: 12px;">{{ call $.T "wa.action_disconnect" }}</button>
-                            </form>
-                            <form method="POST" action="/worker/accounts/{{.ID}}/stop" style="display: inline;">
-                                <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
-                                <button type="submit" style="background: none; border: 1px solid var(--color-danger); color: var(--color-danger); padding: 3px 8px; border-radius: 4px; cursor: pointer; font-size: 12px;">{{ call $.T "wa.action_stop" }}</button>
-                            </form>
-                            {{end}}
+<!-- MODAL POP-UP TAMBAH / TAUTKAN AKUN -->
+<div id="modal-add-account" class="modal-overlay">
+    <div class="modal-dialog">
+        <!-- MODAL HEADER -->
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; border-bottom: 1px solid var(--color-border);">
+            <h3 id="modal-title" style="margin: 0; font-size: 18px;">Tautkan Akun WhatsApp</h3>
+            <button type="button" onclick="closeAddAccountModal()" style="background: none; border: none; font-size: 20px; line-height: 1; cursor: pointer; color: var(--color-muted); padding: 4px 8px;">&times;</button>
+        </div>
 
-                            {{if or (eq .Status "terputus") (eq .Status "berhenti")}}
-                            <a href="/worker/accounts/new?resume_id={{.ID}}" style="color: var(--color-primary); font-size: 13px; text-decoration: none;">{{ call $.T "wa.action_connect" }}</a>
-                            {{end}}
+        <!-- MODAL BODY -->
+        <div style="padding: 20px; overflow-y: auto; max-height: calc(85vh - 120px);">
+            <!-- ERROR BANNER (JIKA ADA) -->
+            <div id="modal-error" style="display: none; background-color: var(--color-surface-muted); color: var(--color-danger); border-left: 4px solid var(--color-danger); padding: 10px 14px; margin-bottom: 16px; border-radius: 4px; font-size: 13px;"></div>
+
+            <!-- STEP 1: PILIH METODE (QR ATAU PAIRING) -->
+            <div id="modal-step-link">
+                <!-- TAB SWITCHER -->
+                <div style="display: flex; gap: 8px; margin-bottom: 20px; background-color: var(--color-surface-muted); padding: 4px; border-radius: 6px;">
+                    <button type="button" id="tab-btn-qr" onclick="switchModalTab('qr')" style="flex: 1; padding: 8px 12px; border: none; border-radius: 4px; font-weight: bold; font-size: 13px; cursor: pointer; background-color: var(--color-primary); color: var(--color-on-primary);">
+                        Pindai QR
+                    </button>
+                    <button type="button" id="tab-btn-code" onclick="switchModalTab('code')" style="flex: 1; padding: 8px 12px; border: none; border-radius: 4px; font-weight: bold; font-size: 13px; cursor: pointer; background: none; color: var(--color-text);">
+                        Kode Pairing
+                    </button>
+                </div>
+
+                <!-- TAB 1: KODE QR -->
+                <div id="tab-content-qr" style="text-align: center;">
+                    <div style="text-align: left; background-color: var(--color-surface-muted); border-radius: 6px; padding: 12px 16px; margin-bottom: 16px; font-size: 13px; line-height: 1.5;">
+                        <ol style="margin: 0; padding-left: 18px;">
+                            <li>Buka WhatsApp di HP Anda.</li>
+                            <li>Ketuk Menu (titik tiga) atau Pengaturan &gt; <strong>Perangkat Tertaut</strong>.</li>
+                            <li>Ketuk <strong>Tautkan Perangkat</strong> dan arahkan kamera ke QR di bawah.</li>
+                        </ol>
+                    </div>
+
+                    <div style="display: inline-block; padding: 14px; background-color: var(--color-surface); border: 1px solid var(--color-border); border-radius: 8px;">
+                        <img id="modal-qr-img" src="" alt="Kode QR WhatsApp" style="width: 240px; height: 240px; display: none; margin: 0 auto;" />
+                        <div id="modal-qr-loading" style="width: 240px; height: 240px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: var(--color-muted);">
+                            <div style="font-size: 16px; font-weight: bold;">...</div>
+                            <span style="font-size: 13px;">Menyiapkan kode QR WhatsApp...</span>
                         </div>
-                    </td>
-                </tr>
-                {{else}}
-                <tr>
-                    <td colspan="5" style="padding: 30px; text-align: center; color: var(--color-muted);">
-                        {{ call .T "wa.empty_accounts" }}
-                    </td>
-                </tr>
-                {{end}}
-            </tbody>
-        </table>
+                    </div>
+
+                    <div style="margin-top: 14px;">
+                        <span id="modal-status-badge" style="display: inline-block; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: bold; background-color: var(--color-surface-muted); color: var(--color-warning); border: 1px solid var(--color-warning);">
+                            Menunggu dipindai...
+                        </span>
+                    </div>
+                </div>
+
+                <!-- TAB 2: KODE PAIRING -->
+                <div id="tab-content-code" style="display: none;">
+                    <div style="background-color: var(--color-surface-muted); border-radius: 6px; padding: 12px 16px; margin-bottom: 16px; font-size: 13px; line-height: 1.5;">
+                        <ol style="margin: 0; padding-left: 18px;">
+                            <li>Masukkan nomor WhatsApp di bawah ini.</li>
+                            <li>Buka WhatsApp di HP &gt; <strong>Perangkat Tertaut</strong> &gt; <strong>Tautkan dengan nomor telepon</strong>.</li>
+                            <li>Ketik 8 karakter kode yang muncul ke WhatsApp Anda.</li>
+                        </ol>
+                    </div>
+
+                    <!-- DISPLAY KODE PAIRING -->
+                    <div id="modal-code-display" style="display: none; text-align: center; margin: 16px 0;">
+                        <div style="font-size: 12px; color: var(--color-muted); margin-bottom: 6px;">Kode Pairing Anda:</div>
+                        <div id="modal-code-text" style="font-size: 28px; font-family: monospace; font-weight: bold; letter-spacing: 5px; padding: 12px 20px; background-color: var(--color-surface-muted); color: var(--color-primary); border: 2px dashed var(--color-primary); border-radius: 8px; display: inline-block;">
+                            ---- ----
+                        </div>
+                        <div style="margin-top: 10px;">
+                            <span id="modal-code-status-badge" style="display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: bold; background-color: var(--color-surface-muted); color: var(--color-warning); border: 1px solid var(--color-warning);">
+                                Menunggu konfirmasi di HP...
+                            </span>
+                        </div>
+                    </div>
+
+                    <form id="form-pair-phone" onsubmit="submitPairPhone(event)">
+                        <label for="modal-input-phone" style="display: block; font-weight: bold; font-size: 13px; margin-bottom: 6px;">Nomor WhatsApp</label>
+                        <div style="display: flex; gap: 8px;">
+                            <input type="text" id="modal-input-phone" placeholder="cth: 08123456789 atau 62812..." required style="flex: 1; padding: 8px 12px; border: 1px solid var(--color-border); border-radius: 4px; background-color: var(--color-input-bg); color: var(--color-input-text); box-sizing: border-box; font-size: 14px;">
+                            <button type="submit" id="btn-get-code" style="padding: 8px 16px; background-color: var(--color-primary); color: var(--color-on-primary); border: none; border-radius: 4px; font-weight: bold; font-size: 13px; cursor: pointer;">
+                                Dapatkan Kode
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- STEP 2: SETELAH TERHUBUNG (PILIH KECEPATAN & SIMPAN) -->
+            <div id="modal-step-settings" style="display: none;">
+                <div style="text-align: center; margin-bottom: 20px;">
+                    <div style="font-size: 16px; font-weight: bold; color: var(--color-success); margin-bottom: 6px;">Berhasil Terhubung!</div>
+                    <p style="font-size: 13px; color: var(--color-muted); margin: 0;">Akun WhatsApp Anda telah sukses ditautkan. Silakan atur nama dan kecepatan pengiriman:</p>
+                </div>
+
+                <form id="form-save-settings" onsubmit="submitSaveSettings(event)">
+                    <div style="margin-bottom: 16px;">
+                        <label for="modal-account-label" style="display: block; font-weight: bold; font-size: 13px; margin-bottom: 6px;">Nama / Label Akun</label>
+                        <input type="text" id="modal-account-label" value="WhatsApp" required style="width: 100%; padding: 8px 12px; border: 1px solid var(--color-border); border-radius: 4px; background-color: var(--color-input-bg); color: var(--color-input-text); box-sizing: border-box; font-size: 14px;">
+                    </div>
+
+                    <div style="margin-bottom: 20px;">
+                        <label for="modal-account-speed" style="display: block; font-weight: bold; font-size: 13px; margin-bottom: 6px;">Kecepatan Pengiriman</label>
+                        <select id="modal-account-speed" style="width: 100%; padding: 8px 12px; border: 1px solid var(--color-border); border-radius: 4px; background-color: var(--color-input-bg); color: var(--color-input-text); box-sizing: border-box; font-size: 14px;">
+                            <option value="medium" selected>Medium (sedang - bawaan)</option>
+                            <option value="slow">Slow (santai)</option>
+                            <option value="over_slow">Over Slow (sangat santai)</option>
+                            <option value="fast">Fast (cepat)</option>
+                        </select>
+                        <span style="display: block; font-size: 11px; color: var(--color-muted); margin-top: 4px;">Kecepatan dapat diubah kapan saja setelahnya.</span>
+                    </div>
+
+                    <button type="submit" id="btn-save-finish" style="width: 100%; padding: 10px; background-color: var(--color-primary); color: var(--color-on-primary); border: none; border-radius: 4px; font-weight: bold; font-size: 14px; cursor: pointer;">
+                        Simpan &amp; Mulai Bekerja
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <!-- MODAL FOOTER -->
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 20px; border-top: 1px solid var(--color-border); background-color: var(--color-surface-muted);">
+            <button type="button" onclick="closeAddAccountModal()" style="background: none; border: 1px solid var(--color-border); color: var(--color-muted); padding: 6px 14px; border-radius: 4px; cursor: pointer; font-size: 13px;">
+                Batal
+            </button>
+            <button type="button" id="btn-cancel-account" onclick="cancelPendingAccount()" style="display: none; background: none; border: none; color: var(--color-danger); font-size: 12px; cursor: pointer; text-decoration: underline;">
+                Hapus antrean akun ini
+            </button>
+        </div>
     </div>
 </div>
+
+<script>
+    const csrfToken = "{{.CSRFToken}}";
+    let activeModalAccountID = 0;
+    let pollInterval = null;
+    let currentModalTab = 'qr';
+
+    function openAddAccountModal(targetID) {
+        const modal = document.getElementById('modal-add-account');
+        modal.style.display = 'flex';
+        document.getElementById('modal-step-link').style.display = 'block';
+        document.getElementById('modal-step-settings').style.display = 'none';
+        document.getElementById('modal-error').style.display = 'none';
+        document.getElementById('btn-cancel-account').style.display = 'inline-block';
+        
+        switchModalTab('qr');
+        initAccountSession(targetID);
+    }
+
+    function closeAddAccountModal() {
+        const modal = document.getElementById('modal-add-account');
+        modal.style.display = 'none';
+        if (pollInterval) {
+            clearInterval(pollInterval);
+            pollInterval = null;
+        }
+    }
+
+    function switchModalTab(tab) {
+        currentModalTab = tab;
+        const tabQR = document.getElementById('tab-btn-qr');
+        const tabCode = document.getElementById('tab-btn-code');
+        const contentQR = document.getElementById('tab-content-qr');
+        const contentCode = document.getElementById('tab-content-code');
+
+        if (tab === 'qr') {
+            tabQR.style.backgroundColor = 'var(--color-primary)';
+            tabQR.style.color = 'var(--color-on-primary)';
+            tabCode.style.background = 'none';
+            tabCode.style.color = 'var(--color-text)';
+            contentQR.style.display = 'block';
+            contentCode.style.display = 'none';
+        } else {
+            tabCode.style.backgroundColor = 'var(--color-primary)';
+            tabCode.style.color = 'var(--color-on-primary)';
+            tabQR.style.background = 'none';
+            tabQR.style.color = 'var(--color-text)';
+            contentQR.style.display = 'none';
+            contentCode.style.display = 'block';
+        }
+    }
+
+    async function initAccountSession(targetID) {
+        const loadingBox = document.getElementById('modal-qr-loading');
+        const img = document.getElementById('modal-qr-img');
+        loadingBox.style.display = 'flex';
+        img.style.display = 'none';
+
+        try {
+            const url = targetID ? ('/worker/accounts/init?id=' + targetID) : '/worker/accounts/init';
+            const formData = new FormData();
+            formData.append('csrf_token', csrfToken);
+
+            const res = await fetch(url, {
+                method: 'POST',
+                body: formData,
+                headers: { 'Accept': 'application/json' }
+            });
+            const data = await res.json();
+
+            if (!data.ok) {
+                showModalError(data.error || 'Gagal memulai sesi WhatsApp');
+                return;
+            }
+
+            activeModalAccountID = data.account_id;
+            document.getElementById('modal-account-label').value = data.label || 'WhatsApp 1';
+            if (data.speed) {
+                document.getElementById('modal-account-speed').value = data.speed;
+            }
+
+            if (data.qr_image_b64) {
+                img.src = 'data:image/png;base64,' + data.qr_image_b64;
+                img.style.display = 'block';
+                loadingBox.style.display = 'none';
+            }
+
+            startStatusPolling();
+        } catch (err) {
+            showModalError('Koneksi ke server gagal: ' + err.message);
+        }
+    }
+
+    function startStatusPolling() {
+        if (pollInterval) clearInterval(pollInterval);
+        pollInterval = setInterval(async () => {
+            if (!activeModalAccountID) return;
+            try {
+                const res = await fetch('/worker/accounts/' + activeModalAccountID + '/status');
+                if (!res.ok) return;
+                const data = await res.json();
+
+                if (data.status === 'terhubung') {
+                    clearInterval(pollInterval);
+                    pollInterval = null;
+                    onAccountConnected();
+                } else if (data.status === 'berhenti' || data.status === 'terputus') {
+                    showModalError('Sesi terputus: ' + (data.stop_reason || ''));
+                } else if (data.qr_image_b64) {
+                    const img = document.getElementById('modal-qr-img');
+                    const loadingBox = document.getElementById('modal-qr-loading');
+                    img.src = 'data:image/png;base64,' + data.qr_image_b64;
+                    img.style.display = 'block';
+                    loadingBox.style.display = 'none';
+                }
+            } catch (e) {
+                console.error(e);
+            }
+        }, 2000);
+    }
+
+    function onAccountConnected() {
+        document.getElementById('modal-step-link').style.display = 'none';
+        document.getElementById('modal-step-settings').style.display = 'block';
+        document.getElementById('btn-cancel-account').style.display = 'none';
+    }
+
+    async function submitPairPhone(e) {
+        e.preventDefault();
+        if (!activeModalAccountID) return;
+
+        const phone = document.getElementById('modal-input-phone').value.trim();
+        const btn = document.getElementById('btn-get-code');
+        btn.disabled = true;
+        btn.innerText = 'Meminta...';
+        document.getElementById('modal-error').style.display = 'none';
+
+        try {
+            const formData = new FormData();
+            formData.append('csrf_token', csrfToken);
+            formData.append('phone', phone);
+            formData.append('format', 'json');
+
+            const res = await fetch('/worker/accounts/' + activeModalAccountID + '/pair', {
+                method: 'POST',
+                body: formData,
+                headers: { 'Accept': 'application/json' }
+            });
+            const data = await res.json();
+
+            btn.disabled = false;
+            btn.innerText = 'Dapatkan Kode';
+
+            if (!data.ok) {
+                showModalError(data.error || 'Gagal meminta kode pairing');
+                return;
+            }
+
+            document.getElementById('modal-code-display').style.display = 'block';
+            document.getElementById('modal-code-text').innerText = data.pairing_code;
+            startStatusPolling();
+        } catch (err) {
+            btn.disabled = false;
+            btn.innerText = 'Dapatkan Kode';
+            showModalError('Gagal mengirim permintaan: ' + err.message);
+        }
+    }
+
+    async function submitSaveSettings(e) {
+        e.preventDefault();
+        if (!activeModalAccountID) return;
+
+        const label = document.getElementById('modal-account-label').value.trim();
+        const speed = document.getElementById('modal-account-speed').value;
+        const btn = document.getElementById('btn-save-finish');
+        btn.disabled = true;
+        btn.innerText = 'Menyimpan...';
+
+        try {
+            const formData = new FormData();
+            formData.append('csrf_token', csrfToken);
+            formData.append('label', label);
+            formData.append('speed', speed);
+            formData.append('format', 'json');
+
+            const res = await fetch('/worker/accounts/' + activeModalAccountID + '/settings', {
+                method: 'POST',
+                body: formData,
+                headers: { 'Accept': 'application/json' }
+            });
+            const data = await res.json();
+
+            if (!data.ok) {
+                showModalError(data.error || 'Gagal menyimpan pengaturan');
+                btn.disabled = false;
+                btn.innerText = 'Simpan & Mulai Bekerja';
+                return;
+            }
+
+            // Sukses: reload halaman ke daftar akun
+            window.location.href = '/worker/accounts';
+        } catch (err) {
+            btn.disabled = false;
+            btn.innerText = 'Simpan & Mulai Bekerja';
+            showModalError('Gagal menyimpan: ' + err.message);
+        }
+    }
+
+    async function cancelPendingAccount() {
+        if (!activeModalAccountID) return;
+        if (!confirm('Batalkan dan hapus antrean akun ini?')) return;
+
+        try {
+            const formData = new FormData();
+            formData.append('csrf_token', csrfToken);
+            await fetch('/worker/accounts/' + activeModalAccountID + '/delete', {
+                method: 'POST',
+                body: formData
+            });
+            window.location.href = '/worker/accounts';
+        } catch (e) {
+            closeAddAccountModal();
+        }
+    }
+
+    function showModalError(msg) {
+        const el = document.getElementById('modal-error');
+        el.innerText = msg;
+        el.style.display = 'block';
+    }
+
+    // Auto open modal jika ada parameter URL ?open=add atau ?open=id
+    document.addEventListener('DOMContentLoaded', () => {
+        const params = new URLSearchParams(window.location.search);
+        const openParam = params.get('open');
+        if (openParam === 'add') {
+            openAddAccountModal();
+        } else if (openParam && !isNaN(parseInt(openParam))) {
+            openAddAccountModal(parseInt(openParam));
+        }
+    });
+</script>
 {{end}}

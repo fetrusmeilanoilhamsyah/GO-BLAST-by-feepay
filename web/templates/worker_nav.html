@@ -1,0 +1,21 @@
+{{define "worker_nav"}}
+<aside class="worker-sidebar">
+    <div class="worker-brand">
+        <a href="/worker" class="worker-brand-title">{{ call .T "app.name" }}</a>
+        <span class="worker-brand-sub">{{ call .T "app.tagline" }}</span>
+    </div>
+    <nav class="worker-nav">
+        <a href="/worker" class="worker-nav-item{{if eq .ActiveNav "home"}} active{{end}}">{{ call .T "nav.home" }}</a>
+        <a href="/worker/accounts" class="worker-nav-item{{if eq .ActiveNav "accounts"}} active{{end}}">{{ call .T "nav.accounts" }}</a>
+        <a href="/worker/withdrawals" class="worker-nav-item{{if eq .ActiveNav "withdrawals"}} active{{end}}">{{ call .T "nav.withdrawals" }}</a>
+        <a href="/worker/referral" class="worker-nav-item{{if eq .ActiveNav "referral"}} active{{end}}">{{ call .T "nav.referral" }}</a>
+    </nav>
+    <div class="worker-user-panel">
+        <div class="worker-user-name">{{ .User.DisplayName }}</div>
+        <div class="worker-user-role">{{ call .T "worker.role" }} ({{ .User.Currency }})</div>
+        <div style="margin-top: 10px;">
+            <a href="/logout" style="color: var(--color-danger); text-decoration: none; font-size: 13px; font-weight: bold;">{{ call .T "common.logout" }}</a>
+        </div>
+    </div>
+</aside>
+{{end}}
