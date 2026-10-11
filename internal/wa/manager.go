@@ -3,6 +3,7 @@ package wa
 import (
 	"context"
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,6 +15,7 @@ import (
 	"goblast/internal/db"
 
 	"github.com/jackc/pgx/v5"
+	qrcode "github.com/skip2/go-qrcode"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/store/sqlstore"
 	"go.mau.fi/whatsmeow/types"
@@ -42,18 +44,20 @@ type Session struct {
 	cancel    context.CancelFunc
 
 	// qrChan dikirim dari goroutine event ke caller Connect saat QR tersedia.
-	qrChan    chan string
-	lastQR    string
-	pairingFn func(phone string) (string, error)
+	qrChan         chan string
+	lastQR         string
+	lastQRImageB64 string
+	pairingFn      func(phone string) (string, error)
 }
 
 // Manager memegang peta sesi aktif (accountID → *Session).
 type Manager struct {
-	mu       sync.RWMutex
-	sessions map[int64]*Session // accountID → session
-	db       *db.DB
-	settings SettingsReader
-	cfg      *config.Config
+	mu        sync.RWMutex
+	sessions  map[int64]*Session // accountID → session
+	db        *db.DB
+	settings  SettingsReader
+	cfg       *config.Config
+	container *sqlstore.Container
 
 	// onDisconnect dipanggil engine saat sesi terputus.
 	onDisconnect func(accountID int64)
@@ -142,10 +146,10 @@ func (m *Manager) Connect(ctx context.Context, accountID, workerID int64) (<-cha
 		return nil, nil, fmt.Errorf("batas sesi aktif tercapai (%d dari %d), akun masuk antre", totalActive, maxActive)
 	}
 
-	// --- Buat whatsmeow store menggunakan DB proyek ---
-	container, err := sqlstore.New(ctx, "pgx", m.cfg.DatabaseURL, waLog.Noop)
+	// --- Gunakan whatsmeow store singleton container ---
+	container, err := m.getContainer(ctx)
 	if err != nil {
-		return nil, nil, fmt.Errorf("gagal membuat sqlstore: %w", err)
+		return nil, nil, fmt.Errorf("gagal menyiapkan store whatsmeow: %w", err)
 	}
 
 	// Untuk setiap sesi baru yang discan, buat deviceStore baru yang unauthenticated (ID == nil)
@@ -198,8 +202,14 @@ func (m *Manager) Connect(ctx context.Context, accountID, workerID int64) (<-cha
 		go func() {
 			for qr := range qrChan {
 				if qr.Event == "code" {
+					var b64 string
+					if pngBytes, err := qrcode.Encode(qr.Code, qrcode.Medium, 256); err == nil {
+						b64 = base64.StdEncoding.EncodeToString(pngBytes)
+					}
+
 					sess.mu.Lock()
 					sess.lastQR = qr.Code
+					sess.lastQRImageB64 = b64
 					sess.mu.Unlock()
 
 					select {
@@ -350,6 +360,23 @@ func (m *Manager) IsOnWhatsApp(ctx context.Context, accountID int64, phone strin
 
 // --- helper ---
 
+func (m *Manager) getContainer(ctx context.Context) (*sqlstore.Container, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.container != nil {
+		return m.container, nil
+	}
+	if m.cfg == nil || m.cfg.DatabaseURL == "" {
+		return nil, errors.New("database URL tidak tersedia")
+	}
+	container, err := sqlstore.New(ctx, "pgx", m.cfg.DatabaseURL, waLog.Noop)
+	if err != nil {
+		return nil, fmt.Errorf("gagal membuat sqlstore: %w", err)
+	}
+	m.container = container
+	return container, nil
+}
+
 func (m *Manager) removeSession(accountID int64) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -489,16 +516,59 @@ func (m *Manager) GetQRCode(accountID int64) (string, bool) {
 		return code, true
 	}
 
-	// Jika belum ada di lastQR, tunggu maksimal 2 detik untuk event pertama
+	// Jika belum ada di lastQR, tunggu maksimal 2.5 detik untuk event pertama
 	select {
 	case c := <-sess.qrChan:
 		sess.mu.Lock()
 		sess.lastQR = c
+		if sess.lastQRImageB64 == "" {
+			if pngBytes, err := qrcode.Encode(c, qrcode.Medium, 256); err == nil {
+				sess.lastQRImageB64 = base64.StdEncoding.EncodeToString(pngBytes)
+			}
+		}
 		sess.mu.Unlock()
 		return c, true
-	case <-time.After(2 * time.Second):
+	case <-time.After(2500 * time.Millisecond):
 		return "", false
 	}
+}
+
+// GetQRImageB64 mengambil base64 PNG dari QR code akun (diambil dari in-memory cache secepat kilat).
+func (m *Manager) GetQRImageB64(accountID int64) (string, bool) {
+	m.mu.RLock()
+	sess, ok := m.sessions[accountID]
+	m.mu.RUnlock()
+	if !ok || sess == nil {
+		return "", false
+	}
+
+	sess.mu.RLock()
+	img := sess.lastQRImageB64
+	sess.mu.RUnlock()
+	if img != "" {
+		return img, true
+	}
+
+	code, ok := m.GetQRCode(accountID)
+	if !ok || code == "" {
+		return "", false
+	}
+
+	sess.mu.RLock()
+	img = sess.lastQRImageB64
+	sess.mu.RUnlock()
+	if img != "" {
+		return img, true
+	}
+
+	if pngBytes, err := qrcode.Encode(code, qrcode.Medium, 256); err == nil {
+		b64 := base64.StdEncoding.EncodeToString(pngBytes)
+		sess.mu.Lock()
+		sess.lastQRImageB64 = b64
+		sess.mu.Unlock()
+		return b64, true
+	}
+	return "", false
 }
 
 // PairPhone meminta kode pairing 8 karakter untuk nomor HP tertentu pada akun yang sedang menunggu scan.

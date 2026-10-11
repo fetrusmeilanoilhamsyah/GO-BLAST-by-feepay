@@ -2,7 +2,6 @@ package web
 
 import (
 	"crypto/sha256"
-	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -12,8 +11,6 @@ import (
 	"strings"
 
 	"goblast/internal/i18n"
-
-	qrcode "github.com/skip2/go-qrcode"
 )
 
 type WAAccountView struct {
@@ -162,10 +159,8 @@ func (s *Server) HandleWorkerAccountInitPOST(w http.ResponseWriter, r *http.Requ
 		if sess == nil {
 			_, _, _ = s.WaManager.Connect(r.Context(), activeAccountID, user.ID)
 		}
-		if code, ok := s.WaManager.GetQRCode(activeAccountID); ok {
-			if pngBytes, err := qrcode.Encode(code, qrcode.Medium, 256); err == nil {
-				qrImageB64 = base64.StdEncoding.EncodeToString(pngBytes)
-			}
+		if b64, ok := s.WaManager.GetQRImageB64(activeAccountID); ok {
+			qrImageB64 = b64
 		}
 	}
 
@@ -418,10 +413,8 @@ func (s *Server) HandleWorkerAccountStatus(w http.ResponseWriter, r *http.Reques
 			status = liveStatus
 		}
 		if status == "menunggu_scan" {
-			if code, ok := s.WaManager.GetQRCode(id); ok {
-				if pngBytes, err := qrcode.Encode(code, qrcode.Medium, 256); err == nil {
-					qrImageB64 = base64.StdEncoding.EncodeToString(pngBytes)
-				}
+			if b64, ok := s.WaManager.GetQRImageB64(id); ok {
+				qrImageB64 = b64
 			}
 		}
 	}

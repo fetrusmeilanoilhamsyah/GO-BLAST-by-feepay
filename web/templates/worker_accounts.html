@@ -530,7 +530,7 @@
 
     function startStatusPolling() {
         if (pollInterval) clearInterval(pollInterval);
-        pollInterval = setInterval(async () => {
+        const pollFn = async () => {
             if (!activeModalAccountID) return;
             try {
                 const res = await fetch('/worker/accounts/' + activeModalAccountID + '/status');
@@ -553,7 +553,12 @@
             } catch (e) {
                 console.error(e);
             }
-        }, 2000);
+        };
+
+        // Jika gambar QR belum sempat terbawa di respon awal, langsung polling cepat 200ms
+        setTimeout(pollFn, 200);
+        // Interval dipercepat ke 800ms agar update QR dan deteksi scan langsung responsif secepat kilat
+        pollInterval = setInterval(pollFn, 800);
     }
 
     function onAccountConnected() {

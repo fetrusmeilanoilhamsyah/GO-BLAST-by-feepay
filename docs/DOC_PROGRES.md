@@ -182,6 +182,7 @@ Langkah uji sambung dan putus satu nomor cadangan:
 
 Terbaru di atas. Format: `tanggal: ringkasan satu baris` (Log Tahap 0 - 5 diarsipkan di [ARSIP_PROGRES.md](ARSIP_PROGRES.md)).
 
+- 2026-10-12: Optimasi kecepatan QR code WhatsApp: singleton sqlstore container (hindari overhead koneksi DB & migrasi berulang per sambung akun), background pre-encoding PNG base64 di memori Session, sertakan QR langsung di HTTP response POST /init, polling awal 200ms & interval 800ms. Seluruh tes lulus 100%.
 - 2026-10-12: Perbaikan siklus hidup akun WA: otomatis bersihkan antrean sementara saat user batal/tutup modal tambah akun agar tidak menggantung di DB, perbaiki fallback tombol aksi di tabel desktop & mobile agar akun terputus/berhenti selalu bisa disambung kembali atau dihapus dengan aman, unclaim campaign_numbers sebelum hapus akun, dan perbarui binary goblast.exe.
 - 2026-10-12: Tahap 10b selesai: Engine.IsRunning, WorkController interface di web, rute start & stop kerja pekerja, tampilan status kerja & stop_reason serta tombol di /worker/accounts dan /worker tiga bahasa, graceful shutdown (timeouts + SIGINT/SIGTERM 15s), tes lulus 100%. Status Tahap 10 diubah ke Sebagian menunggu uji manual pengiriman nyata oleh pemilik.
 - 2026-10-12: Koreksi Tahap 10 selesai: migrasi 0010, satuan rate_wage mikro-USDT, pengaman uang & pesan, thumbnail in-memory cache, batas harian Asia/Jakarta, dan 8 DB test baru lulus 100%.
