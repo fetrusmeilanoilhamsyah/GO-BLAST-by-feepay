@@ -103,30 +103,38 @@
                 <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
                 <div class="field" style="margin-bottom: 8px;">
                     <label for="drawer-wallet-method" style="font-size: 12px; font-weight: 600; color: var(--color-muted);">{{ call .T "worker.withdraw_method" }}</label>
-                    <select id="drawer-wallet-method" name="method" class="input" required style="padding: 8px 10px; font-size: 13px;">
-                        {{if eq .User.Currency "IDR"}}
+                    <select id="drawer-wallet-method" name="method" class="input" required style="padding: 8px 10px; font-size: 13px;" onchange="handleDrawerWalletMethodChange(this.value)">
                         <option value="seabank"{{if eq .User.PayoutMethod "seabank"}} selected{{end}}>SeaBank</option>
                         <option value="bca"{{if eq .User.PayoutMethod "bca"}} selected{{end}}>BCA</option>
                         <option value="dana"{{if eq .User.PayoutMethod "dana"}} selected{{end}}>DANA</option>
-                        {{else}}
-                        <option value="usdt_bep20" selected>USDT (BEP20)</option>
-                        {{end}}
+                        <option value="usdt_bep20"{{if eq .User.PayoutMethod "usdt_bep20"}} selected{{end}}>USDT (BEP20)</option>
                     </select>
                 </div>
                 <div class="field" style="margin-bottom: 8px;">
                     <label for="drawer-wallet-dest" style="font-size: 12px; font-weight: 600; color: var(--color-muted);">{{ call .T "worker.account_number" }}</label>
-                    <input type="text" id="drawer-wallet-dest" name="destination" class="input" required placeholder="{{if eq .User.Currency "IDR"}}Nomor Rekening / HP DANA{{else}}0x... (Alamat BEP20){{end}}" style="padding: 8px 10px; font-size: 13px;">
+                    <input type="text" id="drawer-wallet-dest" name="destination" class="input" required placeholder="Nomor Rekening / HP DANA / Alamat BEP20" style="padding: 8px 10px; font-size: 13px;">
                 </div>
-                {{if eq .User.Currency "IDR"}}
-                <div class="field" style="margin-bottom: 10px;">
+                <div class="field" id="drawer-wallet-name-group" style="margin-bottom: 10px;{{if eq .User.PayoutMethod "usdt_bep20"}} display: none;{{end}}">
                     <label for="drawer-wallet-name" style="font-size: 12px; font-weight: 600; color: var(--color-muted);">{{ call .T "worker.account_name" }}</label>
                     <input type="text" id="drawer-wallet-name" name="account_name" class="input" value="{{.User.PayoutAccountName}}" placeholder="Nama Pemilik Rekening" style="padding: 8px 10px; font-size: 13px;">
                 </div>
-                {{end}}
                 <button type="submit" class="btn btn-secondary" style="width: 100%; padding: 8px; font-size: 13px; font-weight: bold; cursor: pointer;">
                     {{if .User.PayoutMethod}}{{ call .T "worker.wallet_change_btn" }}{{else}}{{ call .T "worker.wallet_save_btn" }}{{end}}
                 </button>
             </form>
+            <script>
+            function handleDrawerWalletMethodChange(val) {
+                var nameGroup = document.getElementById('drawer-wallet-name-group');
+                var destInput = document.getElementById('drawer-wallet-dest');
+                if (val === 'usdt_bep20') {
+                    if (nameGroup) nameGroup.style.display = 'none';
+                    if (destInput) destInput.placeholder = '0x... (Alamat Wallet USDT BEP20)';
+                } else {
+                    if (nameGroup) nameGroup.style.display = 'block';
+                    if (destInput) destInput.placeholder = 'Nomor Rekening / Nomor HP DANA';
+                }
+            }
+            </script>
         </div>
 
         <!-- KEAMANAN: UBAH KATA SANDI -->

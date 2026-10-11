@@ -398,19 +398,11 @@ func (s *Server) HandleWorkerWalletPOST(w http.ResponseWriter, r *http.Request) 
 
 	switch method {
 	case "seabank", "bca", "dana":
-		if user.Currency == "USDT" {
-			http.Redirect(w, r, target+sep+"error=Mata+uang+akun+Anda+adalah+USDT.+Gunakan+metode+USDT.", http.StatusSeeOther)
-			return
-		}
 		if accountName == "" {
 			http.Redirect(w, r, target+sep+"error=Nama+pemilik+rekening+wajib+diisi", http.StatusSeeOther)
 			return
 		}
 	case "usdt_bep20":
-		if user.Currency == "IDR" {
-			http.Redirect(w, r, target+sep+"error=Mata+uang+akun+Anda+adalah+IDR.+Gunakan+metode+lokal+(SeaBank/BCA/DANA).", http.StatusSeeOther)
-			return
-		}
 		if accountName == "" {
 			accountName = "USDT BEP20"
 		}

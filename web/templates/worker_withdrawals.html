@@ -127,28 +127,23 @@
 
                     <div class="field" style="margin-bottom: 14px;">
                         <label for="payout-method" style="font-weight: 600; font-size: 14px;">{{ call .T "worker.withdraw_method" }}:</label>
-                        <select id="payout-method" name="method" class="input" required>
-                            {{if eq .User.Currency "IDR"}}
+                        <select id="payout-method" name="method" class="input" required onchange="handlePayoutMethodChange(this.value)">
                             <option value="seabank">SeaBank</option>
                             <option value="bca">BCA</option>
                             <option value="dana">DANA</option>
-                            {{else}}
                             <option value="usdt_bep20">USDT (BEP20)</option>
-                            {{end}}
                         </select>
                     </div>
 
                     <div class="field" style="margin-bottom: 14px;">
                         <label for="payout-dest" style="font-weight: 600; font-size: 14px;">{{ call .T "worker.account_number" }}:</label>
-                        <input type="text" id="payout-dest" name="destination" class="input" required placeholder="{{if eq .User.Currency "IDR"}}Nomor rekening / nomor HP DANA{{else}}0x... (Alamat BEP20){{end}}">
+                        <input type="text" id="payout-dest" name="destination" class="input" required placeholder="Nomor rekening / nomor HP DANA / Alamat BEP20">
                     </div>
 
-                    {{if eq .User.Currency "IDR"}}
-                    <div class="field" style="margin-bottom: 20px;">
+                    <div class="field" id="payout-name-group" style="margin-bottom: 20px;">
                         <label for="payout-name" style="font-weight: 600; font-size: 14px;">{{ call .T "worker.account_name" }}:</label>
-                        <input type="text" id="payout-name" name="account_name" class="input" required placeholder="Nama lengkap pemilik rekening atau akun">
+                        <input type="text" id="payout-name" name="account_name" class="input" placeholder="Nama lengkap pemilik rekening atau akun">
                     </div>
-                    {{end}}
 
                     <button type="submit" class="btn btn-primary" style="padding: 12px 24px; font-weight: bold; cursor: pointer;">
                         {{ call .T "worker.wallet_save_btn" }}
@@ -158,6 +153,18 @@
             {{end}}
 
             <script>
+            function handlePayoutMethodChange(val) {
+                var nameGroup = document.getElementById('payout-name-group');
+                var destInput = document.getElementById('payout-dest');
+                if (val === 'usdt_bep20') {
+                    if (nameGroup) nameGroup.style.display = 'none';
+                    if (destInput) destInput.placeholder = '0x... (Alamat Wallet USDT BEP20)';
+                } else {
+                    if (nameGroup) nameGroup.style.display = 'block';
+                    if (destInput) destInput.placeholder = 'Nomor Rekening / Nomor HP DANA';
+                }
+            }
+
             function setWithdrawAmount(amt, btn) {
                 var input = document.getElementById('withdraw-amount');
                 if (input) {
