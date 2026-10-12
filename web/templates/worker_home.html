@@ -22,71 +22,102 @@
         </div>
         {{end}}
 
-        <!-- STATISTIK UTAMA -->
-        <div class="stat-grid">
-            <!-- 1. Saldo Tersedia -->
-            <div class="stat-card">
+        <!-- SALDO TERSEDIA (HERO CARD) -->
+        <div class="stat-hero">
+            <div>
                 <div class="stat-label">{{ call .T "worker.available_balance" }}</div>
-                <div class="stat-value">
-                    Rp {{.BalanceIDRFormatted}}
+                <div style="display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;">
+                    <div style="font-size: 26px; font-weight: 800; color: var(--color-text); line-height: 1.1;">
+                        Rp {{.BalanceIDRFormatted}}
+                    </div>
+                    {{if gt .BalanceUSDT 0}}
+                    <div style="font-size: 15px; color: var(--color-muted); font-weight: 700;">
+                        + {{.BalanceUSDTFormatted}} USDT
+                    </div>
+                    {{end}}
                 </div>
-                {{if gt .BalanceUSDT 0}}
-                <div style="font-size: 14px; margin-top: 4px; color: var(--color-muted); font-weight: 600;">
-                    + {{.BalanceUSDTFormatted}} USDT
+                <div class="stat-sub">Saldo aktif siap ditarik ke rekening atau dompet Anda</div>
+            </div>
+            <div>
+                <a href="/worker/withdrawals" class="btn btn-primary" style="padding: 8px 18px; font-size: 13px; font-weight: 700; text-decoration: none; display: inline-flex; align-items: center; gap: 6px;">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 2v20"></path>
+                        <path d="m17 7-5-5-5 5"></path>
+                        <rect width="20" height="12" x="2" y="10" rx="2"></rect>
+                    </svg>
+                    <span>{{ call .T "worker.action_withdraw" }}</span>
+                </a>
+            </div>
+        </div>
+
+        <!-- GRID 6 KOTAK STATISTIK SIMETRIS (2 KOLOM X 3 BARIS DI MOBILE) -->
+        <div class="stat-grid">
+            <!-- A. Total Database Tersedia -->
+            <div class="stat-card">
+                <div>
+                    <div class="stat-label">{{ call .T "worker.available_numbers_aggregate" }}</div>
+                    <div class="stat-value" style="color: var(--color-primary);">
+                        {{.AvailableNumbersFormatted}}
+                    </div>
                 </div>
-                {{end}}
-                <div style="margin-top: 12px;">
-                    <a href="/worker/withdrawals" class="btn btn-primary" style="padding: 6px 14px; font-size: 13px; text-decoration: none; display: inline-block;">{{ call .T "worker.action_withdraw" }}</a>
+                <div class="stat-sub">Nomor antrean sistem</div>
+            </div>
+
+            <!-- B. Rate Upah Blast (Pengaturan Admin) -->
+            <div class="stat-card">
+                <div>
+                    <div class="stat-label">Rate Upah Blast</div>
+                    <div class="stat-value" style="color: var(--color-success);">
+                        Rp {{.RateWageIDRFormatted}}
+                    </div>
+                </div>
+                <div class="stat-sub">per pesan{{if .RateWageUSDTFormatted}} ({{.RateWageUSDTFormatted}} USDT){{end}}</div>
+            </div>
+
+            <!-- C. Total WA Terkoneksi -->
+            <div class="stat-card">
+                <div>
+                    <div class="stat-label">{{ call .T "worker.connected_accounts" }}</div>
+                    <div class="stat-value">
+                        {{.ConnectedAccounts}} <span style="font-size: 13px; color: var(--color-muted); font-weight: normal;">/ {{.TotalAccounts}}</span>
+                    </div>
+                </div>
+                <div class="stat-sub">
+                    <a href="/worker/accounts" style="color: var(--color-link); text-decoration: none; font-weight: 600;">{{.ConnectedAccounts}} aktif &gt;</a>
                 </div>
             </div>
 
-            <!-- 2. Pendapatan Hari Ini -->
+            <!-- D. Total Pendapatan Hari Ini -->
             <div class="stat-card">
-                <div class="stat-label">{{ call .T "worker.earned_today" }}</div>
-                <div class="stat-value">
-                    Rp {{.EarnedTodayIDRFormatted}}
+                <div>
+                    <div class="stat-label">{{ call .T "worker.earned_today" }}</div>
+                    <div class="stat-value">
+                        Rp {{.EarnedTodayIDRFormatted}}
+                    </div>
                 </div>
-                {{if gt .EarnedTodayUSDT 0}}
-                <div style="font-size: 14px; margin-top: 4px; color: var(--color-muted); font-weight: 600;">
-                    + {{.EarnedTodayUSDTFormatted}} USDT
-                </div>
-                {{end}}
-                <p style="margin: 6px 0 0 0; font-size: 12px; color: var(--color-muted);">{{ call .T "worker.earned_today_sub" }}</p>
+                <div class="stat-sub">{{if gt .EarnedTodayUSDT 0}}+{{.EarnedTodayUSDTFormatted}} USDT • {{end}}Hari ini</div>
             </div>
 
-            <!-- 3. Total WhatsApp Terkoneksi -->
+            <!-- E. Total Pendapatan Semuanya -->
             <div class="stat-card">
-                <div class="stat-label">{{ call .T "worker.connected_accounts" }}</div>
-                <div class="stat-value">
-                    {{.ConnectedAccounts}} <span style="font-size: 15px; color: var(--color-muted); font-weight: normal;">/ {{.TotalAccounts}}</span>
+                <div>
+                    <div class="stat-label">{{ call .T "worker.total_all_time" }}</div>
+                    <div class="stat-value">
+                        Rp {{.TotalEarnedIDRFormatted}}
+                    </div>
                 </div>
-                <p style="margin: 6px 0 0 0; font-size: 12px; color: var(--color-muted);">{{.ConnectedAccounts}} akun aktif menghasilkan upah</p>
-                <div style="margin-top: 10px;">
-                    <a href="/worker/accounts" style="font-size: 13px; font-weight: bold; color: var(--color-link); text-decoration: none;">Kelola Akun &gt;</a>
-                </div>
+                <div class="stat-sub">{{if gt .TotalEarnedUSDT 0}}+{{.TotalEarnedUSDTFormatted}} USDT • {{end}}Semua waktu</div>
             </div>
 
-            <!-- 4. Total Semua Pendapatan (All-Time) -->
+            <!-- F. Total Hasil Referral -->
             <div class="stat-card">
-                <div class="stat-label">{{ call .T "worker.total_all_time" }}</div>
-                <div class="stat-value">
-                    Rp {{.TotalEarnedIDRFormatted}}
+                <div>
+                    <div class="stat-label">Total Hasil Referral</div>
+                    <div class="stat-value">
+                        Rp {{.TotalReferralIDRFormatted}}
+                    </div>
                 </div>
-                {{if gt .TotalEarnedUSDT 0}}
-                <div style="font-size: 14px; margin-top: 4px; color: var(--color-muted); font-weight: 600;">
-                    + {{.TotalEarnedUSDTFormatted}} USDT
-                </div>
-                {{end}}
-                <p style="margin: 6px 0 0 0; font-size: 12px; color: var(--color-muted);">Dari {{.TotalSent}} pesan sukses terkirim</p>
-            </div>
-
-            <!-- 5. Total Database Tersedia (Agregat Sistem) -->
-            <div class="stat-card">
-                <div class="stat-label">{{ call .T "worker.available_numbers_aggregate" }}</div>
-                <div class="stat-value">
-                    {{.AvailableNumbersFormatted}} <span style="font-size: 14px; font-weight: normal; color: var(--color-muted);">Nomor</span>
-                </div>
-                <p style="margin: 6px 0 0 0; font-size: 12px; color: var(--color-muted);">{{ call .T "worker.available_numbers_sub" }}</p>
+                <div class="stat-sub">{{if gt .TotalReferralUSDT 0}}+{{.TotalReferralUSDTFormatted}} USDT • {{end}}Komisi tim</div>
             </div>
         </div>
 

@@ -239,6 +239,22 @@ func (s *Server) HandleWorkerHome(w http.ResponseWriter, r *http.Request) {
 		WHERE cn.status = 'tersedia' AND c.status = 'berjalan'
 	`).Scan(&availableNumbers)
 
+	// 9b. Rate upah dari settings DB
+	var rateWageIDR int64 = 25
+	var rateWageUSDT int64 = 2000
+	var rwJSON string
+	if err := s.DB.Pool.QueryRow(ctx, "SELECT value::text FROM settings WHERE key = 'rate_wage'").Scan(&rwJSON); err == nil {
+		var rw map[string]int64
+		if err := json.Unmarshal([]byte(rwJSON), &rw); err == nil {
+			if idr, ok := rw["IDR"]; ok {
+				rateWageIDR = idr
+			}
+			if usdt, ok := rw["USDT"]; ok {
+				rateWageUSDT = usdt
+			}
+		}
+	}
+
 	// 10. Daftar akun WhatsApp milik pekerja
 	var accounts []WorkerAccountSummaryView
 	accRows, err := s.DB.Pool.Query(ctx, `
@@ -326,19 +342,27 @@ func (s *Server) HandleWorkerHome(w http.ResponseWriter, r *http.Request) {
 		TotalEarnedUSDT          int64
 		TotalEarnedIDRFormatted  string
 		TotalEarnedUSDTFormatted string
-		TotalWage                int64
-		TotalReferral            int64
-		TotalWithdrawn           int64
-		TotalAccounts            int64
-		ConnectedAccounts        int64
-		TotalSent                int64
-		AvailableNumbers         int64
+		TotalWage                 int64
+		TotalReferral             int64
+		TotalWithdrawn            int64
+		RateWageIDR               int64
+		RateWageUSDT              int64
+		RateWageIDRFormatted      string
+		RateWageUSDTFormatted     string
+		TotalReferralIDR          int64
+		TotalReferralUSDT         int64
+		TotalReferralIDRFormatted string
+		TotalReferralUSDTFormatted string
+		TotalAccounts             int64
+		ConnectedAccounts         int64
+		TotalSent                 int64
+		AvailableNumbers          int64
 		AvailableNumbersFormatted string
-		Broadcast                *WorkerBroadcastView
-		Accounts                 []WorkerAccountSummaryView
-		Incomes                  []CurrencyIncomeView
-		Activities               []WorkerActivityView
-		T                        func(string) string
+		Broadcast                 *WorkerBroadcastView
+		Accounts                  []WorkerAccountSummaryView
+		Incomes                   []CurrencyIncomeView
+		Activities                []WorkerActivityView
+		T                         func(string) string
 	}{
 		CSLinks:                   s.csLinks(),
 		Lang:                      lang,
@@ -365,6 +389,14 @@ func (s *Server) HandleWorkerHome(w http.ResponseWriter, r *http.Request) {
 		TotalWage:                totalWageIDR,
 		TotalReferral:            totalReferralIDR,
 		TotalWithdrawn:           totalWithdrawnIDR,
+		RateWageIDR:               rateWageIDR,
+		RateWageUSDT:              rateWageUSDT,
+		RateWageIDRFormatted:      formatIDR(rateWageIDR),
+		RateWageUSDTFormatted:     formatUSDT(rateWageUSDT),
+		TotalReferralIDR:          totalReferralIDR,
+		TotalReferralUSDT:         totalReferralUSDT,
+		TotalReferralIDRFormatted: formatIDR(totalReferralIDR),
+		TotalReferralUSDTFormatted: formatUSDT(totalReferralUSDT),
 		TotalAccounts:            totalAccounts,
 		ConnectedAccounts:        connectedAccounts,
 		TotalSent:                totalSent,
