@@ -467,7 +467,7 @@
                 Butuh bantuan langsung dari staf kami? Hubungi layanan pelanggan resmi melalui saluran berikut:
             </div>
 
-            <a href="https://wa.me/" target="_blank" rel="noopener noreferrer" class="contact-card">
+            <a href="{{if .CSWhatsAppURL}}{{.CSWhatsAppURL}}{{else}}https://wa.me/{{end}}" target="_blank" rel="noopener noreferrer" class="contact-card">
                 <div>
                     <div style="font-weight: 700; font-size: 14px;">WhatsApp Customer Service</div>
                     <div style="font-size: 12px; color: var(--color-muted); margin-top: 2px;">Layanan chat bantuan dan kendala teknis</div>
@@ -478,7 +478,7 @@
                 </svg>
             </a>
 
-            <a href="https://t.me/feepay_cs" target="_blank" rel="noopener noreferrer" class="contact-card">
+            <a href="{{if .CSTelegramURL}}{{.CSTelegramURL}}{{else}}https://t.me/feepay_cs{{end}}" target="_blank" rel="noopener noreferrer" class="contact-card">
                 <div>
                     <div style="font-weight: 700; font-size: 14px;">Telegram Customer Service</div>
                     <div style="font-size: 12px; color: var(--color-muted); margin-top: 2px;">Dukungan pesan instan Telegram</div>
@@ -489,7 +489,7 @@
                 </svg>
             </a>
 
-            <a href="https://t.me/goblast_channel" target="_blank" rel="noopener noreferrer" class="contact-card">
+            <a href="{{if .ChannelTelegramURL}}{{.ChannelTelegramURL}}{{else}}https://t.me/goblast_channel{{end}}" target="_blank" rel="noopener noreferrer" class="contact-card">
                 <div>
                     <div style="font-weight: 700; font-size: 14px;">Official Telegram Channel</div>
                     <div style="font-size: 12px; color: var(--color-muted); margin-top: 2px;">Pembaruan kuota blast, rate, dan tips keamanan</div>
@@ -530,6 +530,14 @@
                     Kirim Laporan ke Admin
                 </button>
             </form>
+
+            <!-- RIWAYAT LAPORAN TIKET & BALASAN ADMIN -->
+            <div style="margin-top: 20px; border-top: 1px solid var(--color-border); padding-top: 14px;">
+                <div style="font-weight: 700; font-size: 13px; color: var(--color-text); margin-bottom: 8px;">Riwayat Laporan &amp; Balasan CS</div>
+                <div id="worker-ticket-list" style="max-height: 220px; overflow-y: auto; padding-right: 4px;">
+                    <div style="padding: 16px; text-align: center; color: var(--color-muted); font-size: 12px;">Memuat riwayat laporan...</div>
+                </div>
+            </div>
         </div>
     </div>
 </div>
@@ -569,6 +577,7 @@ function openHelpdeskModal() {
     var backdrop = document.getElementById('helpdesk-backdrop');
     if (modal) modal.classList.add('is-open');
     if (backdrop) backdrop.classList.add('is-open');
+    loadWorkerTickets();
 }
 
 function closeHelpdeskModal() {
@@ -594,6 +603,9 @@ function switchHelpTab(tabName) {
             pane.style.display = (t === tabName) ? 'block' : 'none';
         }
     });
+    if (tabName === 'ticket') {
+        loadWorkerTickets();
+    }
 }
 
 function toggleFaq(id) {
@@ -745,7 +757,48 @@ document.addEventListener('DOMContentLoaded', function() {
             updateNotifBadge(data.unread_count);
         })
         .catch(function() {});
+    loadWorkerTickets();
 });
+
+function loadWorkerTickets() {
+    var list = document.getElementById('worker-ticket-list');
+    if (!list) return;
+    fetch('/worker/api/tickets')
+        .then(function(r) { return r.json(); })
+        .then(function(tickets) {
+            if (!tickets || tickets.length === 0) {
+                list.innerHTML = '<div style="padding: 16px; text-align: center; color: var(--color-muted); font-size: 12px;">Belum ada riwayat laporan yang dikirim.</div>';
+                return;
+            }
+            list.innerHTML = tickets.map(function(t) {
+                var isResolved = t.status === 'resolved';
+                var badgeClass = isResolved ? 'badge-success' : 'badge-warning';
+                var badgeText = isResolved ? 'Selesai' : 'Menunggu';
+                var replyHtml = '';
+                if (t.reply_message) {
+                    replyHtml = '<div style="margin-top: 8px; padding: 8px 10px; border-radius: 6px; background-color: var(--color-surface-muted); border-left: 3px solid var(--color-success); font-size: 12px; line-height: 1.4;">' +
+                        '<div style="font-weight: 700; color: var(--color-success); font-size: 11px; margin-bottom: 2px;">Balasan Tim Admin:</div>' +
+                        '<div style="color: var(--color-text); white-space: pre-wrap;">' + escapeNotifHtml(t.reply_message) + '</div>' +
+                        (t.replied_at ? '<div style="font-size: 10px; color: var(--color-muted); margin-top: 4px;">Dibalas pada: ' + formatNotifDate(t.replied_at) + '</div>' : '') +
+                        '</div>';
+                }
+                return '<div style="padding: 10px 12px; margin-bottom: 8px; border-radius: 6px; border: 1px solid var(--color-border); background-color: var(--color-card);">' +
+                    '<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">' +
+                    '<span style="font-weight: 700; font-size: 12px; color: var(--color-text);">#' + t.id + ' • ' + escapeNotifHtml(t.category) + '</span>' +
+                    '<span class="badge ' + badgeClass + '" style="font-size: 10px;">' + badgeText + '</span>' +
+                    '</div>' +
+                    '<div style="font-size: 12px; color: var(--color-muted); line-height: 1.4; white-space: pre-wrap;">' + escapeNotifHtml(t.message) + '</div>' +
+                    '<div style="font-size: 10px; color: var(--color-muted); margin-top: 4px;">' + formatNotifDate(t.created_at) + '</div>' +
+                    replyHtml +
+                    '</div>';
+            }).join('');
+        })
+        .catch(function() {
+            if (list) {
+                list.innerHTML = '<div style="padding: 12px; text-align: center; color: var(--color-muted); font-size: 12px;">Gagal memuat riwayat.</div>';
+            }
+        });
+}
 
 function handleDrawerWalletMethodChange(val) {
     var nameGroup = document.getElementById('drawer-wallet-name-group');

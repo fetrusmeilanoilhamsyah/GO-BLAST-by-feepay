@@ -73,6 +73,9 @@ func main() {
 		os.Exit(1)
 	}
 	srv.EncryptionKey = cfg.EncryptionKey
+	srv.CSWhatsAppURL = cfg.CSWhatsAppURL
+	srv.CSTelegramURL = cfg.CSTelegramURL
+	srv.ChannelTelegramURL = cfg.ChannelTelegramURL
 
 	mux := http.NewServeMux()
 	srv.RegisterRoutes(mux)

@@ -66,6 +66,7 @@ func (s *Server) HandleWorkerAccounts(w http.ResponseWriter, r *http.Request) {
 	_ = s.DB.Pool.QueryRow(r.Context(), "SELECT COUNT(*) FROM wa_accounts WHERE worker_id = $1 AND status = 'terhubung'", user.ID).Scan(&connectedAccounts)
 
 	data := struct {
+		CSLinks
 		Lang              string
 		Title             string
 		Theme             string
@@ -78,6 +79,7 @@ func (s *Server) HandleWorkerAccounts(w http.ResponseWriter, r *http.Request) {
 		Error             string
 		T                 func(string) string
 	}{
+		CSLinks:           s.csLinks(),
 		Lang:              lang,
 		Title:             i18n.T(lang, "wa.accounts_title"),
 		Theme:             getTheme(r),

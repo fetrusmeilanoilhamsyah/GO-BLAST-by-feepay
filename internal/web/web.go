@@ -23,12 +23,15 @@ type WorkController interface {
 }
 
 type Server struct {
-	DB            *db.DB
-	Tmpl          map[string]*template.Template
-	Env           string
-	WaManager     *wa.Manager
-	EncryptionKey []byte
-	WorkCtrl      WorkController
+	DB                 *db.DB
+	Tmpl               map[string]*template.Template
+	Env                string
+	WaManager          *wa.Manager
+	EncryptionKey      []byte
+	WorkCtrl           WorkController
+	CSWhatsAppURL      string
+	CSTelegramURL      string
+	ChannelTelegramURL string
 }
 
 func NewServer(database *db.DB, env string, waMgr *wa.Manager, workCtrl WorkController) (*Server, error) {
@@ -99,11 +102,14 @@ func NewServer(database *db.DB, env string, waMgr *wa.Manager, workCtrl WorkCont
 	}
 
 	return &Server{
-		DB:        database,
-		Tmpl:      templates,
-		Env:       env,
-		WaManager: waMgr,
-		WorkCtrl:  workCtrl,
+		DB:                 database,
+		Tmpl:               templates,
+		Env:                env,
+		WaManager:          waMgr,
+		WorkCtrl:           workCtrl,
+		CSWhatsAppURL:      "https://wa.me/",
+		CSTelegramURL:      "https://t.me/feepay_cs",
+		ChannelTelegramURL: "https://t.me/goblast_channel",
 	}, nil
 }
 
@@ -183,6 +189,7 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.Handle("GET /worker/history", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerHistoryGET, "worker")))
 	mux.Handle("POST /worker/ticket", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerTicketPOST, "worker")))
 	mux.Handle("GET /worker/api/notifications", s.RequireRole(s.HandleWorkerNotificationsAPI, "worker"))
+	mux.Handle("GET /worker/api/tickets", s.RequireRole(s.HandleWorkerTicketsAPI, "worker"))
 	mux.Handle("POST /worker/notifications/read", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerNotificationsReadAllPOST, "worker")))
 	mux.Handle("POST /worker/notifications/{id}/read", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerNotificationReadOnePOST, "worker")))
 

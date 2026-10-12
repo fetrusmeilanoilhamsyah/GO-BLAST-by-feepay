@@ -1050,4 +1050,29 @@ func TestWorkerPanelFlows(t *testing.T) {
 			}
 		}
 	})
+
+	t.Run("CS and Telegram links from Server/Config are rendered in worker nav", func(t *testing.T) {
+		srv.CSWhatsAppURL = "https://wa.me/6281200000001"
+		srv.CSTelegramURL = "https://t.me/custom_cs"
+		srv.ChannelTelegramURL = "https://t.me/custom_channel"
+
+		req := httptest.NewRequest("GET", "/worker", nil)
+		req = withWorker(req)
+		rr := httptest.NewRecorder()
+
+		srv.HandleWorkerHome(rr, req)
+		if rr.Code != http.StatusOK {
+			t.Fatalf("Expected 200, got %d", rr.Code)
+		}
+		body := rr.Body.String()
+		if !strings.Contains(body, "https://wa.me/6281200000001") {
+			t.Errorf("Expected body to contain custom CS WhatsApp URL")
+		}
+		if !strings.Contains(body, "https://t.me/custom_cs") {
+			t.Errorf("Expected body to contain custom CS Telegram URL")
+		}
+		if !strings.Contains(body, "https://t.me/custom_channel") {
+			t.Errorf("Expected body to contain custom Channel Telegram URL")
+		}
+	})
 }

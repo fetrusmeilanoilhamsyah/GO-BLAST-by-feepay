@@ -9,11 +9,14 @@ import (
 )
 
 type Config struct {
-	AppEnv        string
-	AppAddr       string
-	DatabaseURL   string
-	SessionSecret string
-	EncryptionKey []byte
+	AppEnv             string
+	AppAddr            string
+	DatabaseURL        string
+	SessionSecret      string
+	EncryptionKey      []byte
+	CSWhatsAppURL      string
+	CSTelegramURL      string
+	ChannelTelegramURL string
 }
 
 func Load() (*Config, error) {
@@ -21,10 +24,13 @@ func Load() (*Config, error) {
 	_ = godotenv.Load()
 
 	cfg := &Config{
-		AppEnv:        os.Getenv("APP_ENV"),
-		AppAddr:       os.Getenv("APP_ADDR"),
-		DatabaseURL:   os.Getenv("DATABASE_URL"),
-		SessionSecret: os.Getenv("SESSION_SECRET"),
+		AppEnv:             os.Getenv("APP_ENV"),
+		AppAddr:            os.Getenv("APP_ADDR"),
+		DatabaseURL:        os.Getenv("DATABASE_URL"),
+		SessionSecret:      os.Getenv("SESSION_SECRET"),
+		CSWhatsAppURL:      os.Getenv("CS_WHATSAPP_URL"),
+		CSTelegramURL:      os.Getenv("CS_TELEGRAM_URL"),
+		ChannelTelegramURL: os.Getenv("CHANNEL_TELEGRAM_URL"),
 	}
 
 	if cfg.AppEnv == "" {
@@ -33,6 +39,18 @@ func Load() (*Config, error) {
 
 	if cfg.AppAddr == "" {
 		cfg.AppAddr = "127.0.0.1:8080"
+	}
+
+	if cfg.CSWhatsAppURL == "" {
+		cfg.CSWhatsAppURL = "https://wa.me/"
+	}
+
+	if cfg.CSTelegramURL == "" {
+		cfg.CSTelegramURL = "https://t.me/feepay_cs"
+	}
+
+	if cfg.ChannelTelegramURL == "" {
+		cfg.ChannelTelegramURL = "https://t.me/goblast_channel"
 	}
 
 	encKeyStr := os.Getenv("ENCRYPTION_KEY")

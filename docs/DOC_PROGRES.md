@@ -10,8 +10,8 @@ Nomor tahap mengacu ke tabel "Daftar Tahap" di bawah.
 ## Posisi sekarang
 
 - **Fase**: 1 (MVP)
-- **Terakhir dikerjakan**: Tahap D selesai (Panel Maintenance & Health Check sistem, detail pekerja admin & reset password sementara, serta pemindahan parameter mesin teknis ke backend/konstanta aman).
-- **Sedang dikerjakan**: Menunggu arahan pemilik proyek untuk pengujian alur gabungan (A sampai D).
+- **Terakhir dikerjakan**: Selesai perbaikan sistem notifikasi & kontak: balasan tiket admin masuk ke lonceng notifikasi & riwayat modal CS pekerja, auto-sync broadcast global ke lonceng pekerja saat dibuat/toggle/polling, dan konfigurasi tautan WhatsApp CS, Telegram CS, dan Telegram Channel dimuat via variabel lingkungan (`.env`).
+- **Sedang dikerjakan**: Menunggu arahan pemilik proyek untuk pengujian gabungan alur sistem.
 - **Blocker**: Tidak ada.
 
 
@@ -94,6 +94,9 @@ Terbaru di atas. Agen menambah baris di sini setiap ada keputusan baru, dari pem
 
 | Tanggal | Keputusan | Alasan | Oleh |
 |---|---|---|---|
+| 2026-10-13 | Balasan Tiket CS Admin (`reply_message`) Terintegrasi ke Notifikasi & Modal Bantuan Pekerja | Admin dapat menulis pesan balasan di `/admin/tickets` saat menyelesaikan laporan. Pesan balasan langsung tersimpan di `support_tickets` (`reply_message`, `replied_by`, `replied_at`) dan dikirimkan otomatis ke `notifications` pekerja (`kind = 'ticket_reply'`). Pekerja dapat memantau riwayat laporan dan membaca pesan balasan admin langsung dari modal bantuan CS (`GET /worker/api/tickets`) serta dari lonceng notifikasi | pemilik dan agen |
+| 2026-10-13 | Sinkronisasi Otomatis Broadcast Global ke Notifikasi Pekerja | Broadcast admin yang diaktifkan (`is_active = true`) maupun di-toggle aktif otomatis dikirimkan ke tabel `notifications` seluruh pekerja aktif via query batch atomik (`INSERT ... SELECT ... WHERE NOT EXISTS`). Selain itu, endpoint `GET /worker/api/notifications` menjalankan auto-sync untuk broadcast aktif sehingga pekerja baru maupun pekerja yang belum menerima broadcast langsung mendapatkan notifikasi di lonceng tanpa duplikasi | pemilik dan agen |
+| 2026-10-13 | Konfigurasi Tautan CS & Channel Resmi via Environment Variables (`.env`) | Tautan kontak WhatsApp CS (`CS_WHATSAPP_URL`), Telegram CS (`CS_TELEGRAM_URL`), dan Channel Telegram Resmi (`CHANNEL_TELEGRAM_URL`) dipindahkan dari hardcode template ke `internal/config/config.go` dengan fallback bawaan yang aman, dicatat di `.env.example`, dan diteruskan dinamis ke `worker_nav.html` | pemilik dan agen |
 | 2026-10-13 | Tahap D: Panel Maintenance & Diagnostik Sistem (`/admin/maintenance`, toggle `maintenance_mode`, redirect pekerja ke `/maintenance`), Detail Pekerja Admin & Reset Password sementara (`/admin/workers/{id}`, pemutusan sesi aktif), dan pemindahan parameter teknis internal (`max_attempts`, `max_consecutive_failures`, `claim_timeout_seconds`) dari UI form ke backend/konstanta aman | Menyederhanakan formulir pengaturan untuk admin non-teknis, menyediakan saklar darurat pemeliharaan sistem dengan pengalihan akses pekerja yang aman, dan memudahkan penanganan bantuan pekerja via inspeksi profil serta reset sandi | pemilik dan agen |
 | 2026-10-13 | Tahap B: Implementasi Konversi IDR→USDT via `POST /worker/convert` dengan formula `(amount_idr * 1000000) / rate_idr_to_usdt`, transaksi atomik dan lock `users` row (`FOR UPDATE`), insert ganda `ledger_entries` kind `koreksi` (-IDR dan +USDT mikro-USDT), audit log | Menjamin pencegahan race-condition konversi saldo secara bersamaan, presisi bilangan bulat tanpa pembulatan float, dan transparansi jejak finansial | pemilik dan agen |
 | 2026-10-13 | Tahap B: Penarikan Pintar Terpisah per Mata Uang (`usdt_bep20` memotong saldo USDT dan validasi via `parseUSDTInput`, metode lokal memotong saldo IDR), form penarikan menampilkan dual card IDR & USDT serta kalkulator konversi interaktif | Memastikan pekerja dengan metode USDT BEP20 menarik dari saldo USDT hasil konversi, sedangkan pekerja lokal menarik dari saldo rupiah tanpa kebingungan | pemilik dan agen |

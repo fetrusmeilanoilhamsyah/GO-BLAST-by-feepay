@@ -1196,8 +1196,12 @@ func TestAdminTicketsAndBroadcastsManagement(t *testing.T) {
 		t.Errorf("Expected tickets page to contain ticket message")
 	}
 
-	// 3. Admin resolves ticket
-	reqResolve := httptest.NewRequest("POST", fmt.Sprintf("/admin/tickets/%d/resolve", tID), nil)
+	// 3. Admin resolves ticket with reply message
+	rForm := url.Values{
+		"reply_message": {"Laporan Anda sudah kami selesaikan, mutasi berhasil diproses."},
+	}
+	reqResolve := httptest.NewRequest("POST", fmt.Sprintf("/admin/tickets/%d/resolve", tID), strings.NewReader(rForm.Encode()))
+	reqResolve.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	reqResolve.SetPathValue("id", strconv.FormatInt(tID, 10))
 	reqResolve = reqResolve.WithContext(ctxAdmin)
 	rrResolve := httptest.NewRecorder()
@@ -1206,10 +1210,59 @@ func TestAdminTicketsAndBroadcastsManagement(t *testing.T) {
 		t.Errorf("Expected 303 redirect after resolving ticket, got %d", rrResolve.Code)
 	}
 
-	var status string
-	_ = pool.QueryRow(context.Background(), "SELECT status FROM support_tickets WHERE id = $1", tID).Scan(&status)
+	var status, replyMsg string
+	_ = pool.QueryRow(context.Background(), "SELECT status, reply_message FROM support_tickets WHERE id = $1", tID).Scan(&status, &replyMsg)
 	if status != "resolved" {
 		t.Errorf("Expected ticket status 'resolved', got %s", status)
+	}
+	if replyMsg != "Laporan Anda sudah kami selesaikan, mutasi berhasil diproses." {
+		t.Errorf("Expected reply_message to match, got %q", replyMsg)
+	}
+
+	// Verify notification was created for worker
+	var notifTitle, notifMsg, notifKind string
+	err = pool.QueryRow(context.Background(), `
+		SELECT title, message, kind
+		FROM notifications
+		WHERE user_id = $1 AND ref_id = $2
+		ORDER BY id DESC LIMIT 1
+	`, workerID, tID).Scan(&notifTitle, &notifMsg, &notifKind)
+	if err != nil {
+		t.Fatalf("Expected notification for worker after ticket reply: %v", err)
+	}
+	if notifKind != "ticket_reply" || !strings.Contains(notifMsg, "mutasi berhasil diproses") {
+		t.Errorf("Expected ticket_reply notification with custom reply message, got kind=%s msg=%s", notifKind, notifMsg)
+	}
+
+	// Verify worker can retrieve ticket via GET /worker/api/tickets
+	ctxWorker := context.WithValue(context.Background(), userContextKey, UserSession{ID: workerID, Role: "worker", Language: "id"})
+	reqWorkerTickets := httptest.NewRequest("GET", "/worker/api/tickets", nil).WithContext(ctxWorker)
+	rrWorkerTickets := httptest.NewRecorder()
+	srv.HandleWorkerTicketsAPI(rrWorkerTickets, reqWorkerTickets)
+	if rrWorkerTickets.Code != http.StatusOK {
+		t.Fatalf("Expected 200 OK from GET /worker/api/tickets, got %d", rrWorkerTickets.Code)
+	}
+	var ticketList []WorkerTicketItem
+	if err := json.Unmarshal(rrWorkerTickets.Body.Bytes(), &ticketList); err != nil {
+		t.Fatalf("Failed to parse tickets JSON: %v", err)
+	}
+	if len(ticketList) == 0 || ticketList[0].ReplyMessage != "Laporan Anda sudah kami selesaikan, mutasi berhasil diproses." {
+		t.Errorf("Expected worker ticket list to include admin reply message")
+	}
+
+	// Verify worker can retrieve notifications via GET /worker/api/notifications
+	reqWorkerNotifs := httptest.NewRequest("GET", "/worker/api/notifications", nil).WithContext(ctxWorker)
+	rrWorkerNotifs := httptest.NewRecorder()
+	srv.HandleWorkerNotificationsAPI(rrWorkerNotifs, reqWorkerNotifs)
+	if rrWorkerNotifs.Code != http.StatusOK {
+		t.Fatalf("Expected 200 OK from GET /worker/api/notifications, got %d", rrWorkerNotifs.Code)
+	}
+	var notifResp WorkerNotificationsResponse
+	if err := json.Unmarshal(rrWorkerNotifs.Body.Bytes(), &notifResp); err != nil {
+		t.Fatalf("Failed to parse notifications JSON: %v", err)
+	}
+	if notifResp.UnreadCount < 1 {
+		t.Errorf("Expected unread_count >= 1, got %d", notifResp.UnreadCount)
 	}
 
 	// 4. Admin creates a broadcast
@@ -1250,6 +1303,34 @@ func TestAdminTicketsAndBroadcastsManagement(t *testing.T) {
 	_ = pool.QueryRow(context.Background(), "SELECT is_active FROM broadcasts WHERE id = $1", bID).Scan(&bActive)
 	if bActive {
 		t.Errorf("Expected broadcast to be inactive after toggle")
+	}
+
+	// Admin toggles broadcast ON again -> should insert/sync notification for worker
+	rrBToggle2 := httptest.NewRecorder()
+	srv.HandleAdminBroadcastTogglePOST(rrBToggle2, reqBToggle)
+	if rrBToggle2.Code != http.StatusSeeOther {
+		t.Errorf("Expected 303 after toggling broadcast on, got %d", rrBToggle2.Code)
+	}
+	_ = pool.QueryRow(context.Background(), "SELECT is_active FROM broadcasts WHERE id = $1", bID).Scan(&bActive)
+	if !bActive {
+		t.Errorf("Expected broadcast to be active after second toggle")
+	}
+
+	// Verify worker notifications includes broadcast
+	reqWorkerNotifs2 := httptest.NewRequest("GET", "/worker/api/notifications", nil).WithContext(ctxWorker)
+	rrWorkerNotifs2 := httptest.NewRecorder()
+	srv.HandleWorkerNotificationsAPI(rrWorkerNotifs2, reqWorkerNotifs2)
+	var notifResp2 WorkerNotificationsResponse
+	_ = json.Unmarshal(rrWorkerNotifs2.Body.Bytes(), &notifResp2)
+	foundBroadcast := false
+	for _, n := range notifResp2.Notifications {
+		if n.Kind == "broadcast" && n.Title == "Maintenance Pengumuman" {
+			foundBroadcast = true
+			break
+		}
+	}
+	if !foundBroadcast {
+		t.Errorf("Expected worker notifications to contain broadcast after toggle/sync")
 	}
 
 	// 6. Admin deletes broadcast

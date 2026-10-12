@@ -66,6 +66,32 @@ type WorkerBroadcastView struct {
 	CreatedAt string
 }
 
+type CSLinks struct {
+	CSWhatsAppURL      string
+	CSTelegramURL      string
+	ChannelTelegramURL string
+}
+
+func (s *Server) csLinks() CSLinks {
+	waURL := s.CSWhatsAppURL
+	if waURL == "" {
+		waURL = "https://wa.me/"
+	}
+	tgCS := s.CSTelegramURL
+	if tgCS == "" {
+		tgCS = "https://t.me/feepay_cs"
+	}
+	tgCh := s.ChannelTelegramURL
+	if tgCh == "" {
+		tgCh = "https://t.me/goblast_channel"
+	}
+	return CSLinks{
+		CSWhatsAppURL:      waURL,
+		CSTelegramURL:      tgCS,
+		ChannelTelegramURL: tgCh,
+	}
+}
+
 func (s *Server) HandleWorkerHome(w http.ResponseWriter, r *http.Request) {
 	user, ok := currentUser(r)
 	if !ok {
@@ -215,6 +241,7 @@ func (s *Server) HandleWorkerHome(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := struct {
+		CSLinks
 		Lang              string
 		Title             string
 		Theme             string
@@ -237,6 +264,7 @@ func (s *Server) HandleWorkerHome(w http.ResponseWriter, r *http.Request) {
 		Activities        []WorkerActivityView
 		T                 func(string) string
 	}{
+		CSLinks:           s.csLinks(),
 		Lang:              lang,
 		Title:             i18n.T(lang, "worker.home_title"),
 		Theme:             getTheme(r),
@@ -326,6 +354,7 @@ func (s *Server) HandleWorkerHistoryGET(w http.ResponseWriter, r *http.Request) 
 	}
 
 	data := struct {
+		CSLinks
 		Lang         string
 		Title        string
 		Theme        string
@@ -339,6 +368,7 @@ func (s *Server) HandleWorkerHistoryGET(w http.ResponseWriter, r *http.Request) 
 		HasMore      bool
 		T            func(string) string
 	}{
+		CSLinks:      s.csLinks(),
 		Lang:         lang,
 		Title:        i18n.T(lang, "nav.history"),
 		Theme:        getTheme(r),
@@ -454,6 +484,7 @@ func (s *Server) HandleWorkerWithdrawalsGET(w http.ResponseWriter, r *http.Reque
 	}
 
 	data := struct {
+		CSLinks
 		Lang                 string
 		Title                string
 		Theme                string
@@ -472,6 +503,7 @@ func (s *Server) HandleWorkerWithdrawalsGET(w http.ResponseWriter, r *http.Reque
 		Success              string
 		T                    func(string) string
 	}{
+		CSLinks:              s.csLinks(),
 		Lang:                 lang,
 		Title:                i18n.T(lang, "nav.withdrawals"),
 		Theme:                getTheme(r),
@@ -843,6 +875,7 @@ func (s *Server) HandleWorkerReferralGET(w http.ResponseWriter, r *http.Request)
 	}
 
 	data := struct {
+		CSLinks
 		Lang         string
 		Title        string
 		Theme        string
@@ -856,6 +889,7 @@ func (s *Server) HandleWorkerReferralGET(w http.ResponseWriter, r *http.Request)
 		BonusList    []WorkerActivityView
 		T            func(string) string
 	}{
+		CSLinks:      s.csLinks(),
 		Lang:         lang,
 		Title:        i18n.T(lang, "nav.referral"),
 		Theme:        getTheme(r),
@@ -1012,6 +1046,52 @@ func (s *Server) HandleWorkerTicketPOST(w http.ResponseWriter, r *http.Request) 
 	http.Redirect(w, r, target+sep+"success=Laporan+berhasil+dikirim+ke+tim+CS", http.StatusSeeOther)
 }
 
+// --- Worker Support Tickets API ---
+
+type WorkerTicketItem struct {
+	ID           int64      `json:"id"`
+	Category     string     `json:"category"`
+	Message      string     `json:"message"`
+	Status       string     `json:"status"`
+	ReplyMessage string     `json:"reply_message"`
+	CreatedAt    time.Time  `json:"created_at"`
+	RepliedAt    *time.Time `json:"replied_at"`
+}
+
+func (s *Server) HandleWorkerTicketsAPI(w http.ResponseWriter, r *http.Request) {
+	user, ok := currentUser(r)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	ctx := r.Context()
+	rows, err := s.DB.Pool.Query(ctx, `
+		SELECT id, category, message, status, COALESCE(reply_message, ''), created_at, replied_at
+		FROM support_tickets
+		WHERE user_id = $1
+		ORDER BY id DESC
+		LIMIT 20
+	`, user.ID)
+
+	var tickets []WorkerTicketItem
+	if err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var t WorkerTicketItem
+			if err := rows.Scan(&t.ID, &t.Category, &t.Message, &t.Status, &t.ReplyMessage, &t.CreatedAt, &t.RepliedAt); err == nil {
+				tickets = append(tickets, t)
+			}
+		}
+	}
+	if tickets == nil {
+		tickets = []WorkerTicketItem{}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(tickets)
+}
+
 // --- Worker Notifications Handlers ---
 
 type WorkerNotificationItem struct {
@@ -1037,6 +1117,18 @@ func (s *Server) HandleWorkerNotificationsAPI(w http.ResponseWriter, r *http.Req
 	}
 
 	ctx := r.Context()
+
+	// 1. Auto-sync broadcast aktif ke notifikasi pekerja jika belum tercatat
+	_, _ = s.DB.Pool.Exec(ctx, `
+		INSERT INTO notifications (user_id, title, message, kind, ref_id)
+		SELECT $1, b.title, b.message, 'broadcast', b.id
+		FROM broadcasts b
+		WHERE b.is_active = true
+		  AND NOT EXISTS (
+		      SELECT 1 FROM notifications n
+		      WHERE n.user_id = $1 AND n.kind = 'broadcast' AND n.ref_id = b.id
+		  )
+	`, user.ID)
 
 	var unreadCount int
 	_ = s.DB.Pool.QueryRow(ctx, "SELECT COUNT(*) FROM notifications WHERE user_id = $1 AND read_at IS NULL", user.ID).Scan(&unreadCount)

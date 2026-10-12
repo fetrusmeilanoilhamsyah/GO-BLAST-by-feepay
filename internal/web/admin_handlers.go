@@ -1383,16 +1383,18 @@ func (s *Server) HandleAdminWorkerEnablePOST(w http.ResponseWriter, r *http.Requ
 // --- Support Tickets & Broadcasts Management ---
 
 type AdminSupportTicketRow struct {
-	ID         int64
-	UserID     int64
-	Username   string
-	Email      string
-	Category   string
-	Message    string
-	Status     string
-	AdminNotes string
-	CreatedAt  string
-	ResolvedAt string
+	ID           int64
+	UserID       int64
+	Username     string
+	Email        string
+	Category     string
+	Message      string
+	Status       string
+	AdminNotes   string
+	ReplyMessage string
+	RepliedAt    string
+	CreatedAt    string
+	ResolvedAt   string
 }
 
 type AdminBroadcastRow struct {
@@ -1423,7 +1425,8 @@ func (s *Server) HandleAdminTicketsGET(w http.ResponseWriter, r *http.Request) {
 	query := `
 		SELECT st.id, st.user_id, COALESCE(u.username, ''), COALESCE(u.email, ''),
 		       st.category, st.message, st.status, COALESCE(st.admin_notes, ''),
-		       st.created_at, st.resolved_at
+		       st.created_at, st.resolved_at,
+		       COALESCE(st.reply_message, ''), st.replied_at
 		FROM support_tickets st
 		LEFT JOIN users u ON u.id = st.user_id
 	`
@@ -1442,10 +1445,14 @@ func (s *Server) HandleAdminTicketsGET(w http.ResponseWriter, r *http.Request) {
 			var t AdminSupportTicketRow
 			var cAt time.Time
 			var rAt *time.Time
-			if err := rows.Scan(&t.ID, &t.UserID, &t.Username, &t.Email, &t.Category, &t.Message, &t.Status, &t.AdminNotes, &cAt, &rAt); err == nil {
+			var rplAt *time.Time
+			if err := rows.Scan(&t.ID, &t.UserID, &t.Username, &t.Email, &t.Category, &t.Message, &t.Status, &t.AdminNotes, &cAt, &rAt, &t.ReplyMessage, &rplAt); err == nil {
 				t.CreatedAt = cAt.Format("02 Jan 2006 15:04")
 				if rAt != nil {
 					t.ResolvedAt = rAt.Format("02 Jan 2006 15:04")
+				}
+				if rplAt != nil {
+					t.RepliedAt = rplAt.Format("02 Jan 2006 15:04")
 				}
 				tickets = append(tickets, t)
 			}
@@ -1495,6 +1502,11 @@ func (s *Server) HandleAdminTicketResolvePOST(w http.ResponseWriter, r *http.Req
 		return
 	}
 
+	replyMsg := strings.TrimSpace(r.FormValue("reply_message"))
+	if replyMsg == "" {
+		replyMsg = "Laporan Anda telah selesai ditindaklanjuti oleh admin."
+	}
+
 	now := time.Now()
 	var ticketOwnerID int64
 	var ticketCat string
@@ -1502,25 +1514,28 @@ func (s *Server) HandleAdminTicketResolvePOST(w http.ResponseWriter, r *http.Req
 
 	_, err = s.DB.Pool.Exec(r.Context(), `
 		UPDATE support_tickets
-		SET status = 'resolved', resolved_at = $1
-		WHERE id = $2
-	`, now, id)
+		SET status = 'resolved',
+		    reply_message = $1,
+		    replied_by = $2,
+		    replied_at = $3,
+		    resolved_at = $3
+		WHERE id = $4
+	`, replyMsg, adminUser.ID, now, id)
 	if err != nil {
 		http.Redirect(w, r, "/admin/tickets?error=Gagal+memperbarui+status+tiket: "+err.Error(), http.StatusSeeOther)
 		return
 	}
 
 	if ticketOwnerID > 0 {
-		notifTitle := fmt.Sprintf("Laporan #%d Telah Ditindaklanjuti", id)
-		notifMsg := fmt.Sprintf("Laporan Anda mengenai %s telah selesai ditindaklanjuti oleh admin.", ticketCat)
+		notifTitle := fmt.Sprintf("Balasan Laporan Tiket #%d (%s)", id, ticketCat)
 		_, _ = s.DB.Pool.Exec(r.Context(), `
 			INSERT INTO notifications (user_id, title, message, kind, ref_id)
 			VALUES ($1, $2, $3, 'ticket_reply', $4)
-		`, ticketOwnerID, notifTitle, notifMsg, id)
+		`, ticketOwnerID, notifTitle, replyMsg, id)
 	}
 
-	s.logAudit(&adminUser.ID, "resolve_ticket", "support_tickets", strconv.FormatInt(id, 10), "Status diubah menjadi resolved")
-	http.Redirect(w, r, "/admin/tickets?success=Tiket+berhasil+ditandai+selesai", http.StatusSeeOther)
+	s.logAudit(&adminUser.ID, "resolve_ticket", "support_tickets", strconv.FormatInt(id, 10), "Status diubah menjadi resolved: "+replyMsg)
+	http.Redirect(w, r, "/admin/tickets?success=Tiket+berhasil+dibalas+dan+diselesaikan", http.StatusSeeOther)
 }
 
 func (s *Server) HandleAdminBroadcastsGET(w http.ResponseWriter, r *http.Request) {
@@ -1653,14 +1668,31 @@ func (s *Server) HandleAdminBroadcastTogglePOST(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	_, err = s.DB.Pool.Exec(r.Context(), `
+	var newActive bool
+	var bTitle, bMessage string
+	err = s.DB.Pool.QueryRow(r.Context(), `
 		UPDATE broadcasts
 		SET is_active = NOT is_active
 		WHERE id = $1
-	`, id)
+		RETURNING is_active, title, message
+	`, id).Scan(&newActive, &bTitle, &bMessage)
 	if err != nil {
 		http.Redirect(w, r, "/admin/broadcasts?error=Gagal+mengubah+status+broadcast: "+err.Error(), http.StatusSeeOther)
 		return
+	}
+
+	if newActive {
+		ctx := r.Context()
+		_, _ = s.DB.Pool.Exec(ctx, `
+			INSERT INTO notifications (user_id, title, message, kind, ref_id)
+			SELECT u.id, $1, $2, 'broadcast', $3
+			FROM users u
+			WHERE u.role = 'worker' AND u.status = 'active'
+			  AND NOT EXISTS (
+			      SELECT 1 FROM notifications n
+			      WHERE n.user_id = u.id AND n.kind = 'broadcast' AND n.ref_id = $3
+			  )
+		`, bTitle, bMessage, id)
 	}
 
 	s.logAudit(&adminUser.ID, "toggle_broadcast", "broadcasts", strconv.FormatInt(id, 10), "Status broadcast di-toggle")
