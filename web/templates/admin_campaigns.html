@@ -1,25 +1,26 @@
 {{define "content"}}
-{{ template "admin_nav" . }}
-<div style="max-width: 1200px; margin: 0 auto; padding: 20px;">
-    {{if .Error}}
-    <div style="background-color: var(--color-danger); color: var(--color-on-primary); padding: 12px 16px; border-radius: 6px; margin-bottom: 20px; font-weight: 500;">
-        {{.Error}}
-    </div>
-    {{end}}
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px;">
-        <div style="display: flex; align-items: center; gap: 15px;">
-            <h2 style="margin: 0;">{{ call .T "campaign.list_title" }}</h2>
-            {{if .ShowArchived}}
-            <a href="/admin/campaigns" class="btn btn-secondary" style="font-size: 13px; padding: 6px 12px;">{{ call .T "campaign.hide_archived" }}</a>
-            {{else}}
-            <a href="/admin/campaigns?show_archived=1" class="btn btn-secondary" style="font-size: 13px; padding: 6px 12px;">{{ call .T "campaign.show_archived" }}</a>
-            {{end}}
+<div class="admin-layout">
+    {{ template "admin_nav" . }}
+    <main class="admin-content">
+        {{if .Error}}
+        <div style="background-color: var(--color-danger); color: var(--color-on-primary); padding: 12px 16px; border-radius: 6px; margin-bottom: 20px; font-weight: 500;">
+            {{.Error}}
         </div>
-        <a href="/admin/campaigns/new" class="btn btn-primary">+ {{ call .T "campaign.create_btn" }}</a>
-    </div>
+        {{end}}
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px;">
+            <div style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
+                <h2 style="margin: 0; font-size: 22px; font-weight: 700; color: var(--color-text);">{{ call .T "campaign.list_title" }}</h2>
+                {{if .ShowArchived}}
+                <a href="/admin/campaigns" class="btn btn-secondary" style="font-size: 13px; padding: 6px 12px; text-decoration: none;">{{ call .T "campaign.hide_archived" }}</a>
+                {{else}}
+                <a href="/admin/campaigns?show_archived=1" class="btn btn-secondary" style="font-size: 13px; padding: 6px 12px; text-decoration: none;">{{ call .T "campaign.show_archived" }}</a>
+                {{end}}
+            </div>
+            <a href="/admin/campaigns/new" class="btn btn-primary" style="text-decoration: none;">+ {{ call .T "campaign.create_btn" }}</a>
+        </div>
 
-    <div style="background-color: var(--color-card); border-radius: 8px; overflow: hidden; box-shadow: 0 4px 6px var(--color-shadow);">
-        <table style="width: 100%; border-collapse: collapse; text-align: left;">
+        <div class="responsive-table-container">
+            <table class="responsive-table">
             <thead style="background-color: var(--color-surface-muted);">
                 <tr>
                     <th style="padding: 15px; border-bottom: 1px solid var(--color-border);">{{ call .T "campaign.th_id" }}</th>
@@ -97,5 +98,6 @@
             </tbody>
         </table>
     </div>
+</main>
 </div>
 {{end}}

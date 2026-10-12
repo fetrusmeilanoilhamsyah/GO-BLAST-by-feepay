@@ -1,7 +1,8 @@
 {{define "content"}}
-{{ template "admin_nav" . }}
+<div class="admin-layout">
+    {{ template "admin_nav" . }}
 
-<main style="max-width: 1200px; margin: 0 auto; padding: 24px 20px;">
+    <main class="admin-content">
     <!-- Header -->
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 12px;">
         <div>
@@ -199,6 +200,7 @@
         </div>
     </section>
 </main>
+</div>
 
 <!-- Polling fetch() 10 detik -->
 <script>

@@ -1,11 +1,12 @@
 {{define "content"}}
-{{ template "admin_nav" . }}
-<div style="max-width: 1200px; margin: 0 auto; padding: 20px;">
-    <h2>{{if .Campaign.ID}}{{ call .T "campaign.form_edit_title" }}{{else}}{{ call .T "campaign.form_create_title" }}{{end}}</h2>
-    
-    <div style="display: flex; gap: 30px; flex-wrap: wrap; margin-top: 20px;">
-        <!-- FORM SECTION -->
-        <div style="flex: 1; min-width: 300px; background-color: var(--color-card); padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px var(--color-shadow);">
+<div class="admin-layout">
+    {{ template "admin_nav" . }}
+    <main class="admin-content">
+        <h2 style="font-size: 22px; font-weight: 700; margin: 0 0 16px 0; color: var(--color-text);">{{if .Campaign.ID}}{{ call .T "campaign.form_edit_title" }}{{else}}{{ call .T "campaign.form_create_title" }}{{end}}</h2>
+        
+        <div style="display: flex; gap: 24px; flex-wrap: wrap;">
+            <!-- FORM SECTION -->
+            <div style="flex: 1 1 320px; min-width: 0; background-color: var(--color-card); padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px var(--color-shadow); box-sizing: border-box;">
             <form id="campaignForm" method="POST" enctype="multipart/form-data">
                 <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
                 
@@ -88,8 +89,8 @@
         </div>
         
         <!-- PREVIEW SECTION -->
-        <div style="flex: 0 0 350px;">
-            <div style="background-color: var(--wa-phone-bg); border-radius: 12px; overflow: hidden; position: sticky; top: 20px; box-shadow: 0 10px 20px var(--color-shadow); border: 8px solid var(--wa-phone-frame);">
+        <div style="flex: 1 1 320px; max-width: 100%; box-sizing: border-box;">
+            <div style="background-color: var(--wa-phone-bg); border-radius: 12px; overflow: hidden; position: sticky; top: 20px; box-shadow: 0 10px 20px var(--color-shadow); border: 8px solid var(--wa-phone-frame); max-width: 380px; margin: 0 auto;">
                 <!-- Phone Header -->
                 <div style="background-color: var(--wa-header-bg); color: var(--wa-header-text); padding: 15px; font-weight: bold; display: flex; align-items: center;">
                     <div style="width: 32px; height: 32px; background-color: var(--wa-header-text); border-radius: 50%; margin-right: 12px; display: flex; align-items: center; justify-content: center; color: var(--wa-header-bg);">GB</div>
@@ -112,6 +113,7 @@
             </div>
         </div>
     </div>
+    </main>
 </div>
 
 <script>

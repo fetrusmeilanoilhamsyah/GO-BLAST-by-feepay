@@ -3,207 +3,307 @@
     {{ template "worker_nav" . }}
 
     <main class="worker-content">
-            <div class="worker-page-header">
-                <div>
-                    <h1 class="worker-page-title">{{ call .T "worker.greeting" }}, {{if .User.Username}}{{.User.Username}}{{else}}{{.User.DisplayName}}{{end}}</h1>
-                    <p style="margin: 4px 0 0 0; color: var(--color-muted); font-size: 14px;">Ringkasan aktivitas dan kinerja pengiriman Anda.</p>
+        <div class="worker-page-header">
+            <div>
+                <h1 class="worker-page-title">{{ call .T "worker.greeting" }}, {{if .User.Username}}{{.User.Username}}{{else}}{{.User.DisplayName}}{{end}}</h1>
+                <p style="margin: 4px 0 0 0; color: var(--color-muted); font-size: 14px;">Ringkasan aktivitas dan kinerja pengiriman Anda.</p>
+            </div>
+        </div>
+
+        {{if .Success}}
+        <div style="background-color: var(--color-surface-muted); color: var(--color-text); border-left: 4px solid var(--color-primary); padding: 12px 16px; margin-bottom: 20px; border-radius: 4px; font-weight: bold;">
+            {{.Success}}
+        </div>
+        {{end}}
+
+        {{if .Error}}
+        <div style="background-color: var(--color-surface-muted); color: var(--color-danger); border-left: 4px solid var(--color-danger); padding: 12px 16px; margin-bottom: 20px; border-radius: 4px;">
+            {{.Error}}
+        </div>
+        {{end}}
+
+        <!-- STATISTIK UTAMA -->
+        <div class="stat-grid">
+            <!-- 1. Saldo Tersedia -->
+            <div class="stat-card">
+                <div class="stat-label">{{ call .T "worker.available_balance" }}</div>
+                <div class="stat-value">
+                    Rp {{.BalanceIDRFormatted}}
+                </div>
+                {{if gt .BalanceUSDT 0}}
+                <div style="font-size: 14px; margin-top: 4px; color: var(--color-muted); font-weight: 600;">
+                    + {{.BalanceUSDTFormatted}} USDT
+                </div>
+                {{end}}
+                <div style="margin-top: 12px;">
+                    <a href="/worker/withdrawals" class="btn btn-primary" style="padding: 6px 14px; font-size: 13px; text-decoration: none; display: inline-block;">{{ call .T "worker.action_withdraw" }}</a>
                 </div>
             </div>
 
-            {{if .Success}}
-            <div style="background-color: var(--color-surface-muted); color: var(--color-text); border-left: 4px solid var(--color-primary); padding: 12px 16px; margin-bottom: 20px; border-radius: 4px; font-weight: bold;">
-                {{.Success}}
+            <!-- 2. Pendapatan Hari Ini -->
+            <div class="stat-card">
+                <div class="stat-label">{{ call .T "worker.earned_today" }}</div>
+                <div class="stat-value">
+                    Rp {{.EarnedTodayIDRFormatted}}
+                </div>
+                {{if gt .EarnedTodayUSDT 0}}
+                <div style="font-size: 14px; margin-top: 4px; color: var(--color-muted); font-weight: 600;">
+                    + {{.EarnedTodayUSDTFormatted}} USDT
+                </div>
+                {{end}}
+                <p style="margin: 6px 0 0 0; font-size: 12px; color: var(--color-muted);">{{ call .T "worker.earned_today_sub" }}</p>
             </div>
-            {{end}}
 
-            {{if .Error}}
-            <div style="background-color: var(--color-surface-muted); color: var(--color-danger); border-left: 4px solid var(--color-danger); padding: 12px 16px; margin-bottom: 20px; border-radius: 4px;">
-                {{.Error}}
-            </div>
-            {{end}}
-
-            <!-- STATISTIK UTAMA -->
-            <div class="stat-grid">
-                <div class="stat-card">
-                    <div class="stat-label">{{ call .T "worker.available_balance" }}</div>
-                    <div class="stat-value">
-                        {{if eq .User.Currency "IDR"}}Rp {{.Balance}}{{else}}{{.Balance}} USDT{{end}}
-                    </div>
-                    <div style="margin-top: 10px;">
-                        <a href="/worker/withdrawals" class="btn btn-primary" style="padding: 6px 14px; font-size: 13px;">{{ call .T "worker.action_withdraw" }}</a>
-                    </div>
+            <!-- 3. Total WhatsApp Terkoneksi -->
+            <div class="stat-card">
+                <div class="stat-label">{{ call .T "worker.connected_accounts" }}</div>
+                <div class="stat-value">
+                    {{.ConnectedAccounts}} <span style="font-size: 15px; color: var(--color-muted); font-weight: normal;">/ {{.TotalAccounts}}</span>
                 </div>
-
-                <div class="stat-card">
-                    <div class="stat-label">{{ call .T "worker.total_earned" }}</div>
-                    <div class="stat-value">
-                        {{if eq .User.Currency "IDR"}}Rp {{.TotalWage}}{{else}}{{.TotalWage}} USDT{{end}}
-                    </div>
-                    <p style="margin: 6px 0 0 0; font-size: 12px; color: var(--color-muted);">Dari {{.TotalSent}} pesan sukses</p>
-                </div>
-
-                <div class="stat-card">
-                    <div class="stat-label">{{ call .T "worker.total_referral" }}</div>
-                    <div class="stat-value">
-                        {{if eq .User.Currency "IDR"}}Rp {{.TotalReferral}}{{else}}{{.TotalReferral}} USDT{{end}}
-                    </div>
-                    <div style="margin-top: 10px;">
-                        <a href="/worker/referral" style="font-size: 13px; font-weight: bold; color: var(--color-link); text-decoration: none;">Lihat Tim &gt;</a>
-                    </div>
-                </div>
-
-                <div class="stat-card">
-                    <div class="stat-label">{{ call .T "worker.connected_accounts" }}</div>
-                    <div class="stat-value">
-                        {{.ConnectedAccounts}} <span style="font-size: 15px; color: var(--color-muted); font-weight: normal;">/ {{.TotalAccounts}}</span>
-                    </div>
-                    <div style="margin-top: 10px;">
-                        <a href="/worker/accounts" style="font-size: 13px; font-weight: bold; color: var(--color-link); text-decoration: none;">Kelola Akun &gt;</a>
-                    </div>
-                </div>
-
-                <!-- SISA NOMOR TERSEDIA (AGREGAT SISTEM) -->
-                <div class="stat-card">
-                    <div class="stat-label">{{ call .T "worker.available_numbers_aggregate" }}</div>
-                    <div class="stat-value">
-                        {{.AvailableNumbers}} <span style="font-size: 14px; font-weight: normal; color: var(--color-muted);">Nomor</span>
-                    </div>
-                    <p style="margin: 6px 0 0 0; font-size: 12px; color: var(--color-muted);">{{ call .T "worker.available_numbers_sub" }}</p>
+                <p style="margin: 6px 0 0 0; font-size: 12px; color: var(--color-muted);">{{.ConnectedAccounts}} akun aktif menghasilkan upah</p>
+                <div style="margin-top: 10px;">
+                    <a href="/worker/accounts" style="font-size: 13px; font-weight: bold; color: var(--color-link); text-decoration: none;">Kelola Akun &gt;</a>
                 </div>
             </div>
 
-            <!-- AKUN WHATSAPP SAYA -->
-            <div class="card" style="margin: 0 0 24px 0; padding: 20px;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
-                    <h3 style="margin: 0; font-size: 16px;">{{ call .T "wa.accounts_title" }}</h3>
-                    <a href="/worker/accounts" style="font-size: 13px; color: var(--color-link); text-decoration: none; font-weight: 600;">Lihat Semua &gt;</a>
+            <!-- 4. Total Semua Pendapatan (All-Time) -->
+            <div class="stat-card">
+                <div class="stat-label">{{ call .T "worker.total_all_time" }}</div>
+                <div class="stat-value">
+                    Rp {{.TotalEarnedIDRFormatted}}
                 </div>
-                <div style="display: flex; flex-direction: column; gap: 8px;">
-                    {{range .Accounts}}
-                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; background-color: var(--color-surface-muted); border: 1px solid var(--color-border); border-radius: 6px; flex-wrap: wrap; gap: 8px;">
-                        <div>
-                            <div style="display: flex; align-items: center; gap: 10px;">
-                                <span style="font-weight: 700; font-size: 14px;">{{.Label}}</span>
-                                <span style="font-size: 11px; color: var(--color-muted); text-transform: uppercase;">{{.Speed}}</span>
-                                {{if eq .Status "terhubung"}}
-                                <span style="margin: 0 2px; color: var(--color-muted);">•</span>
-                                <span>
-                                    {{if .IsWorking}}
-                                    <strong style="font-size: 12px; color: var(--color-success);">{{ call $.T "wa.working" }}</strong>
-                                    {{else}}
-                                    <span style="font-size: 12px; color: var(--color-muted);">{{ call $.T "wa.not_working" }}</span>
-                                    {{end}}
-                                </span>
-                                {{end}}
-                            </div>
-                            {{if .StopReason}}
-                            <div style="font-size: 11px; color: var(--color-muted); margin-top: 2px;">
-                                <span style="font-weight: 600;">{{ call $.T "wa.stop_reason_label" }}</span> {{.StopReason}}
-                            </div>
-                            {{end}}
-                        </div>
-                        <div style="display: flex; align-items: center; gap: 8px;">
+                {{if gt .TotalEarnedUSDT 0}}
+                <div style="font-size: 14px; margin-top: 4px; color: var(--color-muted); font-weight: 600;">
+                    + {{.TotalEarnedUSDTFormatted}} USDT
+                </div>
+                {{end}}
+                <p style="margin: 6px 0 0 0; font-size: 12px; color: var(--color-muted);">Dari {{.TotalSent}} pesan sukses terkirim</p>
+            </div>
+
+            <!-- 5. Total Database Tersedia (Agregat Sistem) -->
+            <div class="stat-card">
+                <div class="stat-label">{{ call .T "worker.available_numbers_aggregate" }}</div>
+                <div class="stat-value">
+                    {{.AvailableNumbersFormatted}} <span style="font-size: 14px; font-weight: normal; color: var(--color-muted);">Nomor</span>
+                </div>
+                <p style="margin: 6px 0 0 0; font-size: 12px; color: var(--color-muted);">{{ call .T "worker.available_numbers_sub" }}</p>
+            </div>
+        </div>
+
+        <!-- SHORTCUT AKSI CEPAT -->
+        <div class="card" style="margin: 0 0 24px 0; padding: 20px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+                <h3 style="margin: 0; font-size: 16px;">{{ call .T "worker.quick_actions" }}</h3>
+                <span style="font-size: 12px; color: var(--color-muted);">Aksi cepat operasional pekerja</span>
+            </div>
+            <div class="worker-quick-grid">
+                <!-- 1. Hubungkan WA -->
+                <a href="/worker/accounts" class="worker-quick-card">
+                    <div class="worker-quick-icon">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect width="14" height="20" x="5" y="2" rx="2" ry="2"></rect>
+                            <line x1="12" x2="12" y1="18" y2="18"></line>
+                        </svg>
+                    </div>
+                    <div>
+                        <div class="worker-quick-title">+ Hubungkan WA</div>
+                        <div class="worker-quick-sub">Tambah akun WhatsApp</div>
+                    </div>
+                </a>
+
+                <!-- 2. Tarik Saldo -->
+                <a href="/worker/withdrawals" class="worker-quick-card">
+                    <div class="worker-quick-icon">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect width="20" height="14" x="2" y="5" rx="2"></rect>
+                            <line x1="2" x2="22" y1="10" y2="10"></line>
+                        </svg>
+                    </div>
+                    <div>
+                        <div class="worker-quick-title">{{ call .T "worker.action_withdraw" }}</div>
+                        <div class="worker-quick-sub">Pencairan bank / USDT</div>
+                    </div>
+                </a>
+
+                <!-- 3. Riwayat Blast -->
+                <a href="/worker/history" class="worker-quick-card">
+                    <div class="worker-quick-icon">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <polyline points="12 6 12 12 16 14"></polyline>
+                        </svg>
+                    </div>
+                    <div>
+                        <div class="worker-quick-title">{{ call .T "worker.action_history" }}</div>
+                        <div class="worker-quick-sub">Log pesan & upah</div>
+                    </div>
+                </a>
+
+                <!-- 4. Tim Referral -->
+                <a href="/worker/referral" class="worker-quick-card">
+                    <div class="worker-quick-icon">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path>
+                            <circle cx="9" cy="7" r="4"></circle>
+                            <path d="M22 21v-2a4 4 0 0 0-3-3.87"></path>
+                            <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                        </svg>
+                    </div>
+                    <div>
+                        <div class="worker-quick-title">{{ call .T "worker.action_referral" }}</div>
+                        <div class="worker-quick-sub">Bonus tim & referral</div>
+                    </div>
+                </a>
+
+                <!-- 5. Bantuan CS -->
+                <div class="worker-quick-card" onclick="openHelpdeskModal()" role="button" tabindex="0">
+                    <div class="worker-quick-icon">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+                            <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                        </svg>
+                    </div>
+                    <div>
+                        <div class="worker-quick-title">{{ call .T "worker.action_cs" }}</div>
+                        <div class="worker-quick-sub">{{ call .T "worker.action_cs_desc" }}</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- AKUN WHATSAPP SAYA -->
+        <div class="card" style="margin: 0 0 24px 0; padding: 20px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+                <h3 style="margin: 0; font-size: 16px;">{{ call .T "wa.accounts_title" }}</h3>
+                <a href="/worker/accounts" style="font-size: 13px; color: var(--color-link); text-decoration: none; font-weight: 600;">Lihat Semua &gt;</a>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+                {{range .Accounts}}
+                <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; background-color: var(--color-surface-muted); border: 1px solid var(--color-border); border-radius: 6px; flex-wrap: wrap; gap: 8px;">
+                    <div>
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <span style="font-weight: 700; font-size: 14px;">{{.Label}}</span>
+                            <span style="font-size: 11px; color: var(--color-muted); text-transform: uppercase;">{{.Speed}}</span>
                             {{if eq .Status "terhubung"}}
-                                <span class="badge badge-success">{{ call $.T "wa.connected" }}</span>
+                            <span style="margin: 0 2px; color: var(--color-muted);">•</span>
+                            <span>
                                 {{if .IsWorking}}
-                                <form method="POST" action="/worker/accounts/{{.ID}}/work/stop" style="display: inline; margin: 0;">
-                                    <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
-                                    <button type="submit" style="background: none; border: 1px solid var(--color-warning); color: var(--color-warning); padding: 3px 8px; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: bold;">{{ call $.T "wa.action_stop_work" }}</button>
-                                </form>
+                                <strong style="font-size: 12px; color: var(--color-success);">{{ call $.T "wa.working" }}</strong>
                                 {{else}}
-                                <form method="POST" action="/worker/accounts/{{.ID}}/work/start" style="display: inline; margin: 0;">
-                                    <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
-                                    <button type="submit" style="background-color: var(--color-primary); color: var(--color-on-primary); border: none; padding: 4px 10px; border-radius: 4px; font-size: 12px; font-weight: bold;">{{ call $.T "wa.action_start_work" }}</button>
-                                </form>
+                                <span style="font-size: 12px; color: var(--color-muted);">{{ call $.T "wa.not_working" }}</span>
                                 {{end}}
-                            {{else if eq .Status "menunggu_scan"}}
-                                <span class="badge badge-warning">{{ call $.T "wa.waiting_scan" }}</span>
-                            {{else if eq .Status "antre"}}
-                                <span class="badge badge-muted">{{ call $.T "wa.queued" }}</span>
-                            {{else if eq .Status "terputus"}}
-                                <span class="badge badge-danger">{{ call $.T "wa.disconnected" }}</span>
-                            {{else}}
-                                <span class="badge badge-muted">{{ call $.T "wa.stopped" }}</span>
+                            </span>
                             {{end}}
-                            <a href="/worker/accounts" class="btn btn-secondary" style="padding: 4px 10px; font-size: 12px; text-decoration: none;">Atur</a>
                         </div>
-                    </div>
-                    {{else}}
-                    <div style="text-align: center; padding: 20px; color: var(--color-muted); font-size: 13px;">
-                        {{ call .T "wa.empty_accounts" }}
-                        <div style="margin-top: 10px;">
-                            <a href="/worker/accounts" class="btn btn-primary" style="padding: 6px 14px; font-size: 13px; text-decoration: none;">+ {{ call .T "wa.add_account" }}</a>
+                        {{if .StopReason}}
+                        <div style="font-size: 11px; color: var(--color-muted); margin-top: 2px;">
+                            <span style="font-weight: 600;">{{ call $.T "wa.stop_reason_label" }}</span> {{.StopReason}}
                         </div>
+                        {{end}}
                     </div>
-                    {{end}}
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        {{if eq .Status "terhubung"}}
+                            <span class="badge badge-success">{{ call $.T "wa.connected" }}</span>
+                            {{if .IsWorking}}
+                            <form method="POST" action="/worker/accounts/{{.ID}}/work/stop" style="display: inline; margin: 0;">
+                                <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                                <button type="submit" style="background: none; border: 1px solid var(--color-warning); color: var(--color-warning); padding: 3px 8px; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: bold;">{{ call $.T "wa.action_stop_work" }}</button>
+                            </form>
+                            {{else}}
+                            <form method="POST" action="/worker/accounts/{{.ID}}/work/start" style="display: inline; margin: 0;">
+                                <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                                <button type="submit" style="background-color: var(--color-primary); color: var(--color-on-primary); border: none; padding: 4px 10px; border-radius: 4px; font-size: 12px; font-weight: bold;">{{ call $.T "wa.action_start_work" }}</button>
+                            </form>
+                            {{end}}
+                        {{else if eq .Status "menunggu_scan"}}
+                            <span class="badge badge-warning">{{ call $.T "wa.waiting_scan" }}</span>
+                        {{else if eq .Status "antre"}}
+                            <span class="badge badge-muted">{{ call $.T "wa.queued" }}</span>
+                        {{else if eq .Status "terputus"}}
+                            <span class="badge badge-danger">{{ call $.T "wa.disconnected" }}</span>
+                        {{else}}
+                            <span class="badge badge-muted">{{ call $.T "wa.stopped" }}</span>
+                        {{end}}
+                        <a href="/worker/accounts" class="btn btn-secondary" style="padding: 4px 10px; font-size: 12px; text-decoration: none;">Atur</a>
+                    </div>
                 </div>
-            </div>
-
-            <!-- MENU AKSI CEPAT -->
-            <div class="card" style="margin: 0 0 24px 0; padding: 20px;">
-                <h3 style="margin-top: 0; margin-bottom: 14px; font-size: 16px;">{{ call .T "worker.quick_actions" }}</h3>
-                <div style="display: flex; gap: 12px; flex-wrap: wrap;">
-                    <a href="/worker/accounts" class="btn btn-primary" style="padding: 10px 18px; font-size: 14px;">+ {{ call .T "worker.action_add_wa" }}</a>
-                    <a href="/worker/history" class="btn btn-secondary" style="padding: 10px 18px; font-size: 14px;">{{ call .T "nav.history" }}</a>
-                    <a href="/worker/withdrawals" class="btn btn-secondary" style="padding: 10px 18px; font-size: 14px;">{{ call .T "worker.action_withdraw" }}</a>
-                    <a href="/worker/referral" class="btn btn-secondary" style="padding: 10px 18px; font-size: 14px;">{{ call .T "worker.action_referral" }}</a>
+                {{else}}
+                <div style="text-align: center; padding: 20px; color: var(--color-muted); font-size: 13px;">
+                    {{ call .T "wa.empty_accounts" }}
+                    <div style="margin-top: 10px;">
+                        <a href="/worker/accounts" class="btn btn-primary" style="padding: 6px 14px; font-size: 13px; text-decoration: none;">+ {{ call .T "wa.add_account" }}</a>
+                    </div>
                 </div>
+                {{end}}
             </div>
+        </div>
 
-            <!-- AKTIVITAS SALDO TERKINI -->
-            <div class="card" style="margin: 0; padding: 20px;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+        <!-- AKTIVITAS SALDO KELUAR & MASUK (MUTASI TERKINI) -->
+        <div class="card" style="margin: 0; padding: 20px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 8px;">
+                <div>
                     <h3 style="margin: 0; font-size: 16px;">{{ call .T "worker.recent_activity" }}</h3>
-                    <a href="/worker/withdrawals" style="font-size: 13px; color: var(--color-link); text-decoration: none;">Riwayat Penarikan &gt;</a>
+                    <p style="margin: 4px 0 0 0; font-size: 12px; color: var(--color-muted);">Catatan mutasi saldo masuk dan keluar terbaru</p>
                 </div>
-
-                <div class="responsive-table-container">
-                    <table class="responsive-table">
-                        <thead>
-                            <tr>
-                                <th>ID</th>
-                                <th>Jenis</th>
-                                <th>Nominal</th>
-                                <th>Tanggal</th>
-                                <th>Keterangan</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {{range .Activities}}
-                            <tr>
-                                <td>{{.ID}}</td>
-                                <td>
-                                    {{if eq .Kind "upah"}}
-                                    <span class="badge badge-muted">Upah Kirim</span>
-                                    {{else if eq .Kind "referral"}}
-                                    <span class="badge badge-muted">Bonus Referral</span>
-                                    {{else if eq .Kind "penarikan"}}
-                                    <span class="badge badge-warning">Penarikan</span>
-                                    {{else}}
-                                    <span class="badge badge-muted">{{.Kind}}</span>
-                                    {{end}}
-                                </td>
-                                <td style="font-weight: bold;">
-                                    {{if lt .Amount 0}}
-                                    <span style="color: var(--color-danger);">{{.Amount}} {{.Currency}}</span>
-                                    {{else}}
-                                    <span style="color: var(--color-text);">+{{.Amount}} {{.Currency}}</span>
-                                    {{end}}
-                                </td>
-                                <td style="color: var(--color-muted); font-size: 13px;">{{.CreatedAt}}</td>
-                                <td style="font-size: 13px;">{{.Note}}</td>
-                            </tr>
-                            {{else}}
-                            <tr>
-                                <td colspan="5" style="text-align: center; padding: 24px; color: var(--color-muted);">
-                                    {{ call $.T "worker.no_activity" }}
-                                </td>
-                            </tr>
-                            {{end}}
-                        </tbody>
-                    </table>
-                </div>
+                <a href="/worker/withdrawals" style="font-size: 13px; color: var(--color-link); text-decoration: none; font-weight: 600;">Riwayat Penarikan &gt;</a>
             </div>
+
+            <div class="responsive-table-container">
+                <table class="responsive-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 160px;">Tanggal / Waktu</th>
+                            <th style="width: 140px;">Jenis</th>
+                            <th>Keterangan</th>
+                            <th style="text-align: right; width: 150px;">Nominal</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {{range .Activities}}
+                        <tr>
+                            <td style="color: var(--color-muted); font-size: 13px;">
+                                {{.CreatedAt}}
+                            </td>
+                            <td>
+                                {{if eq .Kind "upah"}}
+                                <span class="badge badge-success">Upah Blast</span>
+                                {{else if eq .Kind "referral"}}
+                                <span class="badge badge-success">Bonus Referral</span>
+                                {{else if eq .Kind "penarikan"}}
+                                <span class="badge badge-warning">Penarikan Saldo</span>
+                                {{else if eq .Kind "koreksi"}}
+                                    {{if .IsCredit}}
+                                    <span class="badge badge-success">Konversi Masuk</span>
+                                    {{else}}
+                                    <span class="badge badge-muted">Konversi Keluar</span>
+                                    {{end}}
+                                {{else}}
+                                <span class="badge badge-muted">{{.Kind}}</span>
+                                {{end}}
+                            </td>
+                            <td style="font-size: 13px;">
+                                {{if .Note}}{{.Note}}{{else}}-{{end}}
+                            </td>
+                            <td style="text-align: right; font-weight: 700;">
+                                {{if .IsCredit}}
+                                <span style="color: var(--color-success);">{{.AmountFormatted}}</span>
+                                {{else}}
+                                <span style="color: var(--color-danger);">{{.AmountFormatted}}</span>
+                                {{end}}
+                            </td>
+                        </tr>
+                        {{else}}
+                        <tr>
+                            <td colspan="4" style="text-align: center; padding: 28px 16px; color: var(--color-muted); font-size: 13px;">
+                                {{ call $.T "worker.no_activity" }}
+                            </td>
+                        </tr>
+                        {{end}}
+                    </tbody>
+                </table>
+            </div>
+        </div>
     </main>
 </div>
 {{end}}

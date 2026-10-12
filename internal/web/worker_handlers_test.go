@@ -1075,4 +1075,65 @@ func TestWorkerPanelFlows(t *testing.T) {
 			t.Errorf("Expected body to contain custom Channel Telegram URL")
 		}
 	})
+
+	t.Run("Worker home redesign stats, quick action shortcuts, and mutation formatting", func(t *testing.T) {
+		if _, err := pool.Exec(context.Background(), `
+			INSERT INTO ledger_entries (user_id, kind, amount, currency, note)
+			VALUES 
+			($1, 'upah', 25000, 'IDR', 'Upah blast tes'),
+			($1, 'referral', 5000, 'IDR', 'Bonus referral tes'),
+			($1, 'koreksi', 2000000, 'USDT', 'Hasil konversi ke USDT'),
+			($1, 'penarikan', -10000, 'IDR', 'Penarikan BCA tes')
+		`, workerID); err != nil {
+			t.Fatalf("Failed to insert dummy ledger: %v", err)
+		}
+
+		req := httptest.NewRequest("GET", "/worker", nil)
+		req = withWorker(req)
+		rr := httptest.NewRecorder()
+
+		srv.HandleWorkerHome(rr, req)
+		if rr.Code != http.StatusOK {
+			t.Fatalf("Expected 200, got %d", rr.Code)
+		}
+		body := rr.Body.String()
+
+		// 1. Verifikasi elemen stat utama
+		if !strings.Contains(body, "Pendapatan Hari Ini") {
+			t.Errorf("Expected body to contain 'Pendapatan Hari Ini'")
+		}
+		if !strings.Contains(body, "Total Semua Pendapatan") {
+			t.Errorf("Expected body to contain 'Total Semua Pendapatan'")
+		}
+		if !strings.Contains(body, "Nomor") {
+			t.Errorf("Expected body to contain database kuota aggregate")
+		}
+
+		// 2. Verifikasi quick action cards
+		if !strings.Contains(body, "+ Hubungkan WA") {
+			t.Errorf("Expected body to contain '+ Hubungkan WA' quick action")
+		}
+		if !strings.Contains(body, "Pusat Bantuan CS") {
+			t.Errorf("Expected body to contain 'Pusat Bantuan CS' quick action")
+		}
+		if !strings.Contains(body, "worker-quick-grid") {
+			t.Errorf("Expected body to use worker-quick-grid")
+		}
+
+
+		// 3. Verifikasi mutasi terformat dengan tanda dan tanpa mikro-USDT leak
+		if !strings.Contains(body, "+Rp 25.000") && !strings.Contains(body, "&#43;Rp 25.000") {
+			t.Errorf("Expected body to contain formatted positive IDR wage")
+		}
+		if !strings.Contains(body, "-Rp 10.000") {
+			t.Errorf("Expected body to contain formatted negative IDR withdrawal")
+		}
+		// USDT 2.000.000 mikro-USDT harus berformat "+2 USDT" dan TIDAK "+2000000 USDT"
+		if strings.Contains(body, "+2000000 USDT") || strings.Contains(body, "2000000 USDT") || strings.Contains(body, "&#43;2000000 USDT") {
+			t.Errorf("Forbidden: raw micro-USDT leaked into worker home display!")
+		}
+		if !strings.Contains(body, "+2 USDT") && !strings.Contains(body, "&#43;2 USDT") {
+			t.Errorf("Expected body to format 2000000 micro-USDT as '+2 USDT'")
+		}
+	})
 }

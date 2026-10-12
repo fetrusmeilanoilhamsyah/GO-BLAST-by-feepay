@@ -37,12 +37,12 @@ func Load() (*Config, error) {
 		cfg.AppEnv = "dev"
 	}
 
-	if cfg.AppAddr == "" {
-		cfg.AppAddr = "127.0.0.1:8080"
+	if cfg.AppAddr == "" || cfg.AppAddr == "127.0.0.1:8080" {
+		cfg.AppAddr = "0.0.0.0:8080"
 	}
 
-	if cfg.CSWhatsAppURL == "" {
-		cfg.CSWhatsAppURL = "https://wa.me/"
+	if cfg.CSWhatsAppURL == "" || cfg.CSWhatsAppURL == "https://wa.me/" {
+		cfg.CSWhatsAppURL = "https://wa.me/6281200000000"
 	}
 
 	if cfg.CSTelegramURL == "" {

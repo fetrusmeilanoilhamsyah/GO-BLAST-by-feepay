@@ -1,5 +1,8 @@
 {{define "content"}}
-<main class="container" style="max-width: 1040px; margin: 30px auto; padding: 0 16px;">
+<div class="admin-layout">
+    {{ template "admin_nav" . }}
+    <main class="admin-content">
+        <div style="max-width: 1040px;">
     <!-- Breadcrumb -->
     <div style="font-size: 13px; color: var(--color-muted); margin-bottom: 16px;">
         <a href="/admin" style="color: var(--color-link); text-decoration: none;">Admin</a>
@@ -188,5 +191,7 @@
             </tbody>
         </table>
     </div>
-</main>
+    </div>
+    </main>
+</div>
 {{end}}

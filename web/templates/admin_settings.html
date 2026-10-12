@@ -1,7 +1,9 @@
 {{define "content"}}
-{{ template "admin_nav" . }}
+<div class="admin-layout">
+    {{ template "admin_nav" . }}
 
-<main style="max-width: 900px; margin: 0 auto; padding: 24px 20px;">
+    <main class="admin-content">
+        <div style="max-width: 900px;">
     <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 12px; margin-bottom: 24px;">
         <div>
             <h1 style="font-size: 24px; font-weight: 700; margin: 0; color: var(--color-text);">{{ call .T "admin.settings_title" }}</h1>
@@ -144,7 +146,9 @@
             </button>
         </div>
     </form>
-</main>
+    </div>
+    </main>
+</div>
 
 <script>
 function fillRecommendedSettings() {

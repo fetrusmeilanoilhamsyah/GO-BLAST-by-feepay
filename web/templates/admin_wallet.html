@@ -1,7 +1,9 @@
 {{define "content"}}
-{{ template "admin_nav" . }}
+<div class="admin-layout">
+    {{ template "admin_nav" . }}
 
-<main style="max-width: 1000px; margin: 0 auto; padding: 24px 20px;">
+    <main class="admin-content">
+        <div style="max-width: 1000px;">
     <div style="margin-bottom: 24px;">
         <h1 style="font-size: 24px; font-weight: 700; margin: 0; color: var(--color-text);">{{ call .T "admin.wallet_title" }}</h1>
         <p style="font-size: 13px; color: var(--color-muted); margin: 4px 0 0 0;">{{ call .T "admin.wallet_desc" }}</p>
@@ -118,5 +120,7 @@
             </table>
         </div>
     </section>
-</main>
+    </div>
+    </main>
+</div>
 {{end}}

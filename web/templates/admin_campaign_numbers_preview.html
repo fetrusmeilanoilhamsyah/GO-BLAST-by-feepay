@@ -1,6 +1,8 @@
 {{define "content"}}
-{{ template "admin_nav" . }}
-<div style="max-width: 900px; margin: 0 auto; padding: 20px;">
+<div class="admin-layout">
+    {{ template "admin_nav" . }}
+    <main class="admin-content">
+        <div style="max-width: 900px;">
     <div style="margin-bottom: 20px;">
         <a href="/admin/campaigns/{{.CampaignID}}/numbers" style="color: var(--color-muted); text-decoration: none; font-size: 14px;">&larr; Upload Ulang / Kembali</a>
         <h2 style="margin: 8px 0 4px 0;">{{ call .T "numbers.preview_title" }}</h2>
@@ -78,5 +80,7 @@
             </form>
         </div>
     </div>
+    </div>
+    </main>
 </div>
 {{end}}

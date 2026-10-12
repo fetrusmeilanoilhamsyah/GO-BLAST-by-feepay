@@ -15,12 +15,14 @@ import (
 )
 
 type WorkerActivityView struct {
-	ID        int64
-	Kind      string
-	Amount    int64
-	Currency  string
-	CreatedAt string
-	Note      string
+	ID              int64
+	Kind            string
+	Amount          int64
+	AmountFormatted string
+	IsCredit        bool
+	Currency        string
+	CreatedAt       string
+	Note            string
 }
 
 type WorkerWithdrawalView struct {
@@ -74,8 +76,8 @@ type CSLinks struct {
 
 func (s *Server) csLinks() CSLinks {
 	waURL := s.CSWhatsAppURL
-	if waURL == "" {
-		waURL = "https://wa.me/"
+	if waURL == "" || waURL == "https://wa.me/" {
+		waURL = "https://wa.me/6281200000000"
 	}
 	tgCS := s.CSTelegramURL
 	if tgCS == "" {
@@ -105,52 +107,93 @@ func (s *Server) HandleWorkerHome(w http.ResponseWriter, r *http.Request) {
 		lang = "id"
 	}
 
-	// 1. Saldo saat ini
-	var balance int64
-	_ = s.DB.Pool.QueryRow(ctx, "SELECT user_balance($1, $2)", user.ID, user.Currency).Scan(&balance)
+	// 1. Saldo saat ini (IDR dan USDT terpisah)
+	var balanceIDR int64
+	_ = s.DB.Pool.QueryRow(ctx, "SELECT user_balance($1, 'IDR')", user.ID).Scan(&balanceIDR)
 
-	// 2. Total upah terkumpul
-	var totalWage int64
+	var balanceUSDT int64
+	_ = s.DB.Pool.QueryRow(ctx, "SELECT user_balance($1, 'USDT')", user.ID).Scan(&balanceUSDT)
+
+	// Fallback balance sesuai mata uang utama user
+	var mainBalance int64 = balanceIDR
+	if user.Currency == "USDT" {
+		mainBalance = balanceUSDT
+	}
+
+	// 2. Pendapatan hari ini (upah + referral hari ini)
+	var earnedTodayIDR int64
 	_ = s.DB.Pool.QueryRow(ctx, `
 		SELECT COALESCE(SUM(amount), 0)
 		FROM ledger_entries
-		WHERE user_id = $1 AND kind = 'upah' AND currency = $2
-	`, user.ID, user.Currency).Scan(&totalWage)
+		WHERE user_id = $1 AND kind IN ('upah', 'referral') AND currency = 'IDR' AND created_at >= CURRENT_DATE
+	`, user.ID).Scan(&earnedTodayIDR)
 
-	// 3. Total bonus referral
-	var totalReferral int64
+	var earnedTodayUSDT int64
 	_ = s.DB.Pool.QueryRow(ctx, `
 		SELECT COALESCE(SUM(amount), 0)
 		FROM ledger_entries
-		WHERE user_id = $1 AND kind = 'referral' AND currency = $2
-	`, user.ID, user.Currency).Scan(&totalReferral)
+		WHERE user_id = $1 AND kind IN ('upah', 'referral') AND currency = 'USDT' AND created_at >= CURRENT_DATE
+	`, user.ID).Scan(&earnedTodayUSDT)
 
-	// 4. Total telah ditarik
-	var totalWithdrawn int64
+	// 3. Total upah terkumpul all-time
+	var totalWageIDR int64
+	_ = s.DB.Pool.QueryRow(ctx, `
+		SELECT COALESCE(SUM(amount), 0)
+		FROM ledger_entries
+		WHERE user_id = $1 AND kind = 'upah' AND currency = 'IDR'
+	`, user.ID).Scan(&totalWageIDR)
+
+	var totalWageUSDT int64
+	_ = s.DB.Pool.QueryRow(ctx, `
+		SELECT COALESCE(SUM(amount), 0)
+		FROM ledger_entries
+		WHERE user_id = $1 AND kind = 'upah' AND currency = 'USDT'
+	`, user.ID).Scan(&totalWageUSDT)
+
+	// 4. Total bonus referral all-time
+	var totalReferralIDR int64
+	_ = s.DB.Pool.QueryRow(ctx, `
+		SELECT COALESCE(SUM(amount), 0)
+		FROM ledger_entries
+		WHERE user_id = $1 AND kind = 'referral' AND currency = 'IDR'
+	`, user.ID).Scan(&totalReferralIDR)
+
+	var totalReferralUSDT int64
+	_ = s.DB.Pool.QueryRow(ctx, `
+		SELECT COALESCE(SUM(amount), 0)
+		FROM ledger_entries
+		WHERE user_id = $1 AND kind = 'referral' AND currency = 'USDT'
+	`, user.ID).Scan(&totalReferralUSDT)
+
+	totalEarnedIDR := totalWageIDR + totalReferralIDR
+	totalEarnedUSDT := totalWageUSDT + totalReferralUSDT
+
+	// 5. Total telah ditarik
+	var totalWithdrawnIDR int64
 	_ = s.DB.Pool.QueryRow(ctx, `
 		SELECT COALESCE(SUM(ABS(amount)), 0)
 		FROM ledger_entries
-		WHERE user_id = $1 AND kind = 'penarikan' AND currency = $2
-	`, user.ID, user.Currency).Scan(&totalWithdrawn)
+		WHERE user_id = $1 AND kind = 'penarikan' AND currency = 'IDR'
+	`, user.ID).Scan(&totalWithdrawnIDR)
 
-	// 5. Statistik Akun WhatsApp
+	// 6. Statistik Akun WhatsApp
 	var totalAccounts int64
 	_ = s.DB.Pool.QueryRow(ctx, "SELECT COUNT(*) FROM wa_accounts WHERE worker_id = $1", user.ID).Scan(&totalAccounts)
 
 	var connectedAccounts int64
 	_ = s.DB.Pool.QueryRow(ctx, "SELECT COUNT(*) FROM wa_accounts WHERE worker_id = $1 AND status = 'terhubung'", user.ID).Scan(&connectedAccounts)
 
-	// 6. Total pesan terkirim
+	// 7. Total pesan terkirim
 	var totalSent int64
 	_ = s.DB.Pool.QueryRow(ctx, "SELECT COUNT(*) FROM ledger_entries WHERE user_id = $1 AND kind = 'upah'", user.ID).Scan(&totalSent)
 
-	// 7. Aktivitas saldo terkini (5 teratas)
+	// 8. Aktivitas saldo terkini (10 teratas) dengan format aman
 	rows, err := s.DB.Pool.Query(ctx, `
 		SELECT id, kind, amount, currency, created_at, COALESCE(note, '')
 		FROM ledger_entries
 		WHERE user_id = $1
 		ORDER BY id DESC
-		LIMIT 5
+		LIMIT 10
 	`, user.ID)
 
 	var activities []WorkerActivityView
@@ -161,13 +204,33 @@ func (s *Server) HandleWorkerHome(w http.ResponseWriter, r *http.Request) {
 			var t time.Time
 			if err := rows.Scan(&act.ID, &act.Kind, &act.Amount, &act.Currency, &t, &act.Note); err == nil {
 				act.CreatedAt = t.Format("02 Jan 2006 15:04")
+				absAmount := act.Amount
+				if absAmount < 0 {
+					absAmount = -absAmount
+				}
+				if act.Currency == "IDR" {
+					if act.Amount < 0 {
+						act.AmountFormatted = "-Rp " + formatIDR(absAmount)
+						act.IsCredit = false
+					} else {
+						act.AmountFormatted = "+Rp " + formatIDR(absAmount)
+						act.IsCredit = true
+					}
+				} else {
+					if act.Amount < 0 {
+						act.AmountFormatted = "-" + formatUSDT(absAmount) + " USDT"
+						act.IsCredit = false
+					} else {
+						act.AmountFormatted = "+" + formatUSDT(absAmount) + " USDT"
+						act.IsCredit = true
+					}
+				}
 				activities = append(activities, act)
 			}
 		}
 	}
 
-	// 8. Sisa nomor tersedia — hanya kampanye berstatus 'berjalan'
-	// Kampanye dijeda atau selesai tidak dihitung agar angka akurat
+	// 9. Sisa nomor tersedia — hanya kampanye berstatus 'berjalan'
 	var availableNumbers int64
 	_ = s.DB.Pool.QueryRow(ctx, `
 		SELECT COUNT(*)
@@ -176,7 +239,7 @@ func (s *Server) HandleWorkerHome(w http.ResponseWriter, r *http.Request) {
 		WHERE cn.status = 'tersedia' AND c.status = 'berjalan'
 	`).Scan(&availableNumbers)
 
-	// 9. Daftar akun WhatsApp milik pekerja
+	// 10. Daftar akun WhatsApp milik pekerja
 	var accounts []WorkerAccountSummaryView
 	accRows, err := s.DB.Pool.Query(ctx, `
 		SELECT id, label, speed, status, COALESCE(stop_reason, ''), created_at
@@ -199,7 +262,7 @@ func (s *Server) HandleWorkerHome(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// 10. Ringkasan penghasilan per mata uang
+	// 11. Ringkasan penghasilan per mata uang
 	var incomes []CurrencyIncomeView
 	incRows, err := s.DB.Pool.Query(ctx, `
 		SELECT currency, COALESCE(SUM(amount), 0)
@@ -219,7 +282,7 @@ func (s *Server) HandleWorkerHome(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// 11. Broadcast pengumuman aktif dari admin
+	// 12. Broadcast pengumuman aktif dari admin
 	var activeBroadcast *WorkerBroadcastView
 	var bID int64
 	var bTitle, bMessage, bBadge string
@@ -242,49 +305,75 @@ func (s *Server) HandleWorkerHome(w http.ResponseWriter, r *http.Request) {
 
 	data := struct {
 		CSLinks
-		Lang              string
-		Title             string
-		Theme             string
-		CSRFToken         string
-		ActiveNav         string
-		User              UserSession
-		Success           string
-		Error             string
-		Balance           int64
-		TotalWage         int64
-		TotalReferral     int64
-		TotalWithdrawn    int64
-		TotalAccounts     int64
-		ConnectedAccounts int64
-		TotalSent         int64
-		AvailableNumbers  int64
-		Broadcast         *WorkerBroadcastView
-		Accounts          []WorkerAccountSummaryView
-		Incomes           []CurrencyIncomeView
-		Activities        []WorkerActivityView
-		T                 func(string) string
+		Lang                     string
+		Title                    string
+		Theme                    string
+		CSRFToken                string
+		ActiveNav                string
+		User                     UserSession
+		Success                  string
+		Error                    string
+		Balance                  int64
+		BalanceIDR               int64
+		BalanceUSDT              int64
+		BalanceIDRFormatted      string
+		BalanceUSDTFormatted     string
+		EarnedTodayIDR           int64
+		EarnedTodayUSDT          int64
+		EarnedTodayIDRFormatted  string
+		EarnedTodayUSDTFormatted string
+		TotalEarnedIDR           int64
+		TotalEarnedUSDT          int64
+		TotalEarnedIDRFormatted  string
+		TotalEarnedUSDTFormatted string
+		TotalWage                int64
+		TotalReferral            int64
+		TotalWithdrawn           int64
+		TotalAccounts            int64
+		ConnectedAccounts        int64
+		TotalSent                int64
+		AvailableNumbers         int64
+		AvailableNumbersFormatted string
+		Broadcast                *WorkerBroadcastView
+		Accounts                 []WorkerAccountSummaryView
+		Incomes                  []CurrencyIncomeView
+		Activities               []WorkerActivityView
+		T                        func(string) string
 	}{
-		CSLinks:           s.csLinks(),
-		Lang:              lang,
-		Title:             i18n.T(lang, "worker.home_title"),
-		Theme:             getTheme(r),
-		CSRFToken:         getCSRF(r),
-		ActiveNav:         "home",
-		User:              user,
-		Success:           r.URL.Query().Get("success"),
-		Error:             r.URL.Query().Get("error"),
-		Balance:           balance,
-		TotalWage:         totalWage,
-		TotalReferral:     totalReferral,
-		TotalWithdrawn:    totalWithdrawn,
-		TotalAccounts:     totalAccounts,
-		ConnectedAccounts: connectedAccounts,
-		TotalSent:         totalSent,
-		AvailableNumbers:  availableNumbers,
-		Broadcast:         activeBroadcast,
-		Accounts:          accounts,
-		Incomes:           incomes,
-		Activities:        activities,
+		CSLinks:                   s.csLinks(),
+		Lang:                      lang,
+		Title:                     i18n.T(lang, "worker.home_title"),
+		Theme:                     getTheme(r),
+		CSRFToken:                 getCSRF(r),
+		ActiveNav:                 "home",
+		User:                      user,
+		Success:                   r.URL.Query().Get("success"),
+		Error:                     r.URL.Query().Get("error"),
+		Balance:                   mainBalance,
+		BalanceIDR:               balanceIDR,
+		BalanceUSDT:              balanceUSDT,
+		BalanceIDRFormatted:      formatIDR(balanceIDR),
+		BalanceUSDTFormatted:     formatUSDT(balanceUSDT),
+		EarnedTodayIDR:           earnedTodayIDR,
+		EarnedTodayUSDT:          earnedTodayUSDT,
+		EarnedTodayIDRFormatted:  formatIDR(earnedTodayIDR),
+		EarnedTodayUSDTFormatted: formatUSDT(earnedTodayUSDT),
+		TotalEarnedIDR:           totalEarnedIDR,
+		TotalEarnedUSDT:          totalEarnedUSDT,
+		TotalEarnedIDRFormatted:  formatIDR(totalEarnedIDR),
+		TotalEarnedUSDTFormatted: formatUSDT(totalEarnedUSDT),
+		TotalWage:                totalWageIDR,
+		TotalReferral:            totalReferralIDR,
+		TotalWithdrawn:           totalWithdrawnIDR,
+		TotalAccounts:            totalAccounts,
+		ConnectedAccounts:        connectedAccounts,
+		TotalSent:                totalSent,
+		AvailableNumbers:         availableNumbers,
+		AvailableNumbersFormatted: formatIDR(availableNumbers),
+		Broadcast:                activeBroadcast,
+		Accounts:                 accounts,
+		Incomes:                  incomes,
+		Activities:               activities,
 		T: func(key string) string {
 			return i18n.T(lang, key)
 		},

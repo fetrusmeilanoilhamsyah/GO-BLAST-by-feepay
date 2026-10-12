@@ -1,8 +1,8 @@
 {{define "content"}}
-<div style="min-height: 100vh; background-color: var(--color-bg);">
+<div class="admin-layout">
     {{ template "admin_nav" . }}
 
-    <main style="max-width: 1200px; margin: 0 auto; padding: 24px 16px;">
+    <main class="admin-content">
         <div style="margin-bottom: 24px;">
             <h1 style="font-size: 22px; font-weight: 800; margin: 0; color: var(--color-text);">Kelola Broadcast &amp; Pengumuman</h1>
             <p style="margin: 4px 0 0 0; color: var(--color-muted); font-size: 13px;">Kirim pengumuman pembaruan rate, pemeliharaan sistem, atau info penting ke dashboard pekerja.</p>
@@ -25,7 +25,7 @@
             <h3 style="margin: 0 0 16px 0; font-size: 16px;">Buat Pengumuman Baru</h3>
             <form method="POST" action="/admin/broadcasts/new">
                 <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-                <div style="display: grid; grid-template-columns: 1fr 200px; gap: 16px; margin-bottom: 12px;">
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 12px;">
                     <div>
                         <label for="broadcast-title" style="display: block; font-size: 12px; font-weight: 600; color: var(--color-muted); margin-bottom: 4px;">Judul Pengumuman</label>
                         <input type="text" id="broadcast-title" name="title" class="input" placeholder="Contoh: Pembaruan Rate Upah IDR dan USDT" required style="width: 100%; box-sizing: border-box;">
@@ -46,7 +46,7 @@
                     <textarea id="broadcast-message" name="message" class="input" rows="3" placeholder="Tuliskan rincian pengumuman yang akan tampil di banner dashboard pekerja..." required style="width: 100%; box-sizing: border-box; resize: vertical;"></textarea>
                 </div>
 
-                <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
                     <label style="display: inline-flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; user-select: none;">
                         <input type="checkbox" name="is_active" value="true" checked>
                         <span>Langsung aktifkan dan tampilkan ke pekerja</span>
