@@ -204,7 +204,13 @@
         <h2 style="font-size: 16px; font-weight: 700; color: var(--color-text); margin-top: 0; margin-bottom: 12px;">
             Akun WhatsApp Pekerja ({{len .Accounts}})
         </h2>
-        <div class="card" style="margin: 0; padding: 0; overflow-x: auto; border: 1px solid var(--color-border); border-radius: 10px; background: var(--color-card);">
+    <!-- TABEL AKUN WHATSAPP -->
+    <div style="margin-bottom: 24px;">
+        <h2 style="font-size: 16px; font-weight: 700; color: var(--color-text); margin-top: 0; margin-bottom: 12px;">
+            Akun WhatsApp Pekerja ({{len .Accounts}})
+        </h2>
+        <!-- DESKTOP -->
+        <div class="desktop-only card" style="margin: 0; padding: 0; overflow-x: auto; border: 1px solid var(--color-border); border-radius: 10px; background: var(--color-card);">
             <table class="table" style="width: 100%; border-collapse: collapse; font-size: 12px;">
                 <thead>
                     <tr style="border-bottom: 1px solid var(--color-border); text-align: left; background: var(--color-surface-muted);">
@@ -253,6 +259,54 @@
                 </tbody>
             </table>
         </div>
+
+        <!-- MOBILE -->
+        <div class="mobile-only admin-card-list">
+            {{range .Accounts}}
+            <div class="admin-card-item">
+                <div class="admin-card-header">
+                    <div>
+                        <div class="admin-card-title">{{.Label}} <span style="font-size: 12px; font-weight: normal; color: var(--color-muted);">#{{.ID}}</span></div>
+                        <div class="admin-card-sub">{{.CreatedAt}}</div>
+                    </div>
+                    <div>
+                        <span class="badge {{if eq .Status "terhubung"}}badge-success{{else if eq .Status "menunggu_scan"}}badge-warning{{else}}badge-danger{{end}}">
+                            {{.Status}}
+                        </span>
+                    </div>
+                </div>
+                <div class="admin-card-grid">
+                    <div class="admin-card-field">
+                        <span class="admin-card-field-label">Kecepatan</span>
+                        <span class="admin-card-field-val"><span class="badge badge-muted">{{.Speed}}</span></span>
+                    </div>
+                    <div class="admin-card-field">
+                        <span class="admin-card-field-label">Total Terkirim</span>
+                        <span class="admin-card-field-val">{{.SentTotal}}</span>
+                    </div>
+                    <div class="admin-card-field">
+                        <span class="admin-card-field-label">Status Mesin</span>
+                        <span class="admin-card-field-val">
+                            {{if .IsWorking}}
+                            <span style="color: var(--color-success); font-weight: bold;">Mengirim Pesan</span>
+                            {{else}}
+                            <span style="color: var(--color-muted);">Siaga</span>
+                            {{end}}
+                        </span>
+                    </div>
+                </div>
+                {{if .StopReason}}
+                <div style="font-size: 11px; color: var(--color-muted); margin-top: 6px; border-top: 1px solid var(--color-border); padding-top: 6px;">
+                    Alasan Berhenti: {{.StopReason}}
+                </div>
+                {{end}}
+            </div>
+            {{else}}
+            <div class="admin-card-item" style="padding: 20px; text-align: center; color: var(--color-muted);">
+                Pekerja belum menghubungkan akun WhatsApp.
+            </div>
+            {{end}}
+        </div>
     </div>
 
     <!-- TABEL RIWAYAT PENARIKAN -->
@@ -260,7 +314,8 @@
         <h2 style="font-size: 16px; font-weight: 700; color: var(--color-text); margin-top: 0; margin-bottom: 12px;">
             Riwayat Penarikan Terbaru
         </h2>
-        <div class="card" style="margin: 0; padding: 0; overflow-x: auto; border: 1px solid var(--color-border); border-radius: 10px; background: var(--color-card);">
+        <!-- DESKTOP -->
+        <div class="desktop-only card" style="margin: 0; padding: 0; overflow-x: auto; border: 1px solid var(--color-border); border-radius: 10px; background: var(--color-card);">
             <table class="table" style="width: 100%; border-collapse: collapse; font-size: 12px;">
                 <thead>
                     <tr style="border-bottom: 1px solid var(--color-border); text-align: left; background: var(--color-surface-muted);">
@@ -296,6 +351,39 @@
                 </tbody>
             </table>
         </div>
+
+        <!-- MOBILE -->
+        <div class="mobile-only admin-card-list">
+            {{range .Withdrawals}}
+            <div class="admin-card-item">
+                <div class="admin-card-header">
+                    <div>
+                        <div class="admin-card-title">{{.AmountFormatted}}</div>
+                        <div class="admin-card-sub">#{{.ID}} &bull; {{.CreatedAt}}</div>
+                    </div>
+                    <div>
+                        <span class="badge {{if eq .Status "selesai"}}badge-success{{else if eq .Status "menunggu"}}badge-warning{{else}}badge-danger{{end}}">
+                            {{.Status}}
+                        </span>
+                    </div>
+                </div>
+                <div class="admin-card-grid">
+                    <div class="admin-card-field">
+                        <span class="admin-card-field-label">Metode</span>
+                        <span class="admin-card-field-val" style="text-transform: uppercase;">{{.Method}}</span>
+                    </div>
+                    <div class="admin-card-field">
+                        <span class="admin-card-field-label">Diproses</span>
+                        <span class="admin-card-field-val">{{if .ProcessedAt}}{{.ProcessedAt}}{{else}}-{{end}}</span>
+                    </div>
+                </div>
+            </div>
+            {{else}}
+            <div class="admin-card-item" style="padding: 20px; text-align: center; color: var(--color-muted);">
+                Belum ada riwayat penarikan saldo.
+            </div>
+            {{end}}
+        </div>
     </div>
 
     <!-- TABEL MUTASI BUKU BESAR -->
@@ -303,7 +391,8 @@
         <h2 style="font-size: 16px; font-weight: 700; color: var(--color-text); margin-top: 0; margin-bottom: 12px;">
             Mutasi Buku Besar Terakhir (15 Entri)
         </h2>
-        <div class="card" style="margin: 0; padding: 0; overflow-x: auto; border: 1px solid var(--color-border); border-radius: 10px; background: var(--color-card);">
+        <!-- DESKTOP -->
+        <div class="desktop-only card" style="margin: 0; padding: 0; overflow-x: auto; border: 1px solid var(--color-border); border-radius: 10px; background: var(--color-card);">
             <table class="table" style="width: 100%; border-collapse: collapse; font-size: 12px;">
                 <thead>
                     <tr style="border-bottom: 1px solid var(--color-border); text-align: left; background: var(--color-surface-muted);">
@@ -338,6 +427,37 @@
                     {{end}}
                 </tbody>
             </table>
+        </div>
+
+        <!-- MOBILE -->
+        <div class="mobile-only admin-card-list">
+            {{range .LedgerEntries}}
+            <div class="admin-card-item">
+                <div class="admin-card-header">
+                    <div>
+                        <span class="badge {{if eq .Kind "upah"}}badge-success{{else if eq .Kind "penarikan"}}badge-warning{{else}}badge-muted{{end}}">
+                            {{.Kind}}
+                        </span>
+                        <span style="font-size: 12px; color: var(--color-muted); margin-left: 6px;">#{{.ID}} &bull; {{.CreatedAt}}</span>
+                    </div>
+                    <div style="font-size: 15px; font-weight: 800; color: var(--color-text);">
+                        {{.AmountFormatted}}
+                    </div>
+                </div>
+                <div style="font-size: 12px; color: var(--color-muted); line-height: 1.4; margin-top: 4px;">
+                    {{.Note}}
+                </div>
+                {{if .RateSnapshot}}
+                <div style="font-size: 11px; color: var(--color-muted); margin-top: 2px;">
+                    Rate: {{.RateSnapshot}}
+                </div>
+                {{end}}
+            </div>
+            {{else}}
+            <div class="admin-card-item" style="padding: 20px; text-align: center; color: var(--color-muted);">
+                Belum ada catatan mutasi buku besar.
+            </div>
+            {{end}}
         </div>
     </div>
     </div>

@@ -44,7 +44,8 @@
             <h2 style="font-size: 18px; font-weight: 700; margin: 0; color: var(--color-text);">{{ call .T "admin.campaign_report_title" }}</h2>
             <a href="/admin/campaigns" class="btn btn-secondary" style="padding: 5px 12px; font-size: 12px; text-decoration: none;">Kelola Campaign</a>
         </div>
-        <div class="responsive-table-container">
+        <!-- DESKTOP -->
+        <div class="desktop-only responsive-table-container">
             <table class="responsive-table">
                 <thead>
                     <tr>
@@ -80,6 +81,46 @@
                 </tbody>
             </table>
         </div>
+        <!-- MOBILE -->
+        <div class="mobile-only admin-card-list">
+            {{range .Stats.Campaigns}}
+            <div class="admin-card-item">
+                <div class="admin-card-header">
+                    <div>
+                        <a href="/admin/campaigns/{{.ID}}" style="color: var(--color-text); text-decoration: none;">
+                            <span class="admin-card-title">{{.Name}}</span>
+                        </a>
+                        <div class="admin-card-sub">#{{.ID}}</div>
+                    </div>
+                    <div>
+                        <span class="badge {{if eq .Status "berjalan"}}badge-success{{else if eq .Status "draf"}}badge-muted{{else}}badge-muted{{end}}">
+                            {{.Status}}
+                        </span>
+                    </div>
+                </div>
+                <div class="admin-card-grid">
+                    <div class="admin-card-field">
+                        <span class="admin-card-field-label">Tersedia</span>
+                        <span class="admin-card-field-val">{{.Tersedia}}</span>
+                    </div>
+                    <div class="admin-card-field">
+                        <span class="admin-card-field-label">Dikirim</span>
+                        <span class="admin-card-field-val">{{.Dikirim}}</span>
+                    </div>
+                    <div class="admin-card-field">
+                        <span class="admin-card-field-label">Terkirim</span>
+                        <span class="admin-card-field-val" style="color: var(--color-success);">{{.Terkirim}}</span>
+                    </div>
+                    <div class="admin-card-field">
+                        <span class="admin-card-field-label">Gagal</span>
+                        <span class="admin-card-field-val" style="color: var(--color-danger);">{{.Gagal}}</span>
+                    </div>
+                </div>
+            </div>
+            {{else}}
+            <div class="admin-card-item" style="text-align: center; color: var(--color-muted); padding: 20px;">Belum ada campaign.</div>
+            {{end}}
+        </div>
     </section>
 
     <!-- 3. Worker Statistics -->
@@ -88,7 +129,8 @@
             <h2 style="font-size: 18px; font-weight: 700; margin: 0; color: var(--color-text);">{{ call .T "admin.worker_report_title" }}</h2>
             <a href="/admin/workers" class="btn btn-secondary" style="padding: 5px 12px; font-size: 12px; text-decoration: none;">Daftar Pekerja</a>
         </div>
-        <div class="responsive-table-container">
+        <!-- DESKTOP -->
+        <div class="desktop-only responsive-table-container">
             <table class="responsive-table">
                 <thead>
                     <tr>
@@ -116,6 +158,39 @@
                 </tbody>
             </table>
         </div>
+        <!-- MOBILE -->
+        <div class="mobile-only admin-card-list">
+            {{range .Stats.Workers}}
+            <div class="admin-card-item">
+                <div class="admin-card-header">
+                    <div>
+                        <div class="admin-card-title">{{.Username}}</div>
+                        <div class="admin-card-sub">{{.Email}}</div>
+                    </div>
+                </div>
+                <div class="admin-card-grid">
+                    <div class="admin-card-field">
+                        <span class="admin-card-field-label">{{ call $.T "admin.worker_sent_today" }}</span>
+                        <span class="admin-card-field-val">{{.SentToday}}</span>
+                    </div>
+                    <div class="admin-card-field">
+                        <span class="admin-card-field-label">{{ call $.T "admin.worker_sent_total" }}</span>
+                        <span class="admin-card-field-val">{{.SentTotal}}</span>
+                    </div>
+                    <div class="admin-card-field">
+                        <span class="admin-card-field-label">{{ call $.T "admin.worker_earnings_idr" }}</span>
+                        <span class="admin-card-field-val">Rp {{.EarningsIDR}}</span>
+                    </div>
+                    <div class="admin-card-field">
+                        <span class="admin-card-field-label">{{ call $.T "admin.worker_earnings_usdt" }}</span>
+                        <span class="admin-card-field-val">{{.EarningsUSDT}}</span>
+                    </div>
+                </div>
+            </div>
+            {{else}}
+            <div class="admin-card-item" style="text-align: center; color: var(--color-muted); padding: 20px;">Belum ada pekerja terdaftar.</div>
+            {{end}}
+        </div>
     </section>
 
     <!-- 4. WhatsApp Accounts List -->
@@ -123,7 +198,8 @@
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
             <h2 style="font-size: 18px; font-weight: 700; margin: 0; color: var(--color-text);">{{ call .T "admin.wa_accounts_title" }}</h2>
         </div>
-        <div class="responsive-table-container">
+        <!-- DESKTOP -->
+        <div class="desktop-only responsive-table-container">
             <table class="responsive-table">
                 <thead>
                     <tr>
@@ -163,6 +239,47 @@
                 </tbody>
             </table>
         </div>
+        <!-- MOBILE -->
+        <div class="mobile-only admin-card-list">
+            {{range .Stats.Accounts}}
+            <div class="admin-card-item">
+                <div class="admin-card-header">
+                    <div>
+                        <div class="admin-card-title">{{.Label}}</div>
+                        <div class="admin-card-sub">Pekerja: {{.WorkerUsername}}</div>
+                    </div>
+                    <div>
+                        <span class="badge {{if eq .Status "terhubung"}}badge-success{{else if eq .Status "menunggu_scan"}}badge-warning{{else}}badge-danger{{end}}">
+                            {{.Status}}
+                        </span>
+                    </div>
+                </div>
+                <div class="admin-card-grid">
+                    <div class="admin-card-field">
+                        <span class="admin-card-field-label">Kecepatan</span>
+                        <span class="admin-card-field-val"><span class="badge badge-muted">{{.Speed}}</span></span>
+                    </div>
+                    <div class="admin-card-field">
+                        <span class="admin-card-field-label">{{ call $.T "admin.work_status" }}</span>
+                        <span class="admin-card-field-val">
+                            {{if .IsRunning}}
+                            <span class="badge badge-success">{{ call $.T "wa.working" }}</span>
+                            {{else}}
+                            <span class="badge badge-muted">{{ call $.T "wa.not_working" }}</span>
+                            {{end}}
+                        </span>
+                    </div>
+                </div>
+                {{if .StopReason}}
+                <div style="font-size: 11px; color: var(--color-muted); margin-top: 6px; border-top: 1px solid var(--color-border); padding-top: 6px;">
+                    Alasan Berhenti: {{.StopReason}}
+                </div>
+                {{end}}
+            </div>
+            {{else}}
+            <div class="admin-card-item" style="text-align: center; color: var(--color-muted); padding: 20px;">Belum ada akun WhatsApp tersambung.</div>
+            {{end}}
+        </div>
     </section>
 
     <!-- 5. 14-Day Daily Trends -->
@@ -170,7 +287,8 @@
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
             <h2 style="font-size: 18px; font-weight: 700; margin: 0; color: var(--color-text);">{{ call .T "admin.daily_trends_title" }}</h2>
         </div>
-        <div class="responsive-table-container">
+        <!-- DESKTOP -->
+        <div class="desktop-only responsive-table-container">
             <table class="responsive-table">
                 <thead>
                     <tr>
@@ -197,6 +315,33 @@
                     {{end}}
                 </tbody>
             </table>
+        </div>
+        <!-- MOBILE -->
+        <div class="mobile-only admin-card-list">
+            {{range .Stats.DailyTrends}}
+            <div class="admin-card-item">
+                <div class="admin-card-header">
+                    <span class="admin-card-title">{{.Date}}</span>
+                    <span class="badge badge-muted">Total: {{.Total}}</span>
+                </div>
+                <div class="admin-card-grid">
+                    <div class="admin-card-field">
+                        <span class="admin-card-field-label">{{ call $.T "admin.status_terkirim" }}</span>
+                        <span class="admin-card-field-val" style="color: var(--color-success);">{{.Terkirim}}</span>
+                    </div>
+                    <div class="admin-card-field">
+                        <span class="admin-card-field-label">{{ call $.T "admin.status_gagal" }}</span>
+                        <span class="admin-card-field-val" style="color: var(--color-danger);">{{.Gagal}}</span>
+                    </div>
+                    <div class="admin-card-field">
+                        <span class="admin-card-field-label">{{ call $.T "admin.status_tidak_terdaftar" }}</span>
+                        <span class="admin-card-field-val" style="color: var(--color-muted);">{{.TidakTerdaftar}}</span>
+                    </div>
+                </div>
+            </div>
+            {{else}}
+            <div class="admin-card-item" style="text-align: center; color: var(--color-muted); padding: 20px;">Belum ada data tren harian.</div>
+            {{end}}
         </div>
     </section>
 </main>

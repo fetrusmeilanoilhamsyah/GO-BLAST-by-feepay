@@ -89,7 +89,8 @@
     <!-- 3. Riwayat Isi Ulang -->
     <section>
         <h2 style="font-size: 18px; font-weight: 700; margin-top: 0; margin-bottom: 12px; color: var(--color-text);">{{ call .T "admin.topup_history_title" }}</h2>
-        <div class="responsive-table-container">
+        <!-- DESKTOP -->
+        <div class="desktop-only responsive-table-container">
             <table class="responsive-table">
                 <thead>
                     <tr>
@@ -118,6 +119,31 @@
                     {{end}}
                 </tbody>
             </table>
+        </div>
+
+        <!-- MOBILE -->
+        <div class="mobile-only admin-card-list">
+            {{range .Wallet.Entries}}
+            <div class="admin-card-item">
+                <div class="admin-card-header">
+                    <span class="admin-card-title">{{.CreatedAt.Format "02 Jan 2006 15:04"}}</span>
+                    <span class="badge badge-muted">{{.Currency}}</span>
+                </div>
+                <div style="font-size: 18px; font-weight: 800; color: var(--color-text); margin: 4px 0;">
+                    {{if eq .Currency "IDR"}}Rp {{.Amount}}{{else}}{{.Amount}} µUSDT{{end}}
+                </div>
+                <div style="font-size: 12px; color: var(--color-text); line-height: 1.4;">
+                    {{.Note}}
+                </div>
+                <div style="font-size: 11px; color: var(--color-muted); margin-top: 4px;">
+                    Oleh: {{.CreatedBy}}
+                </div>
+            </div>
+            {{else}}
+            <div class="admin-card-item" style="text-align: center; color: var(--color-muted); padding: 20px;">
+                {{ call .T "admin.no_topup_history" }}
+            </div>
+            {{end}}
         </div>
     </section>
     </div>

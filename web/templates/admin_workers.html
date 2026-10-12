@@ -17,7 +17,8 @@
         {{end}}
     </form>
 
-    <div class="responsive-table-container">
+    <!-- TAMPILAN DESKTOP (TABEL LENGKAP) -->
+    <div class="desktop-only responsive-table-container">
         <table class="responsive-table">
             <thead>
                 <tr>
@@ -78,6 +79,69 @@
                 {{end}}
             </tbody>
         </table>
+    </div>
+
+    <!-- TAMPILAN MOBILE (KARTU KOMPAK & PAS DI LAYAR HP) -->
+    <div class="mobile-only admin-card-list">
+        {{range .Workers}}
+        <div class="admin-card-item">
+            <div class="admin-card-header">
+                <div>
+                    <div class="admin-card-title">{{.Username}} <span style="font-size: 12px; font-weight: normal; color: var(--color-muted);">#{{.ID}}</span></div>
+                    <div class="admin-card-sub">{{.Email}}</div>
+                </div>
+                <div>
+                    <span class="badge {{if eq .Status "active"}}badge-success{{else}}badge-danger{{end}}">
+                        {{.Status}}
+                    </span>
+                </div>
+            </div>
+
+            <div class="admin-card-grid">
+                <div class="admin-card-field">
+                    <span class="admin-card-field-label">{{ call $.T "admin.worker_accounts_count" }}</span>
+                    <span class="admin-card-field-val">{{.AccountCount}} <span style="font-size: 11px; color: var(--color-status-done); font-weight: bold;">({{.ActiveAccountCount}} aktif)</span></span>
+                </div>
+                <div class="admin-card-field">
+                    <span class="admin-card-field-label">{{ call $.T "admin.worker_sent_total" }}</span>
+                    <span class="admin-card-field-val">{{.SentCount}}</span>
+                </div>
+                <div class="admin-card-field">
+                    <span class="admin-card-field-label">{{ call $.T "admin.worker_balance_idr" }}</span>
+                    <span class="admin-card-field-val">Rp {{.BalanceIDRFormatted}}</span>
+                </div>
+                <div class="admin-card-field">
+                    <span class="admin-card-field-label">{{ call $.T "admin.worker_balance_usdt" }}</span>
+                    <span class="admin-card-field-val">{{.BalanceUSDTFormatted}} USDT</span>
+                </div>
+            </div>
+
+            <div class="admin-card-actions">
+                <a href="/admin/workers/{{.ID}}" class="btn btn-secondary" style="flex: 1; padding: 7px 12px; font-size: 12px; text-decoration: none; text-align: center; border-radius: 6px;">
+                    Detail
+                </a>
+                {{if eq .Status "active"}}
+                <form method="POST" action="/admin/workers/{{.ID}}/disable" style="display: inline; margin: 0; flex: 1;" onsubmit="return confirm('{{ call $.T "admin.disable_confirm" }}');">
+                    <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                    <button type="submit" class="btn btn-secondary" style="width: 100%; padding: 7px 12px; font-size: 12px; color: var(--color-danger); border-color: var(--color-danger); cursor: pointer; border-radius: 6px;">
+                        {{ call $.T "admin.action_disable" }}
+                    </button>
+                </form>
+                {{else}}
+                <form method="POST" action="/admin/workers/{{.ID}}/enable" style="display: inline; margin: 0; flex: 1;">
+                    <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                    <button type="submit" class="btn btn-primary" style="width: 100%; padding: 7px 12px; font-size: 12px; cursor: pointer; border-radius: 6px;">
+                        {{ call $.T "admin.action_enable" }}
+                    </button>
+                </form>
+                {{end}}
+            </div>
+        </div>
+        {{else}}
+        <div class="admin-card-item" style="padding: 30px; text-align: center; color: var(--color-muted);">
+            Belum ada pekerja terdaftar.
+        </div>
+        {{end}}
     </div>
     </main>
 </div>

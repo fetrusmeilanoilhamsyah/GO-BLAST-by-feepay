@@ -59,11 +59,12 @@
         </div>
 
         <!-- DAFTAR BROADCAST -->
-        <div class="card" style="padding: 0; overflow: hidden;">
+        <div class="card" style="padding: 0; overflow: hidden; margin: 0;">
             <div style="padding: 16px 20px; border-bottom: 1px solid var(--color-border); background-color: var(--color-surface-muted);">
                 <h3 style="margin: 0; font-size: 15px;">Riwayat Pengumuman Broadcast</h3>
             </div>
-            <div class="responsive-table-container">
+            <!-- DESKTOP -->
+            <div class="desktop-only responsive-table-container">
                 <table class="responsive-table">
                     <thead>
                         <tr>
@@ -123,6 +124,53 @@
                         {{end}}
                     </tbody>
                 </table>
+            </div>
+
+            <!-- MOBILE -->
+            <div class="mobile-only admin-card-list" style="padding: 12px;">
+                {{range .Broadcasts}}
+                <div class="admin-card-item">
+                    <div class="admin-card-header">
+                        <div>
+                            <div style="margin-bottom: 4px;">
+                                <span class="badge badge-muted" style="font-size: 11px;">{{.Badge}}</span>
+                            </div>
+                            <div class="admin-card-title">{{.Title}} <span style="font-size: 12px; font-weight: normal; color: var(--color-muted);">#{{.ID}}</span></div>
+                            <div class="admin-card-sub">{{.CreatedAt}}</div>
+                        </div>
+                        <div>
+                            {{if .IsActive}}
+                            <span class="badge badge-success" style="font-size: 11px;">Aktif</span>
+                            {{else}}
+                            <span class="badge badge-muted" style="font-size: 11px;">Nonaktif</span>
+                            {{end}}
+                        </div>
+                    </div>
+
+                    <div style="background-color: var(--color-surface-muted); padding: 10px 12px; border-radius: 6px; font-size: 13px; color: var(--color-text); line-height: 1.5; white-space: pre-wrap; word-break: break-word; margin: 6px 0;">
+                        {{.Message}}
+                    </div>
+
+                    <div class="admin-card-actions">
+                        <form method="POST" action="/admin/broadcasts/{{.ID}}/toggle" style="display: inline; margin: 0; flex: 1;">
+                            <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                            <button type="submit" class="btn btn-secondary" style="width: 100%; padding: 7px 12px; font-size: 12px; cursor: pointer;">
+                                {{if .IsActive}}Nonaktifkan{{else}}Aktifkan{{end}}
+                            </button>
+                        </form>
+                        <form method="POST" action="/admin/broadcasts/{{.ID}}/delete" style="display: inline; margin: 0; flex: 1;" onsubmit="return confirm('Apakah Anda yakin ingin menghapus broadcast ini?');">
+                            <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                            <button type="submit" class="btn btn-secondary" style="width: 100%; padding: 7px 12px; font-size: 12px; color: var(--color-danger); border-color: var(--color-danger); cursor: pointer;">
+                                Hapus
+                            </button>
+                        </form>
+                    </div>
+                </div>
+                {{else}}
+                <div class="admin-card-item" style="text-align: center; padding: 32px; color: var(--color-muted);">
+                    Belum ada pengumuman broadcast yang dibuat.
+                </div>
+                {{end}}
             </div>
         </div>
     </main>

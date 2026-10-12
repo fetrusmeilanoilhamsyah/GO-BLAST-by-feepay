@@ -52,8 +52,8 @@
         </a>
     </div>
 
-    <!-- Table of Withdrawals -->
-    <div class="card" style="margin: 0; padding: 0; overflow: hidden;">
+    <!-- Table of Withdrawals (DESKTOP) -->
+    <div class="desktop-only card" style="margin: 0; padding: 0; overflow: hidden;">
         <div style="overflow-x: auto;">
             <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 13px;">
                 <thead style="background-color: var(--color-surface-muted); color: var(--color-muted);">
@@ -146,6 +146,78 @@
                 </tbody>
             </table>
         </div>
+    </div>
+
+    <!-- Table of Withdrawals (MOBILE) -->
+    <div class="mobile-only admin-card-list">
+        {{range .Items}}
+        <div class="admin-card-item">
+            <div class="admin-card-header">
+                <div>
+                    <div class="admin-card-title">{{.WorkerUsername}} <span style="font-size: 12px; font-weight: normal; color: var(--color-muted);">#{{.ID}}</span></div>
+                    <div class="admin-card-sub">{{.WorkerEmail}} &bull; {{.RequestedAt.Format "02 Jan 06 15:04"}}</div>
+                </div>
+                <div>
+                    {{if eq .Status "menunggu"}}
+                    <span style="background-color: var(--color-surface-muted); color: var(--color-warning); border: 1px solid var(--color-warning); padding: 3px 8px; border-radius: 12px; font-size: 11px; font-weight: bold;">
+                        {{ call $.T "admin.withdraw_pending" }}
+                    </span>
+                    {{else if eq .Status "selesai"}}
+                    <span style="background-color: var(--color-surface-muted); color: var(--color-status-done); border: 1px solid var(--color-status-done); padding: 3px 8px; border-radius: 12px; font-size: 11px; font-weight: bold;">
+                        {{ call $.T "admin.withdraw_approved" }}
+                    </span>
+                    {{else}}
+                    <span style="background-color: var(--color-surface-muted); color: var(--color-danger); border: 1px solid var(--color-danger); padding: 3px 8px; border-radius: 12px; font-size: 11px; font-weight: bold;">
+                        {{ call $.T "admin.withdraw_rejected" }}
+                    </span>
+                    {{end}}
+                </div>
+            </div>
+
+            <div style="margin: 8px 0; display: flex; justify-content: space-between; align-items: baseline;">
+                <span style="font-size: 18px; font-weight: 800; color: var(--color-text);">
+                    {{if eq .Currency "IDR"}}Rp {{.AmountFormatted}}{{else}}{{.AmountFormatted}} USDT{{end}}
+                </span>
+                <span class="badge badge-muted" style="text-transform: uppercase; font-size: 11px;">{{.Method}}</span>
+            </div>
+
+            <div style="font-size: 12px; margin-bottom: 8px;">
+                <div style="color: var(--color-muted); font-size: 11px; margin-bottom: 2px;">Tujuan Transfer:</div>
+                <div style="background-color: var(--color-surface-muted); padding: 6px 10px; border-radius: 6px; font-family: monospace; word-break: break-all;">
+                    {{if eq .Destination "(gagal dekripsi)"}}
+                    <span style="color: var(--color-danger);">Enkripsi lama — tidak dapat dibaca</span>
+                    {{else}}
+                    {{.Destination}}
+                    {{end}}
+                </div>
+            </div>
+
+            {{if eq .Status "menunggu"}}
+            <div class="admin-card-actions">
+                <form method="POST" action="/admin/withdrawals/{{.ID}}/approve" onsubmit="return confirm('{{ call $.T "admin.withdraw_confirm_approve" }}');" style="margin: 0; flex: 1;">
+                    <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                    <button type="submit" class="btn btn-primary" style="width: 100%; padding: 8px 12px; font-size: 12px;">
+                        {{ call $.T "admin.withdraw_approve_btn" }}
+                    </button>
+                </form>
+                <form method="POST" action="/admin/withdrawals/{{.ID}}/reject" onsubmit="return confirm('{{ call $.T "admin.withdraw_confirm_reject" }}');" style="margin: 0; flex: 1;">
+                    <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                    <button type="submit" class="btn btn-secondary" style="width: 100%; padding: 8px 12px; font-size: 12px; color: var(--color-danger); border-color: var(--color-danger);">
+                        {{ call $.T "admin.withdraw_reject_btn" }}
+                    </button>
+                </form>
+            </div>
+            {{else if .ProcessedAt}}
+            <div style="font-size: 11px; color: var(--color-muted); border-top: 1px solid var(--color-border); padding-top: 6px; margin-top: 6px;">
+                Diproses: {{.ProcessedAt.Format "02/01/06 15:04"}}
+            </div>
+            {{end}}
+        </div>
+        {{else}}
+        <div class="admin-card-item" style="padding: 40px; text-align: center; color: var(--color-muted);">
+            {{ call .T "admin.withdraw_empty" }}
+        </div>
+        {{end}}
     </div>
     </main>
 </div>

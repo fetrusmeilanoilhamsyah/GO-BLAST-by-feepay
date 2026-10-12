@@ -19,7 +19,8 @@
             <a href="/admin/campaigns/new" class="btn btn-primary" style="text-decoration: none;">+ {{ call .T "campaign.create_btn" }}</a>
         </div>
 
-        <div class="responsive-table-container">
+        <!-- TAMPILAN DESKTOP (TABEL LENGKAP) -->
+        <div class="desktop-only responsive-table-container">
             <table class="responsive-table">
             <thead style="background-color: var(--color-surface-muted);">
                 <tr>
@@ -97,6 +98,73 @@
                 {{end}}
             </tbody>
         </table>
+    </div>
+
+    <!-- TAMPILAN MOBILE (KARTU KOMPAK & PAS DI LAYAR HP) -->
+    <div class="mobile-only admin-card-list">
+        {{range .Campaigns}}
+        <div class="admin-card-item">
+            <div class="admin-card-header">
+                <div>
+                    <a href="/admin/campaigns/{{.ID}}" style="color: var(--color-text); text-decoration: none;">
+                        <span class="admin-card-title">{{.Name}}</span>
+                    </a>
+                    <div class="admin-card-sub">#{{.ID}} &bull; {{.CreatedAt.Format "02 Jan 06 15:04"}}</div>
+                </div>
+                <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 4px;">
+                    <span style="padding: 3px 8px; border-radius: 12px; font-size: 11px; font-weight: bold; color: var(--color-on-primary); background-color: {{if eq .Status "draf"}}var(--color-status-draft){{else if eq .Status "berjalan"}}var(--color-status-running){{else}}var(--color-status-done){{end}};">
+                        {{.Status}}
+                    </span>
+                    {{if .ArchivedAt}}
+                    <span style="padding: 2px 6px; border-radius: 10px; font-size: 10px; background-color: var(--color-surface-muted); color: var(--color-muted); border: 1px solid var(--color-border);">
+                        {{ call $.T "campaign.archived_badge" }}
+                    </span>
+                    {{end}}
+                </div>
+            </div>
+
+            <div class="admin-card-grid">
+                <div class="admin-card-field">
+                    <span class="admin-card-field-label">{{ call $.T "campaign.th_mode" }}</span>
+                    <span class="admin-card-field-val">{{if eq .ButtonMode "kartu_link"}}{{ call $.T "campaign.mode_card_link" }}{{else}}{{ call $.T "campaign.mode_native_btn" }}{{end}}</span>
+                </div>
+            </div>
+
+            <div class="admin-card-actions">
+                <a href="/admin/campaigns/{{.ID}}" class="btn btn-secondary" style="flex: 1; padding: 6px 10px; font-size: 12px; text-decoration: none; text-align: center; border-radius: 6px;">Detail</a>
+                {{if not .ArchivedAt}}
+                    {{if eq .Status "draf"}}
+                    <a href="/admin/campaigns/{{.ID}}/edit" class="btn btn-secondary" style="flex: 1; padding: 6px 10px; font-size: 12px; text-decoration: none; text-align: center; border-radius: 6px;">{{ call $.T "campaign.action_edit" }}</a>
+                    <a href="/admin/campaigns/{{.ID}}/numbers" class="btn btn-secondary" style="flex: 1; padding: 6px 10px; font-size: 12px; text-decoration: none; text-align: center; border-radius: 6px; color: var(--color-warning); border-color: var(--color-warning);">{{ call $.T "campaign.action_numbers" }}</a>
+                    {{else}}
+                    <a href="/admin/campaigns/{{.ID}}/numbers" class="btn btn-secondary" style="flex: 1; padding: 6px 10px; font-size: 12px; text-decoration: none; text-align: center; border-radius: 6px;">{{ call $.T "campaign.action_report" }}</a>
+                    {{if eq .Status "berjalan"}}
+                    <form method="POST" action="/admin/campaigns/{{.ID}}/pause" style="display: inline; margin: 0; flex: 1;">
+                        <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                        <button type="submit" class="btn btn-secondary" style="width: 100%; padding: 6px 10px; font-size: 12px; cursor: pointer; border-radius: 6px;">Jeda</button>
+                    </form>
+                    {{end}}
+                    {{end}}
+                    {{if ne .Status "berjalan"}}
+                    <form method="POST" action="/admin/campaigns/{{.ID}}/archive" style="display: inline; margin: 0; flex: 1;" onsubmit="return confirm('{{ call $.T "campaign.archive_confirm" }}');">
+                        <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                        <button type="submit" class="btn btn-secondary" style="width: 100%; padding: 6px 10px; font-size: 12px; cursor: pointer; border-radius: 6px;">{{ call $.T "campaign.archive_btn" }}</button>
+                    </form>
+                    {{end}}
+                    {{if eq .Status "draf"}}
+                    <form method="POST" action="/admin/campaigns/{{.ID}}/delete" style="display: inline; margin: 0; flex: 1;" onsubmit="return confirm('{{ call $.T "campaign.delete_confirm" }}');">
+                        <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                        <button type="submit" class="btn btn-secondary" style="width: 100%; padding: 6px 10px; font-size: 12px; color: var(--color-danger); border-color: var(--color-danger); cursor: pointer; border-radius: 6px;">{{ call $.T "campaign.delete_btn" }}</button>
+                    </form>
+                    {{end}}
+                {{end}}
+            </div>
+        </div>
+        {{else}}
+        <div class="admin-card-item" style="padding: 30px; text-align: center; color: var(--color-muted);">
+            {{ call .T "campaign.empty_list" }}
+        </div>
+        {{end}}
     </div>
 </main>
 </div>
