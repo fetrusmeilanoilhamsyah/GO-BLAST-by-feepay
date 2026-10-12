@@ -25,6 +25,13 @@ const DeliveryLevel = "server_ack"
 // SendTimeout batas waktu pengiriman pesan (60 detik).
 const SendTimeout = 60 * time.Second
 
+// Nilai bawaan parameter mesin internal (fallback aman jika tidak disetel di settings).
+const (
+	DefaultMaxAttempts            = 3
+	DefaultMaxConsecutiveFailures = 5
+	DefaultClaimTimeoutSeconds    = 300
+)
+
 // BuildRetryDelay jeda waktu saat buildCampaignMessage gagal (bawaan 5 detik).
 var BuildRetryDelay = 5 * time.Second
 
@@ -150,7 +157,7 @@ func (e *Engine) CleanStaleNumbers(ctx context.Context) (int64, error) {
 
 	timeoutSec, ok, err := e.settings.GetInt(ctx, "claim_timeout_seconds")
 	if err != nil || !ok || timeoutSec <= int(SendTimeout.Seconds()) {
-		timeoutSec = 300 // Nilai awal 300 detik, harus selalu > timeout kirim (60s)
+		timeoutSec = DefaultClaimTimeoutSeconds
 	}
 
 	res, err := e.db.Pool.Exec(ctx,
@@ -251,8 +258,7 @@ func (e *Engine) runWorker(ctx context.Context, accountID, workerID int64, curre
 
 		maxAttempts, okAttempts, err := e.settings.GetInt(ctx, "max_attempts")
 		if err != nil || !okAttempts || maxAttempts <= 0 {
-			e.setAccountStopReason(ctx, accountID, "pengaturan max_attempts belum diisi admin (keputusan terbuka #3)")
-			return
+			maxAttempts = DefaultMaxAttempts
 		}
 
 		// Validasi rate_wage: jika rate mata uang pekerja tidak ada atau tidak lebih dari 0,
@@ -389,7 +395,10 @@ func (e *Engine) runWorker(ctx context.Context, accountID, workerID int64, curre
 
 			// Cek max_consecutive_failures
 			maxFail, okFail, _ := e.settings.GetInt(ctx, "max_consecutive_failures")
-			if okFail && maxFail > 0 && consecutiveFailures >= maxFail {
+			if !okFail || maxFail <= 0 {
+				maxFail = DefaultMaxConsecutiveFailures
+			}
+			if consecutiveFailures >= maxFail {
 				e.StopAccountForFailure(ctx, accountID, fmt.Sprintf("berhenti otomatis: %d kegagalan beruntun", consecutiveFailures))
 				return
 			}

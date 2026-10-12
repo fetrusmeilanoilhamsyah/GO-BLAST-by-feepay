@@ -48,21 +48,26 @@
                     <td>Rp {{.BalanceIDRFormatted}}</td>
                     <td>{{.BalanceUSDTFormatted}} USDT</td>
                     <td>
-                        {{if eq .Status "active"}}
-                        <form method="POST" action="/admin/workers/{{.ID}}/disable" style="display: inline; margin: 0;" onsubmit="return confirm('{{ call $.T "admin.disable_confirm" }}');">
-                            <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
-                            <button type="submit" class="btn btn-secondary" style="padding: 4px 10px; font-size: 12px; color: var(--color-danger); border-color: var(--color-danger); cursor: pointer;">
-                                {{ call $.T "admin.action_disable" }}
-                            </button>
-                        </form>
-                        {{else}}
-                        <form method="POST" action="/admin/workers/{{.ID}}/enable" style="display: inline; margin: 0;">
-                            <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
-                            <button type="submit" class="btn btn-primary" style="padding: 4px 10px; font-size: 12px; cursor: pointer;">
-                                {{ call $.T "admin.action_enable" }}
-                            </button>
-                        </form>
-                        {{end}}
+                        <div style="display: flex; gap: 6px; align-items: center;">
+                            <a href="/admin/workers/{{.ID}}" class="btn btn-secondary" style="padding: 4px 10px; font-size: 12px; text-decoration: none; border-radius: 6px;">
+                                Detail
+                            </a>
+                            {{if eq .Status "active"}}
+                            <form method="POST" action="/admin/workers/{{.ID}}/disable" style="display: inline; margin: 0;" onsubmit="return confirm('{{ call $.T "admin.disable_confirm" }}');">
+                                <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                                <button type="submit" class="btn btn-secondary" style="padding: 4px 10px; font-size: 12px; color: var(--color-danger); border-color: var(--color-danger); cursor: pointer; border-radius: 6px;">
+                                    {{ call $.T "admin.action_disable" }}
+                                </button>
+                            </form>
+                            {{else}}
+                            <form method="POST" action="/admin/workers/{{.ID}}/enable" style="display: inline; margin: 0;">
+                                <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                                <button type="submit" class="btn btn-primary" style="padding: 4px 10px; font-size: 12px; cursor: pointer; border-radius: 6px;">
+                                    {{ call $.T "admin.action_enable" }}
+                                </button>
+                            </form>
+                            {{end}}
+                        </div>
                     </td>
                 </tr>
                 {{else}}

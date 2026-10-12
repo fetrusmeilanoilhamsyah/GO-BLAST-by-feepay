@@ -301,6 +301,10 @@
   "campaign.show_archived": "显示归档",
   "campaign.hide_archived": "隐藏归档",
   "campaign.archive_btn": "归档",
-  "campaign.archive_confirm": "归档此营销活动？已归档活动将变为只读。"
+  "campaign.archive_confirm": "归档此营销活动？已归档活动将变为只读。",
+  "admin.maintenance": "维护与系统",
+  "maintenance.title": "系统正在维护中",
+  "maintenance.desc": "我们正在进行常规系统维护，以优化系统性能与安全。工单与服务将很快恢复正常。",
+  "maintenance.refresh_btn": "重新加载页面"
 }
 

@@ -53,6 +53,8 @@ func NewServer(database *db.DB, env string, waMgr *wa.Manager, workCtrl WorkCont
 		"admin_wallet.html":                   true,
 		"admin_withdrawals.html":              true,
 		"admin_workers.html":                  true,
+		"admin_worker_detail.html":            true,
+		"admin_maintenance.html":              true,
 		"admin_campaigns.html":                true,
 		"admin_campaign_form.html":            true,
 		"admin_campaign_detail.html":          true,
@@ -63,8 +65,9 @@ func NewServer(database *db.DB, env string, waMgr *wa.Manager, workCtrl WorkCont
 	}
 
 	pages := []string{
-		"index.html", "login.html", "register.html",
+		"index.html", "login.html", "register.html", "maintenance.html",
 		"admin_dashboard.html", "admin_settings.html", "admin_wallet.html", "admin_withdrawals.html", "admin_workers.html",
+		"admin_worker_detail.html", "admin_maintenance.html",
 		"admin_campaigns.html", "admin_campaign_form.html", "admin_campaign_detail.html",
 		"admin_campaign_numbers.html", "admin_campaign_numbers_preview.html",
 		"admin_tickets.html", "admin_broadcasts.html",
@@ -118,6 +121,8 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.Handle("/register", s.CSRFMiddleware(RateLimitRegister(s.handleRegister)))
 
 	mux.Handle("/logout", s.CSRFMiddleware(s.RequireRole(s.handleLogout, "admin", "worker")))
+	mux.Handle("GET /maintenance", s.CSRFMiddleware(http.HandlerFunc(s.HandleMaintenancePublicGET)))
+
 	// Tahap 12: Admin Dashboard, Settings, Wallet, Workers
 	mux.Handle("GET /admin", s.CSRFMiddleware(s.RequireRole(s.HandleAdminHome, "admin")))
 	mux.Handle("GET /admin/api/stats", s.RequireRole(s.HandleAdminAPIStats, "admin"))
@@ -130,6 +135,8 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.Handle("POST /admin/withdrawals/{id}/approve", s.CSRFMiddleware(s.RequireRole(s.HandleAdminWithdrawalApprovePOST, "admin")))
 	mux.Handle("POST /admin/withdrawals/{id}/reject", s.CSRFMiddleware(s.RequireRole(s.HandleAdminWithdrawalRejectPOST, "admin")))
 	mux.Handle("GET /admin/workers", s.CSRFMiddleware(s.RequireRole(s.HandleAdminWorkers, "admin")))
+	mux.Handle("GET /admin/workers/{id}", s.CSRFMiddleware(s.RequireRole(s.HandleAdminWorkerDetailGET, "admin")))
+	mux.Handle("POST /admin/workers/{id}/reset-password", s.CSRFMiddleware(s.RequireRole(s.HandleAdminWorkerResetPasswordPOST, "admin")))
 	mux.Handle("POST /admin/workers/{id}/disable", s.CSRFMiddleware(s.RequireRole(s.HandleAdminWorkerDisablePOST, "admin")))
 	mux.Handle("POST /admin/workers/{id}/enable", s.CSRFMiddleware(s.RequireRole(s.HandleAdminWorkerEnablePOST, "admin")))
 	mux.Handle("GET /admin/tickets", s.CSRFMiddleware(s.RequireRole(s.HandleAdminTicketsGET, "admin")))
@@ -138,6 +145,8 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.Handle("POST /admin/broadcasts/new", s.CSRFMiddleware(s.RequireRole(s.HandleAdminBroadcastNewPOST, "admin")))
 	mux.Handle("POST /admin/broadcasts/{id}/toggle", s.CSRFMiddleware(s.RequireRole(s.HandleAdminBroadcastTogglePOST, "admin")))
 	mux.Handle("POST /admin/broadcasts/{id}/delete", s.CSRFMiddleware(s.RequireRole(s.HandleAdminBroadcastDeletePOST, "admin")))
+	mux.Handle("GET /admin/maintenance", s.CSRFMiddleware(s.RequireRole(s.HandleAdminMaintenanceGET, "admin")))
+	mux.Handle("POST /admin/maintenance/toggle", s.CSRFMiddleware(s.RequireRole(s.HandleAdminMaintenanceTogglePOST, "admin")))
 	mux.Handle("/admin/", s.CSRFMiddleware(s.RequireRole(func(w http.ResponseWriter, r *http.Request) { http.NotFound(w, r) }, "admin")))
 
 	// Tahap 8

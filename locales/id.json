@@ -300,6 +300,10 @@
   "campaign.show_archived": "Tampilkan Arsip",
   "campaign.hide_archived": "Sembunyikan Arsip",
   "campaign.archive_btn": "Arsipkan",
-  "campaign.archive_confirm": "Arsipkan campaign ini? Campaign terarsip akan menjadi hanya-baca."
+  "campaign.archive_confirm": "Arsipkan campaign ini? Campaign terarsip akan menjadi hanya-baca.",
+  "admin.maintenance": "Pemeliharaan",
+  "maintenance.title": "Sistem Sedang Dalam Pemeliharaan",
+  "maintenance.desc": "Kami sedang melakukan pemeliharaan sistem berkala untuk optimalisasi performa dan keamanan. Layanan pekerja akan segera kembali normal.",
+  "maintenance.refresh_btn": "Muat Ulang Halaman"
 }
 

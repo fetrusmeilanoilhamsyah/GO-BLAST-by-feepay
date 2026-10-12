@@ -301,6 +301,10 @@
   "campaign.show_archived": "Show Archived",
   "campaign.hide_archived": "Hide Archived",
   "campaign.archive_btn": "Archive",
-  "campaign.archive_confirm": "Archive this campaign? Archived campaign will become read-only."
+  "campaign.archive_confirm": "Archive this campaign? Archived campaign will become read-only.",
+  "admin.maintenance": "Maintenance",
+  "maintenance.title": "System Under Maintenance",
+  "maintenance.desc": "We are currently performing routine system maintenance for performance optimization and security. Worker services will resume shortly.",
+  "maintenance.refresh_btn": "Reload Page"
 }
 

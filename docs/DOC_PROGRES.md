@@ -10,8 +10,8 @@ Nomor tahap mengacu ke tabel "Daftar Tahap" di bawah.
 ## Posisi sekarang
 
 - **Fase**: 1 (MVP)
-- **Terakhir dikerjakan**: Tahap C selesai (Sistem Notifikasi Lonceng & Integrasi Broadcast — endpoints notifikasi pekerja, popup panel lonceng di topbar, auto-notify saat broadcast diterbitkan dan tiket diselesaikan, pembersihan banner lama dari beranda).
-- **Sedang dikerjakan**: Menunggu arahan pemilik untuk Tahap D (Fitur Lanjutan: Panel maintenance/debug, detail pekerja admin, simplifikasi setting).
+- **Terakhir dikerjakan**: Tahap D selesai (Panel Maintenance & Health Check sistem, detail pekerja admin & reset password sementara, serta pemindahan parameter mesin teknis ke backend/konstanta aman).
+- **Sedang dikerjakan**: Menunggu arahan pemilik proyek untuk pengujian alur gabungan (A sampai D).
 - **Blocker**: Tidak ada.
 
 
@@ -94,6 +94,7 @@ Terbaru di atas. Agen menambah baris di sini setiap ada keputusan baru, dari pem
 
 | Tanggal | Keputusan | Alasan | Oleh |
 |---|---|---|---|
+| 2026-10-13 | Tahap D: Panel Maintenance & Diagnostik Sistem (`/admin/maintenance`, toggle `maintenance_mode`, redirect pekerja ke `/maintenance`), Detail Pekerja Admin & Reset Password sementara (`/admin/workers/{id}`, pemutusan sesi aktif), dan pemindahan parameter teknis internal (`max_attempts`, `max_consecutive_failures`, `claim_timeout_seconds`) dari UI form ke backend/konstanta aman | Menyederhanakan formulir pengaturan untuk admin non-teknis, menyediakan saklar darurat pemeliharaan sistem dengan pengalihan akses pekerja yang aman, dan memudahkan penanganan bantuan pekerja via inspeksi profil serta reset sandi | pemilik dan agen |
 | 2026-10-13 | Tahap B: Implementasi Konversi IDR→USDT via `POST /worker/convert` dengan formula `(amount_idr * 1000000) / rate_idr_to_usdt`, transaksi atomik dan lock `users` row (`FOR UPDATE`), insert ganda `ledger_entries` kind `koreksi` (-IDR dan +USDT mikro-USDT), audit log | Menjamin pencegahan race-condition konversi saldo secara bersamaan, presisi bilangan bulat tanpa pembulatan float, dan transparansi jejak finansial | pemilik dan agen |
 | 2026-10-13 | Tahap B: Penarikan Pintar Terpisah per Mata Uang (`usdt_bep20` memotong saldo USDT dan validasi via `parseUSDTInput`, metode lokal memotong saldo IDR), form penarikan menampilkan dual card IDR & USDT serta kalkulator konversi interaktif | Memastikan pekerja dengan metode USDT BEP20 menarik dari saldo USDT hasil konversi, sedangkan pekerja lokal menarik dari saldo rupiah tanpa kebingungan | pemilik dan agen |
 | 2026-10-13 | Sistem mata uang baru: semua saldo pekerja dalam IDR, konversi IDR→USDT dilakukan manual pekerja via kalkulator di panel, kurs diatur admin manual (`rate_idr_to_usdt`), tidak ada auto exchange rate | Menyeragamkan denominasi saldo agar tidak ada pekerja yang salah mata uang, konversi eksplisit mencegah manipulasi | pemilik |

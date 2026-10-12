@@ -43,6 +43,9 @@
             <a href="/admin/broadcasts" class="admin-nav-tab{{if eq .ActiveNav "broadcasts"}} active{{end}}">
                 {{ call .T "admin.broadcasts" }}
             </a>
+            <a href="/admin/maintenance" class="admin-nav-tab{{if eq .ActiveNav "maintenance"}} active{{end}}">
+                {{ call .T "admin.maintenance" }}
+            </a>
         </nav>
 
         <!-- Right: Language & Logout -->
@@ -140,6 +143,12 @@
                         <path d="M19.1 4.9C23 8.8 23 15.1 19.1 19.1"></path>
                     </svg>
                     <span>{{ call .T "admin.broadcasts" }}</span>
+                </a>
+                <a href="/admin/maintenance" class="worker-drawer-link{{if eq .ActiveNav "maintenance"}} active{{end}}">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M22 12h-4l-3 9L9 3l-3 9H2"></path>
+                    </svg>
+                    <span>{{ call .T "admin.maintenance" }}</span>
                 </a>
             </nav>
         </div>

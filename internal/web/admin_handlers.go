@@ -2,17 +2,20 @@ package web
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/nyaruka/phonenumbers"
+	"goblast/internal/auth"
 	"goblast/internal/engine"
 	"goblast/internal/i18n"
 	"goblast/internal/withdraw"
@@ -401,37 +404,56 @@ func (s *Server) HandleAdminSettingsPOST(w http.ResponseWriter, r *http.Request)
 		dailyLimits[k] = val
 	}
 
-	// 3. Validate max_attempts (1 to 10, required)
+	// 3. Validate max_attempts (opsional dari form, default 3 dari backend)
+	maxAttempts := engine.DefaultMaxAttempts
 	maxAttemptsStr := strings.TrimSpace(r.FormValue("max_attempts"))
-	if maxAttemptsStr == "" {
-		s.renderSettingsError(w, r, "max_attempts wajib diisi")
-		return
-	}
-	maxAttempts, convErr := strconv.Atoi(maxAttemptsStr)
-	if convErr != nil || maxAttempts < 1 || maxAttempts > 10 {
-		s.renderSettingsError(w, r, "max_attempts harus antara 1 sampai 10")
-		return
+	if maxAttemptsStr != "" {
+		convAttempts, convErr := strconv.Atoi(maxAttemptsStr)
+		if convErr != nil || convAttempts < 1 || convAttempts > 10 {
+			s.renderSettingsError(w, r, "max_attempts harus antara 1 sampai 10")
+			return
+		}
+		maxAttempts = convAttempts
+	} else {
+		var existingVal int
+		if err := s.DB.Pool.QueryRow(r.Context(), "SELECT value::int FROM settings WHERE key = 'max_attempts'").Scan(&existingVal); err == nil && existingVal >= 1 && existingVal <= 10 {
+			maxAttempts = existingVal
+		}
 	}
 
-	// 4. Validate max_consecutive_failures (1 to 50, required)
+	// 4. Validate max_consecutive_failures (opsional dari form, default 5 dari backend)
+	maxConsecutiveFailures := engine.DefaultMaxConsecutiveFailures
 	maxConsecutiveFailuresStr := strings.TrimSpace(r.FormValue("max_consecutive_failures"))
-	if maxConsecutiveFailuresStr == "" {
-		s.renderSettingsError(w, r, "max_consecutive_failures wajib diisi")
-		return
-	}
-	maxConsecutiveFailures, convErr := strconv.Atoi(maxConsecutiveFailuresStr)
-	if convErr != nil || maxConsecutiveFailures < 1 || maxConsecutiveFailures > 50 {
-		s.renderSettingsError(w, r, "max_consecutive_failures harus antara 1 sampai 50")
-		return
+	if maxConsecutiveFailuresStr != "" {
+		convFailures, convErr := strconv.Atoi(maxConsecutiveFailuresStr)
+		if convErr != nil || convFailures < 1 || convFailures > 50 {
+			s.renderSettingsError(w, r, "max_consecutive_failures harus antara 1 sampai 50")
+			return
+		}
+		maxConsecutiveFailures = convFailures
+	} else {
+		var existingVal int
+		if err := s.DB.Pool.QueryRow(r.Context(), "SELECT value::int FROM settings WHERE key = 'max_consecutive_failures'").Scan(&existingVal); err == nil && existingVal >= 1 && existingVal <= 50 {
+			maxConsecutiveFailures = existingVal
+		}
 	}
 
-	// 5. Validate claim_timeout_seconds (120 to 3600, > timeout kirim engine 60s)
-	claimTimeoutStr := strings.TrimSpace(r.FormValue("claim_timeout_seconds"))
-	claimTimeout, convErr := strconv.Atoi(claimTimeoutStr)
+	// 5. Validate claim_timeout_seconds (opsional dari form, default 300 dari backend)
+	claimTimeout := engine.DefaultClaimTimeoutSeconds
 	engineSendTimeoutSec := int(engine.SendTimeout.Seconds())
-	if convErr != nil || claimTimeout < 120 || claimTimeout > 3600 || claimTimeout <= engineSendTimeoutSec {
-		s.renderSettingsError(w, r, fmt.Sprintf("claim_timeout_seconds harus antara 120 sampai 3600 dan lebih besar dari timeout engine (%d detik)", engineSendTimeoutSec))
-		return
+	claimTimeoutStr := strings.TrimSpace(r.FormValue("claim_timeout_seconds"))
+	if claimTimeoutStr != "" {
+		convTimeout, convErr := strconv.Atoi(claimTimeoutStr)
+		if convErr != nil || convTimeout < 120 || convTimeout > 3600 || convTimeout <= engineSendTimeoutSec {
+			s.renderSettingsError(w, r, fmt.Sprintf("claim_timeout_seconds harus antara 120 sampai 3600 dan lebih besar dari timeout engine (%d detik)", engineSendTimeoutSec))
+			return
+		}
+		claimTimeout = convTimeout
+	} else {
+		var existingVal int
+		if err := s.DB.Pool.QueryRow(r.Context(), "SELECT value::int FROM settings WHERE key = 'claim_timeout_seconds'").Scan(&existingVal); err == nil && existingVal >= 120 && existingVal <= 3600 && existingVal > engineSendTimeoutSec {
+			claimTimeout = existingVal
+		}
 	}
 
 	// 6. Validate max_accounts_per_worker (1 to 50, required)
@@ -1667,3 +1689,532 @@ func (s *Server) HandleAdminBroadcastDeletePOST(w http.ResponseWriter, r *http.R
 	s.logAudit(&adminUser.ID, "delete_broadcast", "broadcasts", strconv.FormatInt(id, 10), "Broadcast dihapus")
 	http.Redirect(w, r, "/admin/broadcasts?success=Broadcast+berhasil+dihapus", http.StatusSeeOther)
 }
+
+// =====================================================================
+// --- Panel Maintenance & Health Check ---
+// =====================================================================
+
+type MaintenanceHealthViewData struct {
+	Lang                  string
+	Title                 string
+	Theme                 string
+	CSRFToken             string
+	ActiveNav             string
+	Message               string
+	Error                 string
+	MaintenanceMode       bool
+	DBOnline              bool
+	DBPingLatency         string
+	DBAcquiredConns       int32
+	DBIdleConns           int32
+	DBTotalConns          int32
+	DBMaxConns            int32
+	ActiveWACount         int64
+	DisconnectedWACount   int64
+	PendingWithdrawals    int64
+	RunningCampaignsCount int64
+	AvailableNumbersCount int64
+	EngineStatus          string
+	RecentAuditLogs       []AuditLogRow
+	T                     func(string) string
+}
+
+type AuditLogRow struct {
+	ID        int64
+	ActorName string
+	Action    string
+	Entity    string
+	EntityID  string
+	Meta      string
+	IP        string
+	CreatedAt string
+}
+
+func (s *Server) HandleAdminMaintenanceGET(w http.ResponseWriter, r *http.Request) {
+	admin, ok := currentUser(r)
+	if !ok || admin.Role != "admin" {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+
+	ctx := r.Context()
+	lang := "id"
+	if admin.Language != "" {
+		lang = admin.Language
+	}
+
+	// 1. Ukur latensi database ping
+	startPing := time.Now()
+	pingErr := s.DB.Pool.Ping(ctx)
+	pingLatency := fmt.Sprintf("%.2f ms", float64(time.Since(startPing).Microseconds())/1000.0)
+	dbOnline := pingErr == nil
+
+	// 2. Stat database pool
+	stat := s.DB.Pool.Stat()
+
+	// 3. Hitung statistik operasional
+	var activeWA, disconnectedWA, pendingWithdrawals, runningCamps, availNums int64
+	_ = s.DB.Pool.QueryRow(ctx, "SELECT COUNT(*) FROM wa_accounts WHERE status = 'terhubung'").Scan(&activeWA)
+	_ = s.DB.Pool.QueryRow(ctx, "SELECT COUNT(*) FROM wa_accounts WHERE status != 'terhubung'").Scan(&disconnectedWA)
+	_ = s.DB.Pool.QueryRow(ctx, "SELECT COUNT(*) FROM withdrawals WHERE status = 'menunggu'").Scan(&pendingWithdrawals)
+	_ = s.DB.Pool.QueryRow(ctx, "SELECT COUNT(*) FROM campaigns WHERE status = 'berjalan'").Scan(&runningCamps)
+	_ = s.DB.Pool.QueryRow(ctx, `
+		SELECT COUNT(*)
+		FROM campaign_numbers cn
+		JOIN campaigns c ON c.id = cn.campaign_id
+		WHERE cn.status = 'tersedia' AND c.status = 'berjalan'
+	`).Scan(&availNums)
+
+	// 4. Status Mesin
+	engineStatus := "Siap / Aktif"
+	if s.WorkCtrl == nil {
+		engineStatus = "Nonaktif (Standby)"
+	}
+
+	// 5. 20 Audit Log Terbaru
+	var auditLogs []AuditLogRow
+	logRows, err := s.DB.Pool.Query(ctx, `
+		SELECT a.id, COALESCE(u.display_name, u.username, u.email, 'Sistem'),
+		       a.action, a.entity, COALESCE(a.entity_id, ''), COALESCE(a.meta::text, ''),
+		       a.ip, a.created_at
+		FROM audit_logs a
+		LEFT JOIN users u ON u.id = a.actor_id
+		ORDER BY a.id DESC
+		LIMIT 20
+	`)
+	if err == nil {
+		defer logRows.Close()
+		for logRows.Next() {
+			var l AuditLogRow
+			var t time.Time
+			if err := logRows.Scan(&l.ID, &l.ActorName, &l.Action, &l.Entity, &l.EntityID, &l.Meta, &l.IP, &t); err == nil {
+				l.CreatedAt = t.Format("02 Jan 2006 15:04:05")
+				auditLogs = append(auditLogs, l)
+			}
+		}
+	}
+
+	viewData := MaintenanceHealthViewData{
+		Lang:                  lang,
+		Title:                 "Pemeliharaan & Diagnostik Sistem - GO BLAST",
+		Theme:                 getTheme(r),
+		CSRFToken:             getCSRF(r),
+		ActiveNav:             "maintenance",
+		Message:               r.URL.Query().Get("msg"),
+		Error:                 r.URL.Query().Get("err"),
+		MaintenanceMode:       s.IsMaintenanceMode(ctx),
+		DBOnline:              dbOnline,
+		DBPingLatency:         pingLatency,
+		DBAcquiredConns:       stat.AcquiredConns(),
+		DBIdleConns:           stat.IdleConns(),
+		DBTotalConns:          stat.TotalConns(),
+		DBMaxConns:            stat.MaxConns(),
+		ActiveWACount:         activeWA,
+		DisconnectedWACount:   disconnectedWA,
+		PendingWithdrawals:    pendingWithdrawals,
+		RunningCampaignsCount: runningCamps,
+		AvailableNumbersCount: availNums,
+		EngineStatus:          engineStatus,
+		RecentAuditLogs:       auditLogs,
+		T: func(key string) string {
+			return i18n.T(lang, key)
+		},
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_ = s.Tmpl["admin_maintenance.html"].ExecuteTemplate(w, "base.html", viewData)
+}
+
+func (s *Server) HandleAdminMaintenanceTogglePOST(w http.ResponseWriter, r *http.Request) {
+	admin, ok := currentUser(r)
+	if !ok || admin.Role != "admin" {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+
+	ctx := r.Context()
+	current := s.IsMaintenanceMode(ctx)
+	newMode := !current
+
+	if err := s.updateSettingWithAudit(ctx, admin.ID, "maintenance_mode", newMode, getIP(r)); err != nil {
+		http.Redirect(w, r, "/admin/maintenance?err=Gagal+mengubah+mode+pemeliharaan: "+url.QueryEscape(err.Error()), http.StatusSeeOther)
+		return
+	}
+
+	statusMsg := "Mode+pemeliharaan+berhasil+diaktifkan+(pekerja+dialihkan)"
+	if !newMode {
+		statusMsg = "Mode+pemeliharaan+berhasil+dinonaktifkan+(layanan+normal)"
+	}
+	http.Redirect(w, r, "/admin/maintenance?msg="+statusMsg, http.StatusSeeOther)
+}
+
+func (s *Server) HandleMaintenancePublicGET(w http.ResponseWriter, r *http.Request) {
+	lang := "id"
+	if u, ok := currentUser(r); ok && u.Language != "" {
+		lang = u.Language
+	} else if lCookie, err := r.Cookie("lang"); err == nil && lCookie.Value != "" {
+		lang = validateLang(lCookie.Value)
+	}
+
+	viewData := struct {
+		Lang      string
+		Title     string
+		Theme     string
+		CSRFToken string
+		IsActive  bool
+		T         func(string) string
+	}{
+		Lang:      lang,
+		Title:     "Pemeliharaan Sistem - GO BLAST",
+		Theme:     getTheme(r),
+		CSRFToken: getCSRF(r),
+		IsActive:  s.IsMaintenanceMode(r.Context()),
+		T: func(key string) string {
+			return i18n.T(lang, key)
+		},
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_ = s.Tmpl["maintenance.html"].ExecuteTemplate(w, "base.html", viewData)
+}
+
+// =====================================================================
+// --- Panel Detail Pekerja & Reset Password ---
+// =====================================================================
+
+type AdminWorkerAccountItem struct {
+	ID         int64
+	Label      string
+	Speed      string
+	Status     string
+	IsWorking  bool
+	StopReason string
+	SentTotal  int64
+	CreatedAt  string
+}
+
+type AdminWorkerWithdrawalItem struct {
+	ID              int64
+	Currency        string
+	AmountFormatted string
+	Method          string
+	Status          string
+	CreatedAt       string
+	ProcessedAt     string
+}
+
+type AdminWorkerLedgerItem struct {
+	ID              int64
+	Kind            string
+	Currency        string
+	AmountFormatted string
+	RateSnapshot    int64
+	Note            string
+	CreatedAt       string
+}
+
+type WorkerDetailInfo struct {
+	ID           int64
+	Username     string
+	Email        string
+	DisplayName  string
+	Status       string
+	Role         string
+	Language     string
+	Currency     string
+	ReferralCode string
+	CreatedAt    string
+}
+
+type AdminWorkerDetailViewData struct {
+	Lang                    string
+	Title                   string
+	Theme                   string
+	CSRFToken               string
+	ActiveNav               string
+	Message                 string
+	Error                   string
+	ResetPasswordNotice     string
+	Worker                  WorkerDetailInfo
+	BalanceIDRFormatted     string
+	BalanceUSDTFormatted    string
+	TotalWageIDRFormatted   string
+	TotalWithdrawnIDR       string
+	TotalWithdrawnUSDT      string
+	PendingWithdrawalsCount int64
+	PayoutMethod            string
+	PayoutAccountName       string
+	PayoutDestMasked        string
+	PayoutDestDecrypted     string
+	Accounts                []AdminWorkerAccountItem
+	Withdrawals             []AdminWorkerWithdrawalItem
+	LedgerEntries           []AdminWorkerLedgerItem
+	T                       func(string) string
+}
+
+func (s *Server) HandleAdminWorkerDetailGET(w http.ResponseWriter, r *http.Request) {
+	admin, ok := currentUser(r)
+	if !ok || admin.Role != "admin" {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+
+	idStr := r.PathValue("id")
+	workerID, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		http.Error(w, "ID pekerja tidak valid", http.StatusBadRequest)
+		return
+	}
+
+	ctx := r.Context()
+
+	// 1. Ambil data profil pekerja
+	var wInfo WorkerDetailInfo
+	var payoutMethod, payoutAccName, payoutDestEnc *string
+	var createdAt time.Time
+	var emailPtr *string
+
+	err = s.DB.Pool.QueryRow(ctx, `
+		SELECT id, email, COALESCE(username, ''), COALESCE(display_name, ''),
+		       role, status, language, currency, referral_code,
+		       payout_method, payout_account_name, payout_dest_encrypted, created_at
+		FROM users
+		WHERE id = $1 AND role = 'worker'
+	`, workerID).Scan(
+		&wInfo.ID, &emailPtr, &wInfo.Username, &wInfo.DisplayName,
+		&wInfo.Role, &wInfo.Status, &wInfo.Language, &wInfo.Currency, &wInfo.ReferralCode,
+		&payoutMethod, &payoutAccName, &payoutDestEnc, &createdAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			http.Error(w, "Pekerja tidak ditemukan", http.StatusNotFound)
+			return
+		}
+		http.Error(w, "Kesalahan database: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if emailPtr != nil {
+		wInfo.Email = *emailPtr
+	}
+	wInfo.CreatedAt = createdAt.Format("02 Jan 2006 15:04")
+
+	// 2. Data Finansial & Saldo
+	var balanceIDR, balanceUSDT, totalWageIDR, totalWithdrawnIDR, totalWithdrawnUSDT, pendingWithdrawals int64
+	_ = s.DB.Pool.QueryRow(ctx, "SELECT user_balance($1, 'IDR')", workerID).Scan(&balanceIDR)
+	_ = s.DB.Pool.QueryRow(ctx, "SELECT user_balance($1, 'USDT')", workerID).Scan(&balanceUSDT)
+	_ = s.DB.Pool.QueryRow(ctx, "SELECT COALESCE(SUM(amount), 0) FROM ledger_entries WHERE user_id = $1 AND kind = 'upah'", workerID).Scan(&totalWageIDR)
+	_ = s.DB.Pool.QueryRow(ctx, "SELECT COALESCE(SUM(amount), 0) FROM withdrawals WHERE user_id = $1 AND status = 'selesai' AND currency = 'IDR'", workerID).Scan(&totalWithdrawnIDR)
+	_ = s.DB.Pool.QueryRow(ctx, "SELECT COALESCE(SUM(amount), 0) FROM withdrawals WHERE user_id = $1 AND status = 'selesai' AND currency = 'USDT'", workerID).Scan(&totalWithdrawnUSDT)
+	_ = s.DB.Pool.QueryRow(ctx, "SELECT COUNT(*) FROM withdrawals WHERE user_id = $1 AND status = 'menunggu'", workerID).Scan(&pendingWithdrawals)
+
+	// 3. Dekripsi Rekening Tujuan
+	var pMethod, pAccName, pDestMasked, pDestDecrypted string
+	if payoutMethod != nil {
+		pMethod = *payoutMethod
+	}
+	if payoutAccName != nil {
+		pAccName = *payoutAccName
+	}
+	if payoutDestEnc != nil && *payoutDestEnc != "" {
+		dec, decErr := withdraw.DecryptDestination(*payoutDestEnc, s.EncryptionKey)
+		if decErr == nil {
+			pDestDecrypted = dec
+			pDestMasked = MaskDestination(dec, pMethod)
+		} else {
+			pDestDecrypted = "(kunci enkripsi berbeda / tidak dapat didekripsi)"
+			pDestMasked = "(enkripsi lama)"
+		}
+	}
+
+	// 4. Daftar Akun WhatsApp Milik Pekerja
+	var accounts []AdminWorkerAccountItem
+	accRows, err := s.DB.Pool.Query(ctx, `
+		SELECT wa.id, wa.label, wa.speed, wa.status, COALESCE(wa.stop_reason, ''), wa.created_at,
+		       (SELECT COUNT(*) FROM campaign_numbers WHERE claimed_account_id = wa.id AND status = 'terkirim') AS sent_total
+		FROM wa_accounts wa
+		WHERE wa.worker_id = $1
+		ORDER BY wa.id DESC
+	`, workerID)
+	if err == nil {
+		defer accRows.Close()
+		for accRows.Next() {
+			var acc AdminWorkerAccountItem
+			var t time.Time
+			if err := accRows.Scan(&acc.ID, &acc.Label, &acc.Speed, &acc.Status, &acc.StopReason, &t, &acc.SentTotal); err == nil {
+				acc.CreatedAt = t.Format("02 Jan 2006")
+				if s.WorkCtrl != nil {
+					acc.IsWorking = s.WorkCtrl.IsRunning(acc.ID)
+				}
+				accounts = append(accounts, acc)
+			}
+		}
+	}
+
+	// 5. 10 Penarikan Terbaru Milik Pekerja
+	var withdrawals []AdminWorkerWithdrawalItem
+	wRows, err := s.DB.Pool.Query(ctx, `
+		SELECT id, currency, amount, method, status, created_at, processed_at
+		FROM withdrawals
+		WHERE user_id = $1
+		ORDER BY id DESC
+		LIMIT 10
+	`, workerID)
+	if err == nil {
+		defer wRows.Close()
+		for wRows.Next() {
+			var wItem AdminWorkerWithdrawalItem
+			var t time.Time
+			var pTime *time.Time
+			var rawAmount int64
+			if err := wRows.Scan(&wItem.ID, &wItem.Currency, &rawAmount, &wItem.Method, &wItem.Status, &t, &pTime); err == nil {
+				wItem.CreatedAt = t.Format("02 Jan 2006 15:04")
+				if pTime != nil {
+					wItem.ProcessedAt = pTime.Format("02 Jan 2006 15:04")
+				}
+				if wItem.Currency == "USDT" {
+					wItem.AmountFormatted = formatUSDT(rawAmount) + " USDT"
+				} else {
+					wItem.AmountFormatted = "Rp " + formatIDR(rawAmount)
+				}
+				withdrawals = append(withdrawals, wItem)
+			}
+		}
+	}
+
+	// 6. 15 Mutasi Buku Besar Terakhir
+	var ledgerEntries []AdminWorkerLedgerItem
+	lRows, err := s.DB.Pool.Query(ctx, `
+		SELECT id, kind, currency, amount, COALESCE(rate_snapshot, 0), COALESCE(note, ''), created_at
+		FROM ledger_entries
+		WHERE user_id = $1
+		ORDER BY id DESC
+		LIMIT 15
+	`, workerID)
+	if err == nil {
+		defer lRows.Close()
+		for lRows.Next() {
+			var lItem AdminWorkerLedgerItem
+			var t time.Time
+			var rawAmount int64
+			if err := lRows.Scan(&lItem.ID, &lItem.Kind, &lItem.Currency, &rawAmount, &lItem.RateSnapshot, &lItem.Note, &t); err == nil {
+				lItem.CreatedAt = t.Format("02 Jan 2006 15:04")
+				if lItem.Currency == "USDT" {
+					lItem.AmountFormatted = formatUSDT(rawAmount) + " USDT"
+				} else {
+					lItem.AmountFormatted = "Rp " + formatIDR(rawAmount)
+				}
+				ledgerEntries = append(ledgerEntries, lItem)
+			}
+		}
+	}
+
+	lang := "id"
+	if admin.Language != "" {
+		lang = admin.Language
+	}
+
+	viewData := AdminWorkerDetailViewData{
+		Lang:                    lang,
+		Title:                   fmt.Sprintf("Detail Pekerja %s - GO BLAST", wInfo.Username),
+		Theme:                   getTheme(r),
+		CSRFToken:               getCSRF(r),
+		ActiveNav:               "workers",
+		Message:                 r.URL.Query().Get("msg"),
+		Error:                   r.URL.Query().Get("err"),
+		ResetPasswordNotice:     r.URL.Query().Get("reset_pwd"),
+		Worker:                  wInfo,
+		BalanceIDRFormatted:     formatIDR(balanceIDR),
+		BalanceUSDTFormatted:    formatUSDT(balanceUSDT),
+		TotalWageIDRFormatted:   formatIDR(totalWageIDR),
+		TotalWithdrawnIDR:       formatIDR(totalWithdrawnIDR),
+		TotalWithdrawnUSDT:      formatUSDT(totalWithdrawnUSDT),
+		PendingWithdrawalsCount: pendingWithdrawals,
+		PayoutMethod:            pMethod,
+		PayoutAccountName:       pAccName,
+		PayoutDestMasked:        pDestMasked,
+		PayoutDestDecrypted:     pDestDecrypted,
+		Accounts:                accounts,
+		Withdrawals:             withdrawals,
+		LedgerEntries:           ledgerEntries,
+		T: func(key string) string {
+			return i18n.T(lang, key)
+		},
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_ = s.Tmpl["admin_worker_detail.html"].ExecuteTemplate(w, "base.html", viewData)
+}
+
+func (s *Server) HandleAdminWorkerResetPasswordPOST(w http.ResponseWriter, r *http.Request) {
+	admin, ok := currentUser(r)
+	if !ok || admin.Role != "admin" {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+
+	idStr := r.PathValue("id")
+	workerID, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		http.Error(w, "ID pekerja tidak valid", http.StatusBadRequest)
+		return
+	}
+
+	ctx := r.Context()
+
+	// 1. Verifikasi pekerja ada
+	var username string
+	err = s.DB.Pool.QueryRow(ctx, "SELECT username FROM users WHERE id = $1 AND role = 'worker'", workerID).Scan(&username)
+	if err != nil {
+		http.Redirect(w, r, "/admin/workers?err=Pekerja+tidak+ditemukan", http.StatusSeeOther)
+		return
+	}
+
+	// 2. Baca input password baru atau buat temporary password
+	plainPassword := strings.TrimSpace(r.FormValue("new_password"))
+	if plainPassword == "" {
+		plainPassword = generateTemporaryPassword()
+	} else if len(plainPassword) < 10 {
+		http.Redirect(w, r, fmt.Sprintf("/admin/workers/%d?err=Kata+sandi+baru+minimal+10+karakter", workerID), http.StatusSeeOther)
+		return
+	}
+
+	// 3. Hash kata sandi dengan argon2id
+	hash, err := auth.HashPassword(plainPassword)
+	if err != nil {
+		http.Redirect(w, r, fmt.Sprintf("/admin/workers/%d?err=Gagal+membuat+hash+kata+sandi: %s", workerID, url.QueryEscape(err.Error())), http.StatusSeeOther)
+		return
+	}
+
+	// 4. Update kata sandi pengguna
+	_, err = s.DB.Pool.Exec(ctx, "UPDATE users SET password_hash = $1 WHERE id = $2", hash, workerID)
+	if err != nil {
+		http.Redirect(w, r, fmt.Sprintf("/admin/workers/%d?err=Gagal+memperbarui+kata+sandi: %s", workerID, url.QueryEscape(err.Error())), http.StatusSeeOther)
+		return
+	}
+
+	// 5. Putuskan semua sesi web aktif milik pekerja
+	_, _ = s.DB.Pool.Exec(ctx, "DELETE FROM web_sessions WHERE user_id = $1", workerID)
+
+	// 6. Catat audit log
+	metaJSON, _ := json.Marshal(map[string]interface{}{
+		"worker_id": workerID,
+		"username":  username,
+	})
+	_, _ = s.DB.Pool.Exec(ctx, `
+		INSERT INTO audit_logs (actor_id, action, entity, entity_id, meta, ip)
+		VALUES ($1, 'worker_reset_password', 'users', $2, $3::jsonb, $4)
+	`, admin.ID, strconv.FormatInt(workerID, 10), string(metaJSON), getIP(r))
+
+	http.Redirect(w, r, fmt.Sprintf("/admin/workers/%d?msg=Kata+sandi+pekerja+berhasil+direset&reset_pwd=%s", workerID, url.QueryEscape(plainPassword)), http.StatusSeeOther)
+}
+
+func generateTemporaryPassword() string {
+	const chars = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+	b := make([]byte, 12)
+	_, _ = rand.Read(b)
+	for i := range b {
+		b[i] = chars[int(b[i])%len(chars)]
+	}
+	return string(b)
+}
+

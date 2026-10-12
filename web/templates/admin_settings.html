@@ -119,22 +119,10 @@
             </div>
         </div>
 
-        <!-- 5. Parameter Operasional Lainnya -->
+        <!-- 5. Batas & Parameter Akun -->
         <div class="card" style="margin: 0;">
-            <h2 style="font-size: 16px; font-weight: 700; margin-top: 0; margin-bottom: 16px; color: var(--color-text);">Parameter Operasional Mesin</h2>
+            <h2 style="font-size: 16px; font-weight: 700; margin-top: 0; margin-bottom: 16px; color: var(--color-text);">Batas & Parameter Akun</h2>
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px;">
-                <div class="field">
-                    <label for="max_attempts">{{ call .T "admin.max_attempts" }} <span class="badge badge-warning" style="font-size: 11px;">{{ call .T "admin.required_label" }}</span></label>
-                    <input type="number" id="max_attempts" name="max_attempts" class="input" min="1" max="10" {{if .Settings.MaxAttempts}}value="{{.Settings.MaxAttempts}}"{{else}}value="" placeholder="wajib diisi"{{end}} required>
-                </div>
-                <div class="field">
-                    <label for="max_consecutive_failures">{{ call .T "admin.max_consecutive_failures" }} <span class="badge badge-warning" style="font-size: 11px;">{{ call .T "admin.required_label" }}</span></label>
-                    <input type="number" id="max_consecutive_failures" name="max_consecutive_failures" class="input" min="1" max="50" {{if .Settings.MaxConsecutiveFailures}}value="{{.Settings.MaxConsecutiveFailures}}"{{else}}value="" placeholder="wajib diisi"{{end}} required>
-                </div>
-                <div class="field">
-                    <label for="claim_timeout_seconds">{{ call .T "admin.claim_timeout_seconds" }}</label>
-                    <input type="number" id="claim_timeout_seconds" name="claim_timeout_seconds" class="input" min="120" max="3600" value="{{.Settings.ClaimTimeoutSeconds}}" required>
-                </div>
                 <div class="field">
                     <label for="max_accounts_per_worker">{{ call .T "admin.max_accounts_per_worker" }} <span class="badge badge-warning" style="font-size: 11px;">{{ call .T "admin.required_label" }}</span></label>
                     <input type="number" id="max_accounts_per_worker" name="max_accounts_per_worker" class="input" min="1" max="50" {{if .Settings.MaxAccountsPerWorker}}value="{{.Settings.MaxAccountsPerWorker}}"{{else}}value="" placeholder="wajib diisi"{{end}} required>
@@ -173,9 +161,6 @@ function fillRecommendedSettings() {
     document.getElementById('daily_limit_medium').value = '0';
     document.getElementById('daily_limit_slow').value = '0';
     document.getElementById('daily_limit_over_slow').value = '0';
-    document.getElementById('max_attempts').value = '3';
-    document.getElementById('max_consecutive_failures').value = '5';
-    document.getElementById('claim_timeout_seconds').value = '180';
     document.getElementById('max_accounts_per_worker').value = '10';
     document.getElementById('max_active_sessions').value = '100';
     document.getElementById('default_country_code').value = '62';

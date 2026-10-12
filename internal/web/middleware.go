@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"encoding/json"
 	"net"
 	"net/http"
 	"strings"
@@ -224,6 +225,11 @@ func (s *Server) RequireRole(next http.HandlerFunc, roles ...string) http.Handle
 			return
 		}
 
+		if user.Role == "worker" && s.IsMaintenanceMode(r.Context()) {
+			http.Redirect(w, r, "/maintenance", http.StatusSeeOther)
+			return
+		}
+
 		// Update last seen
 		_, _ = s.DB.Pool.Exec(context.Background(), `
 			UPDATE web_sessions SET last_seen_at = CURRENT_TIMESTAMP WHERE token_hash = $1
@@ -234,6 +240,21 @@ func (s *Server) RequireRole(next http.HandlerFunc, roles ...string) http.Handle
 
 		next(w, r.WithContext(ctx))
 	}
+}
+
+// IsMaintenanceMode memeriksa apakah mode pemeliharaan sistem sedang diaktifkan.
+func (s *Server) IsMaintenanceMode(ctx context.Context) bool {
+	if s == nil || s.DB == nil || s.DB.Pool == nil {
+		return false
+	}
+	var valStr string
+	err := s.DB.Pool.QueryRow(ctx, "SELECT value::text FROM settings WHERE key = 'maintenance_mode'").Scan(&valStr)
+	if err != nil {
+		return false
+	}
+	var enabled bool
+	_ = json.Unmarshal([]byte(valStr), &enabled)
+	return enabled
 }
 
 func (s *Server) CSRFMiddleware(next http.Handler) http.Handler {

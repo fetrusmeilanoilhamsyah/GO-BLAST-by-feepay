@@ -476,8 +476,6 @@ func TestOpenDecisionKeysRenderedEmptyWithoutDefaults(t *testing.T) {
 		`id="rate_wage_idr" name="rate_wage_idr" class="input" min="1" value="" placeholder="wajib diisi"`,
 		`id="rate_wage_usdt" name="rate_wage_usdt" class="input" min="1" value="" placeholder="wajib diisi"`,
 		`id="daily_limit_fast" name="daily_limit_fast" class="input" min="0" value="" placeholder="wajib diisi"`,
-		`id="max_attempts" name="max_attempts" class="input" min="1" max="10" value="" placeholder="wajib diisi"`,
-		`id="max_consecutive_failures" name="max_consecutive_failures" class="input" min="1" max="50" value="" placeholder="wajib diisi"`,
 		`id="max_accounts_per_worker" name="max_accounts_per_worker" class="input" min="1" max="50" value="" placeholder="wajib diisi"`,
 		`id="max_active_sessions" name="max_active_sessions" class="input" min="1" max="500" value="" placeholder="wajib diisi"`,
 	}
@@ -1270,4 +1268,171 @@ func TestAdminTicketsAndBroadcastsManagement(t *testing.T) {
 		t.Errorf("Expected broadcast to be deleted")
 	}
 }
+
+func TestAdminMaintenanceToggleAndWorkerRedirect(t *testing.T) {
+	srv, pool, adminID, workerID := setupAdminTest(t)
+	ctx := context.Background()
+
+	// Initial state: maintenance mode is off
+	_, _ = pool.Exec(ctx, "DELETE FROM settings WHERE key = 'maintenance_mode'")
+
+	// 1. Admin checks GET /admin/maintenance
+	reqMaint := httptest.NewRequest("GET", "/admin/maintenance", nil)
+	ctxAdmin := context.WithValue(reqMaint.Context(), userContextKey, UserSession{ID: adminID, Role: "admin", Language: "id"})
+	reqMaint = reqMaint.WithContext(ctxAdmin)
+	rrMaint := httptest.NewRecorder()
+	srv.HandleAdminMaintenanceGET(rrMaint, reqMaint)
+	if rrMaint.Code != http.StatusOK {
+		t.Fatalf("Expected 200 OK from GET /admin/maintenance, got %d", rrMaint.Code)
+	}
+	if !strings.Contains(rrMaint.Body.String(), "Pemeliharaan & Diagnostik Sistem") {
+		t.Errorf("Expected page title in body, got: %s", rrMaint.Body.String())
+	}
+
+	// 2. Admin toggles maintenance mode ON
+	reqToggle := httptest.NewRequest("POST", "/admin/maintenance/toggle", nil)
+	reqToggle = reqToggle.WithContext(ctxAdmin)
+	rrToggle := httptest.NewRecorder()
+	srv.HandleAdminMaintenanceTogglePOST(rrToggle, reqToggle)
+	if rrToggle.Code != http.StatusSeeOther {
+		t.Fatalf("Expected 303 redirect after toggling maintenance, got %d", rrToggle.Code)
+	}
+
+	if !srv.IsMaintenanceMode(ctx) {
+		t.Fatal("Expected maintenance mode to be true after toggle")
+	}
+
+	// 3. Worker visits /worker and gets redirected to /maintenance
+	workerHandler := srv.RequireRole(srv.HandleWorkerHome, "worker")
+	token, tokenHash, _ := auth.GenerateSessionToken()
+	_, _ = pool.Exec(ctx, `
+		INSERT INTO web_sessions (user_id, token_hash, expires_at, ip, user_agent)
+		VALUES ($1, $2, NOW() + INTERVAL '1 day', '127.0.0.1', 'test')
+	`, workerID, tokenHash)
+
+	reqWorker := httptest.NewRequest("GET", "/worker", nil)
+	reqWorker.AddCookie(&http.Cookie{Name: "gb_session", Value: token})
+	rrWorker := httptest.NewRecorder()
+	workerHandler(rrWorker, reqWorker)
+	if rrWorker.Code != http.StatusSeeOther || rrWorker.Header().Get("Location") != "/maintenance" {
+		t.Fatalf("Expected redirect to /maintenance for worker during maintenance, got %d (location: %s)", rrWorker.Code, rrWorker.Header().Get("Location"))
+	}
+
+	// 4. Public endpoint GET /maintenance returns 200
+	reqPublic := httptest.NewRequest("GET", "/maintenance", nil)
+	rrPublic := httptest.NewRecorder()
+	srv.HandleMaintenancePublicGET(rrPublic, reqPublic)
+	if rrPublic.Code != http.StatusOK {
+		t.Fatalf("Expected 200 OK from GET /maintenance, got %d", rrPublic.Code)
+	}
+
+	// 5. Admin toggles maintenance mode OFF
+	rrToggle2 := httptest.NewRecorder()
+	srv.HandleAdminMaintenanceTogglePOST(rrToggle2, reqToggle)
+	if rrToggle2.Code != http.StatusSeeOther {
+		t.Fatalf("Expected 303 redirect, got %d", rrToggle2.Code)
+	}
+	if srv.IsMaintenanceMode(ctx) {
+		t.Fatal("Expected maintenance mode to be false after second toggle")
+	}
+
+	// 6. Worker visits /worker again and passes through
+	rrWorker2 := httptest.NewRecorder()
+	workerHandler(rrWorker2, reqWorker)
+	if rrWorker2.Code != http.StatusOK {
+		t.Fatalf("Expected 200 OK for worker after maintenance ended, got %d", rrWorker2.Code)
+	}
+}
+
+func TestAdminWorkerDetailAndResetPassword(t *testing.T) {
+	srv, pool, adminID, workerID := setupAdminTest(t)
+	ctx := context.Background()
+
+	// Setup payout data and accounts for worker
+	encDest, _ := withdraw.EncryptDestination("081299998888", srv.EncryptionKey)
+	_, _ = pool.Exec(ctx, `
+		UPDATE users
+		SET payout_method = 'dana', payout_account_name = 'Budi Worker', payout_dest_encrypted = $1
+		WHERE id = $2
+	`, encDest, workerID)
+
+	// Add WA account
+	_, _ = pool.Exec(ctx, `
+		INSERT INTO wa_accounts (worker_id, label, jid_hash, speed, status)
+		VALUES ($1, 'Akun WA Tes', 'jidhash123', 'medium', 'terhubung')
+	`, workerID)
+
+	ctxAdmin := context.WithValue(ctx, userContextKey, UserSession{ID: adminID, Role: "admin", Language: "id"})
+
+	// 1. Admin views worker detail GET /admin/workers/{id}
+	reqDetail := httptest.NewRequest("GET", fmt.Sprintf("/admin/workers/%d", workerID), nil)
+	reqDetail.SetPathValue("id", strconv.FormatInt(workerID, 10))
+	reqDetail = reqDetail.WithContext(ctxAdmin)
+	rrDetail := httptest.NewRecorder()
+	srv.HandleAdminWorkerDetailGET(rrDetail, reqDetail)
+	if rrDetail.Code != http.StatusOK {
+		t.Fatalf("Expected 200 OK from GET /admin/workers/{id}, got %d", rrDetail.Code)
+	}
+	body := rrDetail.Body.String()
+	limit := len(body)
+	if limit > 500 {
+		limit = 500
+	}
+	if !strings.Contains(body, "Detail Pekerja:") || !strings.Contains(body, "Budi Worker") {
+		t.Errorf("Expected worker details in HTML, got body snippet: %s", body[:limit])
+	}
+
+	// 2. Worker session exists before reset
+	_, tokenHash, _ := auth.GenerateSessionToken()
+	_, _ = pool.Exec(ctx, `
+		INSERT INTO web_sessions (user_id, token_hash, expires_at, ip, user_agent)
+		VALUES ($1, $2, NOW() + INTERVAL '1 day', '127.0.0.1', 'test')
+	`, workerID, tokenHash)
+
+	// 3. Admin resets password with temporary auto password (empty new_password)
+	reqReset := httptest.NewRequest("POST", fmt.Sprintf("/admin/workers/%d/reset-password", workerID), strings.NewReader("new_password="))
+	reqReset.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	reqReset.SetPathValue("id", strconv.FormatInt(workerID, 10))
+	reqReset = reqReset.WithContext(ctxAdmin)
+	rrReset := httptest.NewRecorder()
+	srv.HandleAdminWorkerResetPasswordPOST(rrReset, reqReset)
+
+	if rrReset.Code != http.StatusSeeOther {
+		t.Fatalf("Expected 303 redirect after reset password, got %d", rrReset.Code)
+	}
+	loc := rrReset.Header().Get("Location")
+	if !strings.Contains(loc, "reset_pwd=") {
+		t.Fatalf("Expected location to contain reset_pwd parameter, got %s", loc)
+	}
+
+	// Parse temporary password from redirect location
+	u, _ := url.Parse(loc)
+	newTempPwd := u.Query().Get("reset_pwd")
+	if len(newTempPwd) != 12 {
+		t.Fatalf("Expected 12-char temporary password, got %q", newTempPwd)
+	}
+
+	// Verify new password in DB
+	var newHash string
+	_ = pool.QueryRow(ctx, "SELECT password_hash FROM users WHERE id = $1", workerID).Scan(&newHash)
+	match, err := auth.VerifyPassword(newTempPwd, newHash)
+	if err != nil || !match {
+		t.Fatalf("Password verification failed for temporary password: match=%v, err=%v", match, err)
+	}
+
+	// Verify old session was deleted
+	var sessCount int
+	_ = pool.QueryRow(ctx, "SELECT COUNT(*) FROM web_sessions WHERE user_id = $1", workerID).Scan(&sessCount)
+	if sessCount != 0 {
+		t.Errorf("Expected 0 active sessions after password reset, got %d", sessCount)
+	}
+
+	// Verify audit log entry
+	var logAction string
+	_ = pool.QueryRow(ctx, "SELECT action FROM audit_logs WHERE entity = 'users' AND entity_id = $1 ORDER BY id DESC LIMIT 1", strconv.FormatInt(workerID, 10)).Scan(&logAction)
+	if logAction != "worker_reset_password" {
+		t.Errorf("Expected audit log action 'worker_reset_password', got %q", logAction)
+	}
+}
+
 
