@@ -36,16 +36,17 @@ func Load() (*Config, error) {
 	}
 
 	encKeyStr := os.Getenv("ENCRYPTION_KEY")
-	if encKeyStr != "" {
-		key, err := base64.StdEncoding.DecodeString(encKeyStr)
-		if err != nil {
-			return nil, errors.New("ENCRYPTION_KEY is not a valid base64 string")
-		}
-		if len(key) != 32 {
-			return nil, errors.New("ENCRYPTION_KEY must be exactly 32 bytes when decoded")
-		}
-		cfg.EncryptionKey = key
+	if encKeyStr == "" {
+		return nil, errors.New("ENCRYPTION_KEY is required in all environments")
 	}
+	key, err := base64.StdEncoding.DecodeString(encKeyStr)
+	if err != nil {
+		return nil, errors.New("ENCRYPTION_KEY is not a valid base64 string")
+	}
+	if len(key) != 32 {
+		return nil, errors.New("ENCRYPTION_KEY must be exactly 32 bytes when decoded")
+	}
+	cfg.EncryptionKey = key
 
 	if cfg.AppEnv == "prod" {
 		if cfg.DatabaseURL == "" {
@@ -53,9 +54,6 @@ func Load() (*Config, error) {
 		}
 		if cfg.SessionSecret == "" {
 			return nil, errors.New("SESSION_SECRET is required in prod")
-		}
-		if encKeyStr == "" {
-			return nil, errors.New("ENCRYPTION_KEY is required in prod")
 		}
 	}
 

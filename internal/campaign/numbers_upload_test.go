@@ -9,48 +9,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/joho/godotenv"
+	"goblast/internal/testutil"
 )
 
-func findProjectRoot(t *testing.T) string {
-	t.Helper()
-	dir, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("Failed to get working directory: %v", err)
-	}
-	for {
-		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
-			return dir
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			break
-		}
-		dir = parent
-	}
-	t.Fatalf("Could not find project root (go.mod)")
-	return ""
-}
-
 func TestNumbersUpload(t *testing.T) {
-	root := findProjectRoot(t)
+	root := testutil.RootDir(t)
 	cwd, _ := os.Getwd()
 	_ = os.Chdir(root)
 	defer os.Chdir(cwd)
 
-	godotenv.Load() // Loads .env from root
-
-	dbURL := os.Getenv("DATABASE_URL")
-	if dbURL == "" {
-		t.Skip("DATABASE_URL not set")
-	}
-
-	pool, err := pgxpool.New(context.Background(), dbURL)
-	if err != nil {
-		t.Skip("Database not configured: ", err)
-	}
-	defer pool.Close()
+	pool := testutil.TestDB(t)
 
 	os.MkdirAll(filepath.Join("data", "tmp"), 0755)
 
@@ -59,7 +27,7 @@ func TestNumbersUpload(t *testing.T) {
 	randEmail := fmt.Sprintf("test%d@test.com", time.Now().UnixNano())
 	randRef := fmt.Sprintf("REF%d", time.Now().UnixNano())
 
-	err = pool.QueryRow(context.Background(), "INSERT INTO users (email, password_hash, role, currency, referral_code, display_name) VALUES ($1, 'hash', 'admin', 'IDR', $2, 'Test Admin') RETURNING id", randEmail, randRef).Scan(&userID)
+	err := pool.QueryRow(context.Background(), "INSERT INTO users (email, password_hash, role, currency, referral_code, display_name) VALUES ($1, 'hash', 'admin', 'IDR', $2, 'Test Admin') RETURNING id", randEmail, randRef).Scan(&userID)
 	if err != nil {
 		t.Fatal("Failed to create user:", err)
 	}
@@ -77,6 +45,14 @@ func TestNumbersUpload(t *testing.T) {
 	if err != nil {
 		t.Fatal("Failed to create campaign C2:", err)
 	}
+
+	t.Cleanup(func() {
+		ctx := context.Background()
+		_, _ = pool.Exec(ctx, "DELETE FROM campaign_numbers WHERE campaign_id IN ($1, $2)", c1, c2)
+		_, _ = pool.Exec(ctx, "DELETE FROM number_batches WHERE campaign_id IN ($1, $2)", c1, c2)
+		_, _ = pool.Exec(ctx, "DELETE FROM campaigns WHERE id IN ($1, $2)", c1, c2)
+		_, _ = pool.Exec(ctx, "DELETE FROM users WHERE id = $1", userID)
+	})
 
 	csvData := []byte("nomor\n081234567890\n081234567890\n081234567891\nabc\n81234567891\n")
 

@@ -12,9 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/joho/godotenv"
 	"goblast/internal/db"
+	"goblast/internal/testutil"
 )
 
 func TestCampaignHandlers(t *testing.T) {
@@ -23,24 +22,29 @@ func TestCampaignHandlers(t *testing.T) {
 	_ = os.Chdir(root)
 	defer os.Chdir(cwd)
 
-	godotenv.Load()
-
-	dbURL := os.Getenv("DATABASE_URL")
-	if dbURL == "" {
-		t.Skip("DATABASE_URL not set")
-	}
-
-	pool, err := pgxpool.New(context.Background(), dbURL)
-	if err != nil {
-		t.Skip("Database not configured: ", err)
-	}
-	defer pool.Close()
+	pool := testutil.TestDB(t)
 
 	var userID int64
-	err = pool.QueryRow(context.Background(), "INSERT INTO users (email, password_hash, role, currency, referral_code, display_name) VALUES ($1, 'hash', 'admin', 'IDR', $2, 'Test Admin') RETURNING id", fmt.Sprintf("testcamp%d@test.com", time.Now().UnixNano()), fmt.Sprintf("REFCAMP%d", time.Now().UnixNano())).Scan(&userID)
+	err := pool.QueryRow(context.Background(), "INSERT INTO users (email, password_hash, role, currency, referral_code, display_name) VALUES ($1, 'hash', 'admin', 'IDR', $2, 'Test Admin') RETURNING id", fmt.Sprintf("testcamp%d@test.com", time.Now().UnixNano()), fmt.Sprintf("REFCAMP%d", time.Now().UnixNano())).Scan(&userID)
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	t.Cleanup(func() {
+		ctx := context.Background()
+		var campIDs []int64
+		rows, err := pool.Query(ctx, "SELECT id FROM campaigns WHERE created_by = $1", userID)
+		if err == nil {
+			for rows.Next() {
+				var cid int64
+				if err := rows.Scan(&cid); err == nil {
+					campIDs = append(campIDs, cid)
+				}
+			}
+			rows.Close()
+		}
+		testutil.CleanupTestData(pool, []int64{userID}, campIDs)
+	})
 
 	s, err := NewServer(&db.DB{Pool: pool}, "test", nil, nil)
 	if err != nil {

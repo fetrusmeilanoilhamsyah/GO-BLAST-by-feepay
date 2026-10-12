@@ -9,25 +9,29 @@ import (
 	"testing"
 	"time"
 
+	"os"
+
 	"goblast/internal/auth"
 	"goblast/internal/db"
+	"goblast/internal/i18n"
+	"goblast/internal/testutil"
 )
 
 func setupTestServer(t *testing.T) (*Server, *db.DB) {
-	database, err := db.Connect(context.Background(), "postgres://postgres:postgres@localhost:5432/goblast?sslmode=disable")
-	if err != nil {
-		t.Skip("Skipping because DB is not available", err)
-	}
+	root := testutil.RootDir(t)
+	cwd, _ := os.Getwd()
+	_ = os.Chdir(root)
+	t.Cleanup(func() { _ = os.Chdir(cwd) })
 
-	// Clean up tables
-	database.Pool.Exec(context.Background(), "DELETE FROM audit_logs")
-	database.Pool.Exec(context.Background(), "DELETE FROM web_sessions")
-	database.Pool.Exec(context.Background(), "DELETE FROM users")
+	_ = i18n.Load("locales")
+
+	database := testutil.TestDBInstance(t)
 
 	srv, err := NewServer(database, "test", nil, nil)
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
+	srv.EncryptionKey = testutil.TestEncryptionKey()
 
 	return srv, database
 }
@@ -48,10 +52,26 @@ func getCSRFToken(ts *httptest.Server, client *http.Client, targetUrl string) (s
 
 func TestAuthFlows(t *testing.T) {
 	srv, database := setupTestServer(t)
-	if srv == nil {
-		return
+
+	cleanupUsers := func() {
+		ctx := context.Background()
+		rows, err := database.Pool.Query(ctx, "SELECT id FROM users WHERE email IN ('short@example.com', 'worker@example.com')")
+		if err == nil {
+			var uids []int64
+			for rows.Next() {
+				var uid int64
+				if err := rows.Scan(&uid); err == nil {
+					uids = append(uids, uid)
+				}
+			}
+			rows.Close()
+			if len(uids) > 0 {
+				testutil.CleanupTestData(database.Pool, uids, nil)
+			}
+		}
 	}
-	defer database.Pool.Close()
+	cleanupUsers()
+	t.Cleanup(cleanupUsers)
 
 	mux := http.NewServeMux()
 	srv.RegisterRoutes(mux)

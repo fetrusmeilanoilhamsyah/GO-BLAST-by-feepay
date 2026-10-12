@@ -14,10 +14,10 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/joho/godotenv"
 	"goblast/internal/auth"
 	"goblast/internal/db"
 	"goblast/internal/i18n"
+	"goblast/internal/testutil"
 	"goblast/internal/withdraw"
 )
 
@@ -39,23 +39,13 @@ func setupAdminTest(t *testing.T) (*Server, *pgxpool.Pool, int64, int64) {
 	t.Cleanup(func() { _ = os.Chdir(cwd) })
 
 	_ = i18n.Load("locales")
-	godotenv.Load()
 
-	dbURL := os.Getenv("DATABASE_URL")
-	if dbURL == "" {
-		t.Skip("DATABASE_URL not set")
-	}
-
-	pool, err := pgxpool.New(context.Background(), dbURL)
-	if err != nil {
-		t.Skip("Database not configured: ", err)
-	}
-	t.Cleanup(func() { pool.Close() })
+	pool := testutil.TestDB(t)
 
 	// Create admin user
 	nonce := time.Now().UnixNano()
 	var adminID, workerID int64
-	err = pool.QueryRow(context.Background(), `
+	err := pool.QueryRow(context.Background(), `
 		INSERT INTO users (email, username, password_hash, role, currency, referral_code, display_name)
 		VALUES ($1, $2, 'hash', 'admin', 'IDR', $3, 'Admin Test')
 		RETURNING id
@@ -74,10 +64,27 @@ func setupAdminTest(t *testing.T) (*Server, *pgxpool.Pool, int64, int64) {
 		t.Fatalf("Failed to create test worker: %v", err)
 	}
 
+	t.Cleanup(func() {
+		ctx := context.Background()
+		var campIDs []int64
+		rows, err := pool.Query(ctx, "SELECT id FROM campaigns WHERE created_by = $1", adminID)
+		if err == nil {
+			for rows.Next() {
+				var cid int64
+				if err := rows.Scan(&cid); err == nil {
+					campIDs = append(campIDs, cid)
+				}
+			}
+			rows.Close()
+		}
+		testutil.CleanupTestData(pool, []int64{adminID, workerID}, campIDs)
+	})
+
 	srv, err := NewServer(&db.DB{Pool: pool}, "test", nil, nil)
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
+	srv.EncryptionKey = testutil.TestEncryptionKey()
 
 	return srv, pool, adminID, workerID
 }

@@ -5,8 +5,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -14,12 +12,10 @@ import (
 
 	"goblast/internal/db"
 	"goblast/internal/engine"
+	"goblast/internal/testutil"
 	"goblast/internal/wa"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	_ "github.com/jackc/pgx/v5/stdlib"
-	"github.com/joho/godotenv"
-	"github.com/pressly/goose/v3"
 )
 
 // --- Stub SettingsReader untuk tes ---
@@ -82,51 +78,14 @@ func TestDeliveryLevelConstant(t *testing.T) {
 	}
 }
 
-// getTestDB menghubungkan ke PostgreSQL untuk tes integrasi jika tersedia.
-func getTestDB(t *testing.T) (*sql.DB, *pgxpool.Pool, bool) {
-	_ = godotenv.Load("../../.env")
-	dsn := os.Getenv("TEST_DATABASE_URL")
-	if dsn == "" {
-		dsn = os.Getenv("DATABASE_URL")
-	}
-	if dsn == "" {
-		return nil, nil, false
-	}
-
-	sqlDB, err := sql.Open("pgx", dsn)
-	if err != nil {
-		return nil, nil, false
-	}
-	if err := sqlDB.Ping(); err != nil {
-		sqlDB.Close()
-		return nil, nil, false
-	}
-
-	_ = goose.SetDialect("postgres")
-	migrationsDir := filepath.Join("..", "..", "db", "migrations")
-	if err := goose.Up(sqlDB, migrationsDir); err != nil {
-		sqlDB.Close()
-		t.Logf("migrasi gagal: %v", err)
-		return nil, nil, false
-	}
-
-	pool, err := pgxpool.New(context.Background(), dsn)
-	if err != nil {
-		sqlDB.Close()
-		return nil, nil, false
-	}
-
-	return sqlDB, pool, true
+// getTestDB menghubungkan ke PostgreSQL untuk tes integrasi via testutil.TestDB.
+func getTestDB(t *testing.T) *pgxpool.Pool {
+	return testutil.TestDB(t)
 }
 
 // (a) 50 akun palsu mengklaim 1000 nomor secara bersamaan, tidak ada nomor ganda dan semua terklaim tepat satu kali.
 func TestConcurrentAtomicClaim(t *testing.T) {
-	sqlDB, pool, ok := getTestDB(t)
-	if !ok {
-		t.Skip("Database tidak tersedia untuk tes integrasi klaim atomik")
-	}
-	defer sqlDB.Close()
-	defer pool.Close()
+	pool := getTestDB(t)
 
 	ctx := context.Background()
 	database := &db.DB{Pool: pool}
@@ -145,9 +104,6 @@ func TestConcurrentAtomicClaim(t *testing.T) {
 		t.Fatalf("setup worker gagal: %v", err)
 	}
 
-	// Nonaktifkan sementara campaign berjalan lainnya agar tidak tercampur
-	_, _ = pool.Exec(ctx, `UPDATE campaigns SET status = 'draf' WHERE status = 'berjalan'`)
-
 	var campaignID int64
 	err = pool.QueryRow(ctx,
 		`INSERT INTO campaigns (name, status, button_mode, body, elements, created_by)
@@ -158,6 +114,10 @@ func TestConcurrentAtomicClaim(t *testing.T) {
 	if err != nil {
 		t.Fatalf("setup campaign gagal: %v", err)
 	}
+
+	t.Cleanup(func() {
+		testutil.CleanupTestData(pool, []int64{workerID}, []int64{campaignID})
+	})
 
 	var batchID int64
 	err = pool.QueryRow(ctx,
@@ -252,12 +212,7 @@ func TestConcurrentAtomicClaim(t *testing.T) {
 
 // (b) Hasil yang sama dilaporkan dua kali menghasilkan satu baris buku besar (idempoten via unique index).
 func TestIdempotentLedgerEntry(t *testing.T) {
-	sqlDB, pool, ok := getTestDB(t)
-	if !ok {
-		t.Skip("Database tidak tersedia untuk tes buku besar idempoten")
-	}
-	defer sqlDB.Close()
-	defer pool.Close()
+	pool := getTestDB(t)
 
 	ctx := context.Background()
 
@@ -279,6 +234,10 @@ func TestIdempotentLedgerEntry(t *testing.T) {
 		 RETURNING id`,
 		workerID,
 	).Scan(&campaignID)
+
+	t.Cleanup(func() {
+		testutil.CleanupTestData(pool, []int64{workerID}, []int64{campaignID})
+	})
 
 	var batchID int64
 	_ = pool.QueryRow(ctx,
@@ -328,12 +287,7 @@ func TestIdempotentLedgerEntry(t *testing.T) {
 
 // (c) Sesi terputus: semua nomor dikirim milik akun itu kembali tersedia.
 func TestSessionDisconnectReturnsNumbers(t *testing.T) {
-	sqlDB, pool, ok := getTestDB(t)
-	if !ok {
-		t.Skip("Database tidak tersedia untuk tes sesi terputus")
-	}
-	defer sqlDB.Close()
-	defer pool.Close()
+	pool := getTestDB(t)
 
 	ctx := context.Background()
 	database := &db.DB{Pool: pool}
@@ -355,6 +309,10 @@ func TestSessionDisconnectReturnsNumbers(t *testing.T) {
 		 RETURNING id`,
 		workerID,
 	).Scan(&campaignID)
+
+	t.Cleanup(func() {
+		testutil.CleanupTestData(pool, []int64{workerID}, []int64{campaignID})
+	})
 
 	var batchID int64
 	_ = pool.QueryRow(ctx,
@@ -401,12 +359,7 @@ func TestSessionDisconnectReturnsNumbers(t *testing.T) {
 
 // (d) Pembersih: mengembalikan nomor dikirim yang claimed_at lebih tua dari claim_timeout_seconds.
 func TestCleanerReturnsStaleNumbers(t *testing.T) {
-	sqlDB, pool, ok := getTestDB(t)
-	if !ok {
-		t.Skip("Database tidak tersedia untuk tes pembersih")
-	}
-	defer sqlDB.Close()
-	defer pool.Close()
+	pool := getTestDB(t)
 
 	ctx := context.Background()
 	database := &db.DB{Pool: pool}
@@ -428,6 +381,10 @@ func TestCleanerReturnsStaleNumbers(t *testing.T) {
 		 RETURNING id`,
 		workerID,
 	).Scan(&campaignID)
+
+	t.Cleanup(func() {
+		testutil.CleanupTestData(pool, []int64{workerID}, []int64{campaignID})
+	})
 
 	var batchID int64
 	_ = pool.QueryRow(ctx,
@@ -490,12 +447,7 @@ func TestEmptySettingsStopsEngine(t *testing.T) {
 
 // (f) rate_snapshot tetap setelah rate diubah di settings.
 func TestRateSnapshotStaticAfterRateChange(t *testing.T) {
-	sqlDB, pool, ok := getTestDB(t)
-	if !ok {
-		t.Skip("Database tidak tersedia untuk tes snapshot rate")
-	}
-	defer sqlDB.Close()
-	defer pool.Close()
+	pool := getTestDB(t)
 
 	ctx := context.Background()
 
@@ -516,6 +468,10 @@ func TestRateSnapshotStaticAfterRateChange(t *testing.T) {
 		 RETURNING id`,
 		workerID,
 	).Scan(&campaignID)
+
+	t.Cleanup(func() {
+		testutil.CleanupTestData(pool, []int64{workerID}, []int64{campaignID})
+	})
 
 	var batchID int64
 	_ = pool.QueryRow(ctx,
@@ -565,12 +521,7 @@ func TestRateSnapshotStaticAfterRateChange(t *testing.T) {
 
 // (a) kegagalan menulis buku besar tidak pernah mengembalikan nomor ke tersedia
 func TestLedgerFailureNeverReturnsToAvailable(t *testing.T) {
-	sqlDB, pool, ok := getTestDB(t)
-	if !ok {
-		t.Skip("Database tidak tersedia untuk tes integrasi")
-	}
-	defer sqlDB.Close()
-	defer pool.Close()
+	pool := getTestDB(t)
 
 	ctx := context.Background()
 	database := &db.DB{Pool: pool}
@@ -594,6 +545,10 @@ func TestLedgerFailureNeverReturnsToAvailable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("setup campaign: %v", err)
 	}
+
+	t.Cleanup(func() {
+		testutil.CleanupTestData(pool, []int64{workerID}, []int64{campaignID})
+	})
 
 	err = pool.QueryRow(ctx,
 		`INSERT INTO number_batches (campaign_id, filename, uploaded_by, total, accepted)
@@ -651,12 +606,7 @@ func TestLedgerFailureNeverReturnsToAvailable(t *testing.T) {
 
 // (b) kegagalan render berulang menghentikan akun
 func TestRepeatedRenderFailureStopsAccount(t *testing.T) {
-	sqlDB, pool, ok := getTestDB(t)
-	if !ok {
-		t.Skip("Database tidak tersedia untuk tes integrasi")
-	}
-	defer sqlDB.Close()
-	defer pool.Close()
+	pool := getTestDB(t)
 
 	ctx := context.Background()
 	database := &db.DB{Pool: pool}
@@ -681,9 +631,6 @@ func TestRepeatedRenderFailureStopsAccount(t *testing.T) {
 		t.Fatalf("setup account: %v", err)
 	}
 
-	// Nonaktifkan campaign berjalan lain
-	_, _ = pool.Exec(ctx, `UPDATE campaigns SET status = 'draf' WHERE status = 'berjalan'`)
-
 	// Buat campaign dengan template tidak valid (tombol_asli ditolak oleh ValidateTemplate)
 	var campID, batchID int64
 	err = pool.QueryRow(ctx,
@@ -694,6 +641,10 @@ func TestRepeatedRenderFailureStopsAccount(t *testing.T) {
 	if err != nil {
 		t.Fatalf("setup campaign: %v", err)
 	}
+
+	t.Cleanup(func() {
+		testutil.CleanupTestData(pool, []int64{workerID}, []int64{campID})
+	})
 
 	err = pool.QueryRow(ctx,
 		`INSERT INTO number_batches (campaign_id, filename, uploaded_by, total, accepted)
@@ -753,12 +704,7 @@ func TestRepeatedRenderFailureStopsAccount(t *testing.T) {
 
 // (c) rate_wage USDT 3000 menghasilkan baris buku besar bernilai 3000, dan rate hilang membuat engine tidak mengirim
 func TestRateWageUSDTAndMissingRate(t *testing.T) {
-	sqlDB, pool, ok := getTestDB(t)
-	if !ok {
-		t.Skip("Database tidak tersedia untuk tes integrasi")
-	}
-	defer sqlDB.Close()
-	defer pool.Close()
+	pool := getTestDB(t)
 
 	ctx := context.Background()
 	database := &db.DB{Pool: pool}
@@ -782,6 +728,10 @@ func TestRateWageUSDTAndMissingRate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("setup campaign: %v", err)
 	}
+
+	t.Cleanup(func() {
+		testutil.CleanupTestData(pool, []int64{workerID}, []int64{campaignID})
+	})
 
 	err = pool.QueryRow(ctx,
 		`INSERT INTO number_batches (campaign_id, filename, uploaded_by, total, accepted)
@@ -868,12 +818,7 @@ func TestRateWageUSDTAndMissingRate(t *testing.T) {
 
 // (d) mencapai max_attempts membuat nomor gagal
 func TestMaxAttemptsMakesNumberGagal(t *testing.T) {
-	sqlDB, pool, ok := getTestDB(t)
-	if !ok {
-		t.Skip("Database tidak tersedia untuk tes integrasi")
-	}
-	defer sqlDB.Close()
-	defer pool.Close()
+	pool := getTestDB(t)
 
 	ctx := context.Background()
 	database := &db.DB{Pool: pool}
@@ -897,6 +842,10 @@ func TestMaxAttemptsMakesNumberGagal(t *testing.T) {
 		 VALUES ('Camp Max', 'berjalan', 'kartu_link', 'Halo', '{}', $1) RETURNING id`,
 		workerID,
 	).Scan(&campaignID)
+
+	t.Cleanup(func() {
+		testutil.CleanupTestData(pool, []int64{workerID}, []int64{campaignID})
+	})
 
 	_ = pool.QueryRow(ctx,
 		`INSERT INTO number_batches (campaign_id, filename, uploaded_by, total, accepted)
@@ -940,12 +889,7 @@ func TestMaxAttemptsMakesNumberGagal(t *testing.T) {
 
 // (e) kegagalan beruntun menghentikan akun dan mengembalikan nomor yang dipegang
 func TestConsecutiveFailuresStopsAccountAndReleasesNumbers(t *testing.T) {
-	sqlDB, pool, ok := getTestDB(t)
-	if !ok {
-		t.Skip("Database tidak tersedia untuk tes integrasi")
-	}
-	defer sqlDB.Close()
-	defer pool.Close()
+	pool := getTestDB(t)
 
 	ctx := context.Background()
 	database := &db.DB{Pool: pool}
@@ -969,6 +913,10 @@ func TestConsecutiveFailuresStopsAccountAndReleasesNumbers(t *testing.T) {
 		 VALUES ('Camp Csf', 'berjalan', 'kartu_link', 'Halo', '{}', $1) RETURNING id`,
 		workerID,
 	).Scan(&campID)
+
+	t.Cleanup(func() {
+		testutil.CleanupTestData(pool, []int64{workerID}, []int64{campID})
+	})
 
 	_ = pool.QueryRow(ctx,
 		`INSERT INTO number_batches (campaign_id, filename, uploaded_by, total, accepted)
@@ -1010,12 +958,7 @@ func TestConsecutiveFailuresStopsAccountAndReleasesNumbers(t *testing.T) {
 
 // (f) awal hari batas harian memakai Asia/Jakarta
 func TestDailyLimitAsiaJakarta(t *testing.T) {
-	sqlDB, pool, ok := getTestDB(t)
-	if !ok {
-		t.Skip("Database tidak tersedia untuk tes integrasi")
-	}
-	defer sqlDB.Close()
-	defer pool.Close()
+	pool := getTestDB(t)
 
 	ctx := context.Background()
 
@@ -1050,6 +993,10 @@ func TestDailyLimitAsiaJakarta(t *testing.T) {
 		 VALUES ('Camp Jkt', 'berjalan', 'kartu_link', 'Halo', '{}', $1) RETURNING id`,
 		workerID,
 	).Scan(&campID)
+
+	t.Cleanup(func() {
+		testutil.CleanupTestData(pool, []int64{workerID}, []int64{campID})
+	})
 
 	_ = pool.QueryRow(ctx,
 		`INSERT INTO number_batches (campaign_id, filename, uploaded_by, total, accepted)
@@ -1091,12 +1038,7 @@ func TestDailyLimitAsiaJakarta(t *testing.T) {
 
 // (g) timeout kirim menjadi hasil_tidak_pasti dan tidak diulang
 func TestSendTimeoutResultsInHasilTidakPasti(t *testing.T) {
-	sqlDB, pool, ok := getTestDB(t)
-	if !ok {
-		t.Skip("Database tidak tersedia untuk tes integrasi")
-	}
-	defer sqlDB.Close()
-	defer pool.Close()
+	pool := getTestDB(t)
 
 	ctx := context.Background()
 	database := &db.DB{Pool: pool}
@@ -1115,14 +1057,15 @@ func TestSendTimeoutResultsInHasilTidakPasti(t *testing.T) {
 		workerID,
 	).Scan(&accID)
 
-	// Nonaktifkan campaign berjalan lain
-	_, _ = pool.Exec(ctx, `UPDATE campaigns SET status = 'draf' WHERE status = 'berjalan'`)
-
 	_ = pool.QueryRow(ctx,
 		`INSERT INTO campaigns (name, status, button_mode, body, elements, created_by)
 		 VALUES ('Camp To', 'berjalan', 'kartu_link', 'Halo', '{}', $1) RETURNING id`,
 		workerID,
 	).Scan(&campID)
+
+	t.Cleanup(func() {
+		testutil.CleanupTestData(pool, []int64{workerID}, []int64{campID})
+	})
 
 	_ = pool.QueryRow(ctx,
 		`INSERT INTO number_batches (campaign_id, filename, uploaded_by, total, accepted)
@@ -1176,12 +1119,7 @@ func TestSendTimeoutResultsInHasilTidakPasti(t *testing.T) {
 
 // (h) GetInt mengembalikan error untuk kegagalan database
 func TestGetIntReturnsErrorOnDatabaseFailure(t *testing.T) {
-	sqlDB, pool, ok := getTestDB(t)
-	if !ok {
-		t.Skip("Database tidak tersedia untuk tes integrasi")
-	}
-	defer sqlDB.Close()
-	defer pool.Close()
+	pool := getTestDB(t)
 
 	database := &db.DB{Pool: pool}
 	reader := wa.NewDBSettingsReader(database)
@@ -1213,12 +1151,7 @@ func TestGetIntReturnsErrorOnDatabaseFailure(t *testing.T) {
 
 // Uji tambahan: Campaign otomatis berstatus selesai saat tidak ada nomor tersedia maupun dikirim (tercatat di audit_logs)
 func TestCampaignAutoCompletedWithAuditLog(t *testing.T) {
-	sqlDB, pool, ok := getTestDB(t)
-	if !ok {
-		t.Skip("Database tidak tersedia untuk tes integrasi")
-	}
-	defer sqlDB.Close()
-	defer pool.Close()
+	pool := getTestDB(t)
 
 	ctx := context.Background()
 	database := &db.DB{Pool: pool}
@@ -1236,6 +1169,10 @@ func TestCampaignAutoCompletedWithAuditLog(t *testing.T) {
 		 VALUES ('Camp Auto', 'berjalan', 'kartu_link', 'Halo', '{}', $1) RETURNING id`,
 		workerID,
 	).Scan(&campID)
+
+	t.Cleanup(func() {
+		testutil.CleanupTestData(pool, []int64{workerID}, []int64{campID})
+	})
 
 	_ = pool.QueryRow(ctx,
 		`INSERT INTO number_batches (campaign_id, filename, uploaded_by, total, accepted)
@@ -1282,12 +1219,7 @@ func TestCampaignAutoCompletedWithAuditLog(t *testing.T) {
 }
 
 func TestEngine_IsRunningAndNoDuplicateGoroutine(t *testing.T) {
-	sqlDB, pool, ok := getTestDB(t)
-	if !ok {
-		t.Skip("Database tidak tersedia untuk tes integrasi")
-	}
-	defer sqlDB.Close()
-	defer pool.Close()
+	pool := getTestDB(t)
 	ctx := context.Background()
 
 	var workerID int64
@@ -1300,6 +1232,10 @@ func TestEngine_IsRunningAndNoDuplicateGoroutine(t *testing.T) {
 	if err != nil {
 		t.Fatalf("insert user error: %v", err)
 	}
+
+	t.Cleanup(func() {
+		testutil.CleanupTestData(pool, []int64{workerID}, nil)
+	})
 
 	var accID int64
 	err = pool.QueryRow(ctx,

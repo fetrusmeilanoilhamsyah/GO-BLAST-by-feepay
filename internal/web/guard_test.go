@@ -17,11 +17,10 @@ import (
 	"testing"
 	"unicode/utf8"
 
-	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/joho/godotenv"
 	"goblast/internal/campaign"
 	"goblast/internal/db"
 	"goblast/internal/i18n"
+	"goblast/internal/testutil"
 )
 
 func findProjectRoot(t *testing.T) string {
@@ -189,33 +188,27 @@ func TestCampaignFormTombolAsliDisabled(t *testing.T) {
 		t.Errorf("Expected cs_active to not be checked by default")
 	}
 
-	// Also test handler with DB if available
-	godotenv.Load(filepath.Join(root, ".env"))
-	dbURL := os.Getenv("DATABASE_URL")
-	if dbURL != "" {
-		pool, err := pgxpool.New(context.Background(), dbURL)
-		if err == nil {
-			defer pool.Close()
-			cwd, _ := os.Getwd()
-			_ = os.Chdir(root)
-			defer os.Chdir(cwd)
+	// Also test handler with DB
+	pool := testutil.TestDB(t)
+	cwd, _ := os.Getwd()
+	_ = os.Chdir(root)
+	defer os.Chdir(cwd)
 
-			srv, err := NewServer(&db.DB{Pool: pool}, "test", nil, nil)
-			if err == nil {
-				req := httptest.NewRequest("GET", "/admin/campaigns/new", nil)
-				req = req.WithContext(context.WithValue(req.Context(), userContextKey, UserSession{ID: 1, Role: "admin", Language: "id"}))
-				rr := httptest.NewRecorder()
-				srv.HandleAdminCampaignNewGET(rr, req)
+	srv, err := NewServer(&db.DB{Pool: pool}, "test", nil, nil)
+	if err != nil {
+		t.Fatalf("Failed to create server: %v", err)
+	}
+	req := httptest.NewRequest("GET", "/admin/campaigns/new", nil)
+	req = req.WithContext(context.WithValue(req.Context(), userContextKey, UserSession{ID: 1, Role: "admin", Language: "id"}))
+	rr := httptest.NewRecorder()
+	srv.HandleAdminCampaignNewGET(rr, req)
 
-				if rr.Code != http.StatusOK {
-					t.Errorf("Expected status 200 from HandleAdminCampaignNewGET, got %d", rr.Code)
-				}
-				body := rr.Body.String()
-				if !strings.Contains(body, `value="tombol_asli"`) || !strings.Contains(body, "disabled") {
-					t.Errorf("Expected rendered form from handler to disable tombol_asli")
-				}
-			}
-		}
+	if rr.Code != http.StatusOK {
+		t.Errorf("Expected status 200 from HandleAdminCampaignNewGET, got %d", rr.Code)
+	}
+	body := rr.Body.String()
+	if !strings.Contains(body, `value="tombol_asli"`) || !strings.Contains(body, "disabled") {
+		t.Errorf("Expected rendered form from handler to disable tombol_asli")
 	}
 }
 

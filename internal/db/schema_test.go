@@ -2,71 +2,28 @@ package db_test
 
 import (
 	"context"
-	"database/sql"
-	"os"
-	"path/filepath"
+	"fmt"
 	"testing"
+	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
-	_ "github.com/jackc/pgx/v5/stdlib"
-	"github.com/joho/godotenv"
-	"github.com/pressly/goose/v3"
+	"goblast/internal/testutil"
 )
 
-func setupTestDB(t *testing.T) (*sql.DB, *pgxpool.Pool) {
-	// Try loading .env from project root
-	_ = godotenv.Load("../../.env")
-
-	dsn := os.Getenv("TEST_DATABASE_URL")
-	if dsn == "" {
-		t.Fatal("TEST_DATABASE_URL environment variable is empty. Please set it to a test database.")
-	}
-
-	db, err := sql.Open("pgx", dsn)
-	if err != nil {
-		t.Fatalf("failed to connect to db: %v", err)
-	}
-
-	err = goose.SetDialect("postgres")
-	if err != nil {
-		t.Fatalf("failed to set dialect: %v", err)
-	}
-
-	migrationsDir := filepath.Join("..", "..", "db", "migrations")
-
-	// e) migrate down lalu up berhasil tanpa error
-	err = goose.DownTo(db, migrationsDir, 0)
-	if err != nil && err != goose.ErrNoNextVersion {
-		t.Fatalf("failed to migrate down: %v", err)
-	}
-
-	err = goose.Up(db, migrationsDir)
-	if err != nil {
-		t.Fatalf("failed to migrate up: %v", err)
-	}
-
-	pool, err := pgxpool.New(context.Background(), dsn)
-	if err != nil {
-		t.Fatalf("failed to create pgxpool: %v", err)
-	}
-
-	return db, pool
-}
-
 func TestSchemaConstraints(t *testing.T) {
-	sqlDB, pool := setupTestDB(t)
-	defer sqlDB.Close()
-	defer pool.Close()
+	pool := testutil.TestDB(t)
 
 	ctx := context.Background()
 
-	// Setup basic data
+	// Setup basic data with unique emails
+	nonce := time.Now().UnixNano()
 	var adminID, worker1ID int64
-	err := pool.QueryRow(ctx, "INSERT INTO users (email, password_hash, role, display_name, referral_code) VALUES ('admin@test.local', 'hash', 'admin', 'Admin', 'A1') RETURNING id").Scan(&adminID)
+	err := pool.QueryRow(ctx, "INSERT INTO users (email, username, password_hash, role, display_name, referral_code) VALUES ($1, $2, 'hash', 'admin', 'Admin', $3) RETURNING id",
+		fmt.Sprintf("admin_%d@test.local", nonce), fmt.Sprintf("admin_%d", nonce), fmt.Sprintf("A%d", nonce)).Scan(&adminID)
 	if err != nil {
 		t.Fatalf("failed to insert admin: %v", err)
 	}
-	err = pool.QueryRow(ctx, "INSERT INTO users (email, password_hash, role, display_name, referral_code) VALUES ('w1@test.local', 'hash', 'worker', 'W1', 'W1') RETURNING id").Scan(&worker1ID)
+	err = pool.QueryRow(ctx, "INSERT INTO users (email, username, password_hash, role, display_name, referral_code) VALUES ($1, $2, 'hash', 'worker', 'W1', $3) RETURNING id",
+		fmt.Sprintf("w1_%d@test.local", nonce), fmt.Sprintf("w1_%d", nonce), fmt.Sprintf("W%d", nonce)).Scan(&worker1ID)
 	if err != nil {
 		t.Fatalf("failed to insert worker: %v", err)
 	}
@@ -80,6 +37,10 @@ func TestSchemaConstraints(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to insert campaign 2: %v", err)
 	}
+
+	t.Cleanup(func() {
+		testutil.CleanupTestData(pool, []int64{adminID, worker1ID}, []int64{campaign1ID, campaign2ID})
+	})
 
 	var batchID int64
 	err = pool.QueryRow(ctx, "INSERT INTO number_batches (campaign_id, filename, uploaded_by) VALUES ($1, 'f1.csv', $2) RETURNING id", campaign1ID, adminID).Scan(&batchID)

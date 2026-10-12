@@ -18,6 +18,7 @@ Nomor tahap mengacu ke tabel "Daftar Tahap" di bawah.
 ---
 
 ## TODO / Perlu Keputusan
+- **Purge Data Dev Penarikan & Konfigurasi ENCRYPTION_KEY**: Data penarikan di lingkungan pengembangan yang sebelumnya terenkripsi dengan kunci bawaan lama tidak dapat didekripsi lagi dan sebaiknya di-purge/reset di database dev. Variabel `ENCRYPTION_KEY` kini wajib diisi di `.env` masing-masing pengembang dan server produksi (base64 dari tepat 32 byte acak).
 - **Pembersihan Akun WA Batal**: Keputusan tetap pemilik: jika pekerja membuka modal tambah akun baru lalu membatalkan (klik Batal, tombol silang X, klik backdrop modal, atau tekan ESC) sebelum sesi berhasil terhubung, baris antrean sementara di database langsung dibersihkan otomatis via endpoint delete agar tidak membebani server dan tidak menggantung di tabel dengan status `menunggu_scan` atau `terputus`.
 - **Uji manual pengiriman nyata (Tahap 10)**: Uji manual pengiriman nyata (dua akun cadangan, satu database kecil) menunggu pemilik, dan jangan menandai Tahap 10 Selesai berdasarkan tes dengan FakeSender saja.
 - Terkait keputusan terbuka #1: Definisi "terkirim" DeliveryLevel saat ini bernilai "server_ack" (centang satu). Menunggu konfirmasi apakah perlu centang dua.
@@ -194,6 +195,7 @@ Langkah uji sambung dan putus satu nomor cadangan:
 
 Terbaru di atas. Format: `tanggal: ringkasan satu baris` (Log Tahap 0 - 5 diarsipkan di [ARSIP_PROGRES.md](ARSIP_PROGRES.md)).
 
+- 2026-10-12: Penguatan keamanan tes & kunci enkripsi: seluruh tes database beralih hanya membaca TEST_DATABASE_URL tanpa skip (0 skip), validasi nama database berakhiran '_test' dan beda dari DATABASE_URL via helper testutil.TestDB & testutil.TestDBInstance, isolasi pembersihan t.Cleanup per-tes tanpa TRUNCATE/DELETE blanket, ENCRYPTION_KEY wajib tanpa fallback bawaan di config & withdraw, validasi tepat 32 byte, dan suite tes enkripsi withdraw baru (70 top-level tes lulus, 0 gagal, 0 lewati).
 - 2026-10-12: Perbaikan foreign key hapus kampanye: tambahkan pembersihan number_batches sebelum menghapus kampanye (selesaikan error SQLSTATE 23503), dan migrasi 0013_allow_campaign_cleanup_ledger.sql agar relasi ledger_entries.campaign_number_id dapat di-unlink secara aman tanpa melanggar sifat append-only transaksi finansial. Seluruh tes lulus 100%.
 - 2026-10-12: Pusat Bantuan & CS (Worker FAB, FAQ bot interaktif, tautan WhatsApp & Telegram resmi, formulir tiket laporan ke admin), sistem broadcast pengumuman (banner dinamis di worker dashboard, kelola broadcast di admin panel), perbaikan teks tombol hapus campaign dan dekripsi rekening penarikan admin cross-key. Seluruh tes unit & integrasi lulus 100%.
 - 2026-10-12: Tahap 12 selesai: Panel admin (dashboard statistik & tren 14 hari dengan polling 10s vanilla fetch, pengaturan dengan audit log perubahan nilai lama & baru serta validasi ketat, dompet pembukuan modal IDR/USDT dan riwayat isi ulang, direktori pekerja dengan aksi enable/disable yang otomatis menghentikan akun WA dan membersihkan sesi web). Seluruh tes unit & integrasi lulus 100%.

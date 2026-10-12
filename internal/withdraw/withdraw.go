@@ -9,21 +9,14 @@ import (
 	"io"
 )
 
-// devFallbackKey dipakai saat ENCRYPTION_KEY kosong pada mode dev/test (tepat 32 byte).
-var devFallbackKey = []byte("goblast-feepay-32byte-aes-key!!!")
-
-// ResolveKey memastikan kunci berukuran tepat 32 byte.
-func ResolveKey(key []byte) []byte {
-	if len(key) == 32 {
-		return key
-	}
-	return devFallbackKey
-}
+var ErrInvalidKey = errors.New("kunci enkripsi harus tepat 32 byte")
 
 // EncryptDestination mengenkripsi teks tujuan transfer dengan AES-256-GCM.
 func EncryptDestination(plaintext string, key []byte) (string, error) {
-	k := ResolveKey(key)
-	block, err := aes.NewCipher(k)
+	if len(key) != 32 {
+		return "", ErrInvalidKey
+	}
+	block, err := aes.NewCipher(key)
 	if err != nil {
 		return "", err
 	}
@@ -41,12 +34,14 @@ func EncryptDestination(plaintext string, key []byte) (string, error) {
 
 // DecryptDestination mendekripsi teks tujuan transfer dengan AES-256-GCM.
 func DecryptDestination(ciphertextB64 string, key []byte) (string, error) {
-	k := ResolveKey(key)
+	if len(key) != 32 {
+		return "", ErrInvalidKey
+	}
 	data, err := base64.StdEncoding.DecodeString(ciphertextB64)
 	if err != nil {
 		return "", err
 	}
-	block, err := aes.NewCipher(k)
+	block, err := aes.NewCipher(key)
 	if err != nil {
 		return "", err
 	}
@@ -59,27 +54,10 @@ func DecryptDestination(ciphertextB64 string, key []byte) (string, error) {
 		return "", errors.New("ciphertext terlalu pendek")
 	}
 
-	// 1. Coba dekripsi dengan kunci utama
 	nonce, ciphertext := data[:nonceSize], data[nonceSize:]
 	plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)
-	if err == nil {
-		return string(plaintext), nil
+	if err != nil {
+		return "", err
 	}
-
-	// 2. Jika kunci utama gagal dan berbeda dengan devFallbackKey, coba devFallbackKey
-	if string(k) != string(devFallbackKey) {
-		fallbackBlock, fbErr := aes.NewCipher(devFallbackKey)
-		if fbErr == nil {
-			fallbackGCM, fbGcmErr := cipher.NewGCM(fallbackBlock)
-			if fbGcmErr == nil && len(data) >= fallbackGCM.NonceSize() {
-				fbSize := fallbackGCM.NonceSize()
-				fbNonce, fbCiphertext := data[:fbSize], data[fbSize:]
-				if fbPlaintext, fbOpenErr := fallbackGCM.Open(nil, fbNonce, fbCiphertext, nil); fbOpenErr == nil {
-					return string(fbPlaintext), nil
-				}
-			}
-		}
-	}
-
-	return "", err
+	return string(plaintext), nil
 }

@@ -13,11 +13,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/joho/godotenv"
 	"goblast/internal/auth"
 	"goblast/internal/db"
 	"goblast/internal/i18n"
+	"goblast/internal/testutil"
 )
 
 type mockWorkController struct {
@@ -58,22 +57,8 @@ func (m *mockWorkController) IsRunning(accountID int64) bool {
 func TestWorkerPanelFlows(t *testing.T) {
 	root := findProjectRoot(t)
 	_ = i18n.Load(root + "/locales")
-	godotenv.Load(root + "/.env")
 
-	dbURL := os.Getenv("DATABASE_URL")
-	if dbURL == "" {
-		t.Skip("DATABASE_URL not set")
-	}
-
-	pool, err := pgxpool.New(context.Background(), dbURL)
-	if err != nil {
-		t.Skip("Database connection failed: ", err)
-	}
-	defer pool.Close()
-
-	if err := pool.Ping(context.Background()); err != nil {
-		t.Skip("Database not reachable: ", err)
-	}
+	pool := testutil.TestDB(t)
 
 	cwd, _ := os.Getwd()
 	_ = os.Chdir(root)
@@ -85,7 +70,7 @@ func TestWorkerPanelFlows(t *testing.T) {
 	refCode := fmt.Sprintf("RF%d", now)
 
 	var workerID int64
-	err = pool.QueryRow(context.Background(), `
+	err := pool.QueryRow(context.Background(), `
 		INSERT INTO users (email, password_hash, role, display_name, language, currency, referral_code)
 		VALUES ($1, 'hash_pass', 'worker', 'Pekerja Uji', 'id', 'IDR', $2)
 		RETURNING id
@@ -94,10 +79,18 @@ func TestWorkerPanelFlows(t *testing.T) {
 		t.Fatalf("Failed to insert test worker: %v", err)
 	}
 
+	createdUserIDs := []int64{workerID}
+	var createdCampaignIDs []int64
+
+	t.Cleanup(func() {
+		testutil.CleanupTestData(pool, createdUserIDs, createdCampaignIDs)
+	})
+
 	srv, err := NewServer(&db.DB{Pool: pool}, "test", nil, nil)
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
+	srv.EncryptionKey = testutil.TestEncryptionKey()
 
 	userSess := UserSession{
 		ID:          workerID,
@@ -340,6 +333,7 @@ func TestWorkerPanelFlows(t *testing.T) {
 				VALUES ($1, 'hash_pass', 'worker', 'Pekerja Kosong', 'id', 'IDR', $2)
 				RETURNING id
 			`, fmt.Sprintf("fresh_%d@example.com", time.Now().UnixNano()), fmt.Sprintf("RF_FRESH_%d", time.Now().UnixNano())).Scan(&freshWorkerID)
+			createdUserIDs = append(createdUserIDs, freshWorkerID)
 
 			_, _ = pool.Exec(context.Background(), `
 				INSERT INTO ledger_entries (user_id, kind, currency, amount, note)
@@ -508,8 +502,8 @@ func TestWorkerPanelFlows(t *testing.T) {
 			VALUES ('Campaign Uji Privasi', 'kartu_link', 'berjalan')
 			RETURNING id
 		`).Scan(&campID)
-
 		if campID > 0 {
+			createdCampaignIDs = append(createdCampaignIDs, campID)
 			var numID int64
 			_ = pool.QueryRow(context.Background(), `
 				INSERT INTO campaign_numbers (campaign_id, phone_e164, status)
@@ -557,6 +551,7 @@ func TestWorkerPanelFlows(t *testing.T) {
 			VALUES ($1, 'hash_b', 'worker', 'Pekerja B', 'id', 'IDR', $2)
 			RETURNING id
 		`, fmt.Sprintf("worker_b_%d@example.com", time.Now().UnixNano()), fmt.Sprintf("RFB%d", time.Now().UnixNano())).Scan(&workerBID)
+		createdUserIDs = append(createdUserIDs, workerBID)
 
 		// Buat wa_account milik Worker B
 		var accBID int64
@@ -629,6 +624,7 @@ func TestWorkerPanelFlows(t *testing.T) {
 			VALUES ($1, 'hash_b2', 'worker', 'Pekerja B2', 'id', 'IDR', $2)
 			RETURNING id
 		`, fmt.Sprintf("worker_b2_%d@example.com", time.Now().UnixNano()), fmt.Sprintf("RFB2%d", time.Now().UnixNano())).Scan(&workerBID)
+		createdUserIDs = append(createdUserIDs, workerBID)
 
 		sessB := UserSession{
 			ID:       workerBID,
@@ -819,13 +815,18 @@ func TestWorkerPanelFlows(t *testing.T) {
 
 	t.Run("HandleWorkerHome renders active broadcast banner", func(t *testing.T) {
 		// Insert active broadcast
-		_, err := pool.Exec(context.Background(), `
+		var bID int64
+		err := pool.QueryRow(context.Background(), `
 			INSERT INTO broadcasts (title, message, badge, is_active)
 			VALUES ('Pembaruan Rate Spesial', 'Rate per pesan naik menjadi 35 rupiah', 'UPDATE RATE', true)
-		`)
+			RETURNING id
+		`).Scan(&bID)
 		if err != nil {
 			t.Fatalf("Failed to insert broadcast: %v", err)
 		}
+		t.Cleanup(func() {
+			_, _ = pool.Exec(context.Background(), "DELETE FROM broadcasts WHERE id = $1", bID)
+		})
 
 		req := httptest.NewRequest("GET", "/worker", nil)
 		req = withWorker(req)
