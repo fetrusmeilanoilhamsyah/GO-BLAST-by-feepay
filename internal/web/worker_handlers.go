@@ -1011,3 +1011,94 @@ func (s *Server) HandleWorkerTicketPOST(w http.ResponseWriter, r *http.Request) 
 	s.logAudit(&user.ID, "submit_ticket", "support_tickets", strconv.FormatInt(ticketID, 10), category)
 	http.Redirect(w, r, target+sep+"success=Laporan+berhasil+dikirim+ke+tim+CS", http.StatusSeeOther)
 }
+
+// --- Worker Notifications Handlers ---
+
+type WorkerNotificationItem struct {
+	ID        int64      `json:"id"`
+	Title     string     `json:"title"`
+	Message   string     `json:"message"`
+	Kind      string     `json:"kind"`
+	RefID     *int64     `json:"ref_id"`
+	ReadAt    *time.Time `json:"read_at"`
+	CreatedAt time.Time  `json:"created_at"`
+}
+
+type WorkerNotificationsResponse struct {
+	Notifications []WorkerNotificationItem `json:"notifications"`
+	UnreadCount   int                      `json:"unread_count"`
+}
+
+func (s *Server) HandleWorkerNotificationsAPI(w http.ResponseWriter, r *http.Request) {
+	user, ok := currentUser(r)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	ctx := r.Context()
+
+	var unreadCount int
+	_ = s.DB.Pool.QueryRow(ctx, "SELECT COUNT(*) FROM notifications WHERE user_id = $1 AND read_at IS NULL", user.ID).Scan(&unreadCount)
+
+	rows, err := s.DB.Pool.Query(ctx, `
+		SELECT id, title, message, kind, ref_id, read_at, created_at
+		FROM notifications
+		WHERE user_id = $1
+		ORDER BY (read_at IS NULL) DESC, created_at DESC
+		LIMIT 20
+	`, user.ID)
+
+	var list []WorkerNotificationItem
+	if err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var item WorkerNotificationItem
+			if err := rows.Scan(&item.ID, &item.Title, &item.Message, &item.Kind, &item.RefID, &item.ReadAt, &item.CreatedAt); err == nil {
+				list = append(list, item)
+			}
+		}
+	}
+
+	if list == nil {
+		list = []WorkerNotificationItem{}
+	}
+
+	resp := WorkerNotificationsResponse{
+		Notifications: list,
+		UnreadCount:   unreadCount,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(resp)
+}
+
+func (s *Server) HandleWorkerNotificationsReadAllPOST(w http.ResponseWriter, r *http.Request) {
+	user, ok := currentUser(r)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	_, _ = s.DB.Pool.Exec(r.Context(), "UPDATE notifications SET read_at = CURRENT_TIMESTAMP WHERE user_id = $1 AND read_at IS NULL", user.ID)
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write([]byte(`{"ok":true}`))
+}
+
+func (s *Server) HandleWorkerNotificationReadOnePOST(w http.ResponseWriter, r *http.Request) {
+	user, ok := currentUser(r)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	idStr := r.PathValue("id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err == nil {
+		_, _ = s.DB.Pool.Exec(r.Context(), "UPDATE notifications SET read_at = CURRENT_TIMESTAMP WHERE id = $1 AND user_id = $2 AND read_at IS NULL", id, user.ID)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write([]byte(`{"ok":true}`))
+}

@@ -1474,6 +1474,10 @@ func (s *Server) HandleAdminTicketResolvePOST(w http.ResponseWriter, r *http.Req
 	}
 
 	now := time.Now()
+	var ticketOwnerID int64
+	var ticketCat string
+	_ = s.DB.Pool.QueryRow(r.Context(), "SELECT user_id, category FROM support_tickets WHERE id = $1", id).Scan(&ticketOwnerID, &ticketCat)
+
 	_, err = s.DB.Pool.Exec(r.Context(), `
 		UPDATE support_tickets
 		SET status = 'resolved', resolved_at = $1
@@ -1482,6 +1486,15 @@ func (s *Server) HandleAdminTicketResolvePOST(w http.ResponseWriter, r *http.Req
 	if err != nil {
 		http.Redirect(w, r, "/admin/tickets?error=Gagal+memperbarui+status+tiket: "+err.Error(), http.StatusSeeOther)
 		return
+	}
+
+	if ticketOwnerID > 0 {
+		notifTitle := fmt.Sprintf("Laporan #%d Telah Ditindaklanjuti", id)
+		notifMsg := fmt.Sprintf("Laporan Anda mengenai %s telah selesai ditindaklanjuti oleh admin.", ticketCat)
+		_, _ = s.DB.Pool.Exec(r.Context(), `
+			INSERT INTO notifications (user_id, title, message, kind, ref_id)
+			VALUES ($1, $2, $3, 'ticket_reply', $4)
+		`, ticketOwnerID, notifTitle, notifMsg, id)
 	}
 
 	s.logAudit(&adminUser.ID, "resolve_ticket", "support_tickets", strconv.FormatInt(id, 10), "Status diubah menjadi resolved")
@@ -1583,6 +1596,25 @@ func (s *Server) HandleAdminBroadcastNewPOST(w http.ResponseWriter, r *http.Requ
 	}
 
 	s.logAudit(&adminUser.ID, "create_broadcast", "broadcasts", strconv.FormatInt(bID, 10), title)
+
+	// Masukkan pengumuman ke sistem notifikasi lonceng seluruh pekerja aktif
+	if isActive {
+		ctx := r.Context()
+		rows, qErr := s.DB.Pool.Query(ctx, "SELECT id FROM users WHERE role = 'worker' AND status = 'active'")
+		if qErr == nil {
+			defer rows.Close()
+			for rows.Next() {
+				var wID int64
+				if err := rows.Scan(&wID); err == nil {
+					_, _ = s.DB.Pool.Exec(ctx, `
+						INSERT INTO notifications (user_id, title, message, kind, ref_id)
+						VALUES ($1, $2, $3, 'broadcast', $4)
+					`, wID, title, message, bID)
+				}
+			}
+		}
+	}
+
 	http.Redirect(w, r, "/admin/broadcasts?success=Broadcast+berhasil+diterbitkan", http.StatusSeeOther)
 }
 

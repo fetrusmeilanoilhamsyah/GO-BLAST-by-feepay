@@ -316,6 +316,23 @@ textarea.input {
   flex-shrink: 0;
 }
 
+.notif-badge {
+  display: none;
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  min-width: 15px;
+  height: 15px;
+  background-color: var(--color-danger);
+  color: #ffffff;
+  border-radius: 50%;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 15px;
+  text-align: center;
+  padding: 0 2px;
+}
+
 /* Worker Offcanvas Drawers */
 .worker-drawer {
   position: fixed;

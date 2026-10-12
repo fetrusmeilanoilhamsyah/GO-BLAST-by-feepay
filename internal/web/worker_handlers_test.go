@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -813,21 +814,7 @@ func TestWorkerPanelFlows(t *testing.T) {
 		}
 	})
 
-	t.Run("HandleWorkerHome renders active broadcast banner", func(t *testing.T) {
-		// Insert active broadcast
-		var bID int64
-		err := pool.QueryRow(context.Background(), `
-			INSERT INTO broadcasts (title, message, badge, is_active)
-			VALUES ('Pembaruan Rate Spesial', 'Rate per pesan naik menjadi 35 rupiah', 'UPDATE RATE', true)
-			RETURNING id
-		`).Scan(&bID)
-		if err != nil {
-			t.Fatalf("Failed to insert broadcast: %v", err)
-		}
-		t.Cleanup(func() {
-			_, _ = pool.Exec(context.Background(), "DELETE FROM broadcasts WHERE id = $1", bID)
-		})
-
+	t.Run("HandleWorkerHome renders clean dashboard with notification bell navigation", func(t *testing.T) {
 		req := httptest.NewRequest("GET", "/worker", nil)
 		req = withWorker(req)
 		rr := httptest.NewRecorder()
@@ -837,8 +824,91 @@ func TestWorkerPanelFlows(t *testing.T) {
 			t.Errorf("Expected status 200, got %d", rr.Code)
 		}
 		body := rr.Body.String()
-		if !strings.Contains(body, "Pembaruan Rate Spesial") || !strings.Contains(body, "UPDATE RATE") {
-			t.Errorf("Expected worker home to contain broadcast announcement banner")
+		if !strings.Contains(body, "notif-bell-btn") || !strings.Contains(body, "notif-panel") {
+			t.Errorf("Expected worker nav to contain notification bell button and popup panel")
+		}
+	})
+
+	t.Run("Tahap C: Notification API, Read Actions, and Admin Integrations", func(t *testing.T) {
+		// 1. Insert notification for worker
+		var notifID1, notifID2 int64
+		err := pool.QueryRow(context.Background(), `
+			INSERT INTO notifications (user_id, title, message, kind)
+			VALUES ($1, 'Notif 1', 'Pesan notif 1', 'system')
+			RETURNING id
+		`, workerID).Scan(&notifID1)
+		if err != nil {
+			t.Fatalf("Failed to insert notification: %v", err)
+		}
+
+		err = pool.QueryRow(context.Background(), `
+			INSERT INTO notifications (user_id, title, message, kind)
+			VALUES ($1, 'Notif 2', 'Pesan notif 2', 'broadcast')
+			RETURNING id
+		`, workerID).Scan(&notifID2)
+		if err != nil {
+			t.Fatalf("Failed to insert notification: %v", err)
+		}
+
+		// 2. Fetch GET /worker/api/notifications
+		{
+			req := httptest.NewRequest("GET", "/worker/api/notifications", nil)
+			req = withWorker(req)
+			rr := httptest.NewRecorder()
+
+			srv.HandleWorkerNotificationsAPI(rr, req)
+			if rr.Code != http.StatusOK {
+				t.Fatalf("Expected 200, got %d", rr.Code)
+			}
+			var resp WorkerNotificationsResponse
+			if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+				t.Fatalf("Failed to parse json response: %v", err)
+			}
+			if resp.UnreadCount < 2 {
+				t.Errorf("Expected unread_count >= 2, got %d", resp.UnreadCount)
+			}
+			if len(resp.Notifications) < 2 {
+				t.Errorf("Expected at least 2 notifications, got %d", len(resp.Notifications))
+			}
+		}
+
+		// 3. Mark single notification as read: POST /worker/notifications/{id}/read
+		{
+			req := httptest.NewRequest("POST", fmt.Sprintf("/worker/notifications/%d/read", notifID1), nil)
+			req.SetPathValue("id", strconv.FormatInt(notifID1, 10))
+			req = withWorker(req)
+			rr := httptest.NewRecorder()
+
+			srv.HandleWorkerNotificationReadOnePOST(rr, req)
+			if rr.Code != http.StatusOK {
+				t.Fatalf("Expected 200, got %d", rr.Code)
+			}
+
+			// Verify notifID1 read_at is not null
+			var readAt *time.Time
+			_ = pool.QueryRow(context.Background(), "SELECT read_at FROM notifications WHERE id = $1", notifID1).Scan(&readAt)
+			if readAt == nil {
+				t.Errorf("Expected notifID1 to have read_at set")
+			}
+		}
+
+		// 4. Mark all as read: POST /worker/notifications/read
+		{
+			req := httptest.NewRequest("POST", "/worker/notifications/read", nil)
+			req = withWorker(req)
+			rr := httptest.NewRecorder()
+
+			srv.HandleWorkerNotificationsReadAllPOST(rr, req)
+			if rr.Code != http.StatusOK {
+				t.Fatalf("Expected 200, got %d", rr.Code)
+			}
+
+			// Verify unread count is now 0 for worker
+			var remainingUnread int
+			_ = pool.QueryRow(context.Background(), "SELECT COUNT(*) FROM notifications WHERE user_id = $1 AND read_at IS NULL", workerID).Scan(&remainingUnread)
+			if remainingUnread != 0 {
+				t.Errorf("Expected 0 unread notifications after read-all, got %d", remainingUnread)
+			}
 		}
 	})
 

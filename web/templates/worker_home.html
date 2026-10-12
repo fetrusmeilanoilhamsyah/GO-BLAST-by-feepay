@@ -22,19 +22,6 @@
             </div>
             {{end}}
 
-            {{if .Broadcast}}
-            <div class="card" style="margin: 0 0 24px 0; padding: 16px 20px; border-left: 4px solid var(--color-primary); background-color: var(--color-surface-muted);">
-                <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; flex-wrap: wrap;">
-                    <div style="display: flex; align-items: center; gap: 8px;">
-                        <span class="badge badge-muted" style="font-size: 11px; text-transform: uppercase;">{{.Broadcast.Badge}}</span>
-                        <strong style="font-size: 15px; color: var(--color-text);">{{.Broadcast.Title}}</strong>
-                    </div>
-                    <span style="font-size: 12px; color: var(--color-muted);">{{.Broadcast.CreatedAt}}</span>
-                </div>
-                <div style="font-size: 13px; color: var(--color-text); line-height: 1.5; white-space: pre-wrap;">{{.Broadcast.Message}}</div>
-            </div>
-            {{end}}
-
             <!-- STATISTIK UTAMA -->
             <div class="stat-grid">
                 <div class="stat-card">
