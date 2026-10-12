@@ -292,6 +292,15 @@
   "campaign.delete_btn": "Delete",
   "campaign.delete_confirm": "Are you sure you want to delete this campaign? All numbers inside will be removed.",
   "admin.tickets": "Support Tickets",
-  "admin.broadcasts": "Broadcasts"
+  "admin.broadcasts": "Broadcasts",
+  "campaign.err_delete_not_draft": "Only draft campaigns can be deleted",
+  "campaign.err_delete_has_sent": "Campaign with sent numbers cannot be deleted",
+  "campaign.err_delete_has_ledger": "Campaign with ledger wage records cannot be deleted",
+  "campaign.err_archive_running": "Running campaigns cannot be archived",
+  "campaign.archived_badge": "Archived",
+  "campaign.show_archived": "Show Archived",
+  "campaign.hide_archived": "Hide Archived",
+  "campaign.archive_btn": "Archive",
+  "campaign.archive_confirm": "Archive this campaign? Archived campaign will become read-only."
 }
 

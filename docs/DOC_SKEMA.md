@@ -41,6 +41,7 @@ Kampanye pengiriman pesan.
 - `status`: `draf`, `berjalan`, atau `selesai`.
 - `button_mode`: `tombol_asli` atau `kartu_link`.
 - `elements`: JSONB untuk mengaktifkan/menonaktifkan elemen pesan.
+- `archived_at`: TIMESTAMP WITH TIME ZONE (nullable). Diisi saat kampanye diarsipkan oleh admin. Kampanye terarsip bersifat hanya-baca, disembunyikan dari daftar bawaan, dan tidak menerima unggahan nomor baru.
 
 ### `number_batches`
 Riwayat unggahan file nomor.
@@ -86,7 +87,8 @@ Catatan aktivitas (audit trail).
 - `unique_campaign_phone`: Pada `campaign_numbers`, memastikan nomor telepon (E.164) hanya ada satu per kampanye, mencegah pengiriman ganda di level database.
 - `CHECK` pada `currency` dan `status` di banyak tabel: Menjamin integritas data agar selalu valid sesuai DOC_KONSEP.
 - `idx_ledger_entries_upah_unique`: Indeks unik parsial di `ledger_entries` memastikan satu `campaign_number_id` hanya bisa membayar upah maksimal satu kali.
-- `trg_prevent_ledger_update_delete`: Trigger di `ledger_entries` menolak perintah UPDATE dan DELETE agar buku besar selalu append-only.
+- `trg_prevent_ledger_update_delete`: Trigger di `ledger_entries` menolak semua perintah UPDATE dan DELETE secara ketat (append-only tanpa pengecualian).
+- `ledger_entries_campaign_number_id_fkey`: Foreign key pada `campaign_number_id` yang merujuk ke `campaign_numbers(id)` dengan aturan `ON DELETE RESTRICT` (migrasi 0014), memastikan nomor kampanye yang sudah tercatat di buku besar tidak dapat dihapus.
 - `trg_check_withdrawal_balance`: Trigger pada INSERT `ledger_entries` jenis `penarikan` yang mengunci baris `users` (FOR UPDATE) dan memastikan saldo tidak menjadi negatif setelah penarikan.
 
 ## Indeks Penting dan Alasannya

@@ -291,6 +291,15 @@
   "campaign.delete_btn": "Hapus",
   "campaign.delete_confirm": "Apakah Anda yakin ingin menghapus campaign ini? Semua nomor di dalamnya akan dihapus.",
   "admin.tickets": "Laporan",
-  "admin.broadcasts": "Broadcast"
+  "admin.broadcasts": "Broadcast",
+  "campaign.err_delete_not_draft": "Hanya campaign berstatus draf yang dapat dihapus",
+  "campaign.err_delete_has_sent": "Campaign yang memiliki nomor terkirim tidak dapat dihapus",
+  "campaign.err_delete_has_ledger": "Campaign yang memiliki catatan upah buku besar tidak dapat dihapus",
+  "campaign.err_archive_running": "Campaign yang sedang berjalan tidak dapat diarsipkan",
+  "campaign.archived_badge": "Arsip",
+  "campaign.show_archived": "Tampilkan Arsip",
+  "campaign.hide_archived": "Sembunyikan Arsip",
+  "campaign.archive_btn": "Arsipkan",
+  "campaign.archive_confirm": "Arsipkan campaign ini? Campaign terarsip akan menjadi hanya-baca."
 }
 

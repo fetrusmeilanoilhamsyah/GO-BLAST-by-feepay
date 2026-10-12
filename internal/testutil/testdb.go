@@ -140,11 +140,16 @@ func TestEncryptionKey() []byte {
 // CleanupTestData menghapus data yang dibuat saat tes secara terisolasi hanya dengan WHERE pada id yang dibuat.
 func CleanupTestData(pool *pgxpool.Pool, userIDs []int64, campaignIDs []int64) {
 	ctx := context.Background()
+	_, _ = pool.Exec(ctx, "ALTER TABLE ledger_entries DISABLE TRIGGER trg_prevent_ledger_update_delete")
 	if len(campaignIDs) > 0 {
-		_, _ = pool.Exec(ctx, `
-			UPDATE ledger_entries SET campaign_number_id = NULL 
-			WHERE campaign_number_id IN (SELECT id FROM campaign_numbers WHERE campaign_id = ANY($1))
-		`, campaignIDs)
+		_, _ = pool.Exec(ctx, "DELETE FROM ledger_entries WHERE campaign_number_id IN (SELECT id FROM campaign_numbers WHERE campaign_id = ANY($1))", campaignIDs)
+	}
+	if len(userIDs) > 0 {
+		_, _ = pool.Exec(ctx, "DELETE FROM ledger_entries WHERE user_id = ANY($1)", userIDs)
+	}
+	_, _ = pool.Exec(ctx, "ALTER TABLE ledger_entries ENABLE TRIGGER trg_prevent_ledger_update_delete")
+
+	if len(campaignIDs) > 0 {
 		_, _ = pool.Exec(ctx, "DELETE FROM campaign_numbers WHERE campaign_id = ANY($1)", campaignIDs)
 		_, _ = pool.Exec(ctx, "DELETE FROM number_batches WHERE campaign_id = ANY($1)", campaignIDs)
 		_, _ = pool.Exec(ctx, "DELETE FROM campaigns WHERE id = ANY($1)", campaignIDs)
@@ -159,9 +164,6 @@ func CleanupTestData(pool *pgxpool.Pool, userIDs []int64, campaignIDs []int64) {
 		_, _ = pool.Exec(ctx, "DELETE FROM withdrawals WHERE user_id = ANY($1) OR processed_by = ANY($1)", userIDs)
 		_, _ = pool.Exec(ctx, "UPDATE settings SET updated_by = NULL WHERE updated_by = ANY($1)", userIDs)
 		_, _ = pool.Exec(ctx, "UPDATE users SET referred_by = NULL WHERE referred_by = ANY($1)", userIDs)
-		_, _ = pool.Exec(ctx, "ALTER TABLE ledger_entries DISABLE TRIGGER trg_prevent_ledger_update_delete")
-		_, _ = pool.Exec(ctx, "DELETE FROM ledger_entries WHERE user_id = ANY($1)", userIDs)
-		_, _ = pool.Exec(ctx, "ALTER TABLE ledger_entries ENABLE TRIGGER trg_prevent_ledger_update_delete")
 		_, _ = pool.Exec(ctx, "DELETE FROM users WHERE id = ANY($1)", userIDs)
 	}
 }

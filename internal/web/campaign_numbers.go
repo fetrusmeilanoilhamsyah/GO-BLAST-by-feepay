@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"goblast/internal/campaign"
 	"goblast/internal/i18n"
@@ -27,9 +28,14 @@ func (s *Server) HandleAdminCampaignNumbersGET(w http.ResponseWriter, r *http.Re
 	}
 
 	var c campaign.Campaign
-	err = s.DB.Pool.QueryRow(r.Context(), "SELECT id, name, status FROM campaigns WHERE id = $1", campaignID).Scan(&c.ID, &c.Name, &c.Status)
+	var archivedAt *time.Time
+	err = s.DB.Pool.QueryRow(r.Context(), "SELECT id, name, status, archived_at FROM campaigns WHERE id = $1", campaignID).Scan(&c.ID, &c.Name, &c.Status, &archivedAt)
 	if err != nil {
 		http.Error(w, "Campaign not found", http.StatusNotFound)
+		return
+	}
+	if archivedAt != nil {
+		http.Error(w, "Campaign terarsip tidak menerima unggahan nomor baru", http.StatusBadRequest)
 		return
 	}
 	if c.Status != "draf" && c.Status != "berjalan" {
@@ -75,7 +81,18 @@ func (s *Server) HandleAdminCampaignNumbersPreview(w http.ResponseWriter, r *htt
 	idStr := r.PathValue("id")
 	campaignID, _ := strconv.ParseInt(idStr, 10, 64)
 
-	err := r.ParseMultipartForm(5 << 20) // 5 MB max
+	var archivedAt *time.Time
+	err := s.DB.Pool.QueryRow(r.Context(), "SELECT archived_at FROM campaigns WHERE id = $1", campaignID).Scan(&archivedAt)
+	if err != nil {
+		http.Error(w, "Campaign not found", http.StatusNotFound)
+		return
+	}
+	if archivedAt != nil {
+		http.Error(w, "Campaign terarsip tidak menerima unggahan nomor baru", http.StatusBadRequest)
+		return
+	}
+
+	err = r.ParseMultipartForm(5 << 20) // 5 MB max
 	if err != nil {
 		http.Error(w, "Gagal memproses form (batas 5MB)", http.StatusBadRequest)
 		return
@@ -165,6 +182,17 @@ func (s *Server) HandleAdminCampaignNumbersConfirm(w http.ResponseWriter, r *htt
 	campaignID, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
 		http.Error(w, "ID campaign tidak valid", http.StatusBadRequest)
+		return
+	}
+
+	var archivedAt *time.Time
+	err = s.DB.Pool.QueryRow(r.Context(), "SELECT archived_at FROM campaigns WHERE id = $1", campaignID).Scan(&archivedAt)
+	if err != nil {
+		http.Error(w, "Campaign not found", http.StatusNotFound)
+		return
+	}
+	if archivedAt != nil {
+		http.Error(w, "Campaign terarsip tidak menerima unggahan nomor baru", http.StatusBadRequest)
 		return
 	}
 

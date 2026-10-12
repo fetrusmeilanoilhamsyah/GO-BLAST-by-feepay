@@ -88,21 +88,41 @@ func TestSchemaConstraints(t *testing.T) {
 		}
 	})
 
-	t.Run("c) UPDATE dan DELETE pada ledger_entries gagal", func(t *testing.T) {
+	t.Run("c) UPDATE dan DELETE pada ledger_entries gagal, termasuk UPDATE campaign_number_id menjadi NULL", func(t *testing.T) {
+		var cnID int64
+		err := pool.QueryRow(ctx, "INSERT INTO campaign_numbers (campaign_id, batch_id, phone_e164, country_code) VALUES ($1, $2, '628555', '62') RETURNING id", campaign1ID, batchID).Scan(&cnID)
+		if err != nil {
+			t.Fatalf("failed to insert cn: %v", err)
+		}
+
 		var ledgerID int64
-		err := pool.QueryRow(ctx, "INSERT INTO ledger_entries (user_id, kind, currency, amount) VALUES ($1, 'koreksi', 'IDR', 50) RETURNING id", worker1ID).Scan(&ledgerID)
+		err = pool.QueryRow(ctx, "INSERT INTO ledger_entries (user_id, kind, currency, amount, campaign_number_id) VALUES ($1, 'upah', 'IDR', 50, $2) RETURNING id", worker1ID, cnID).Scan(&ledgerID)
 		if err != nil {
 			t.Fatalf("failed to insert ledger entry: %v", err)
 		}
 
+		// Update amount ditolak
 		_, err = pool.Exec(ctx, "UPDATE ledger_entries SET amount = 100 WHERE id = $1", ledgerID)
 		if err == nil {
-			t.Fatal("expected error on UPDATE ledger_entries, got nil")
+			t.Fatal("expected error on UPDATE ledger_entries amount, got nil")
 		}
 
+		// Update campaign_number_id menjadi NULL ditolak oleh trigger ketat
+		_, err = pool.Exec(ctx, "UPDATE ledger_entries SET campaign_number_id = NULL WHERE id = $1", ledgerID)
+		if err == nil {
+			t.Fatal("expected error on UPDATE ledger_entries campaign_number_id = NULL, got nil")
+		}
+
+		// Delete ledger_entries ditolak
 		_, err = pool.Exec(ctx, "DELETE FROM ledger_entries WHERE id = $1", ledgerID)
 		if err == nil {
 			t.Fatal("expected error on DELETE ledger_entries, got nil")
+		}
+
+		// Menghapus campaign_number yang dirujuk ledger ditolak oleh ON DELETE RESTRICT
+		_, err = pool.Exec(ctx, "DELETE FROM campaign_numbers WHERE id = $1", cnID)
+		if err == nil {
+			t.Fatal("expected error on DELETE campaign_numbers referenced by ledger (ON DELETE RESTRICT), got nil")
 		}
 	})
 

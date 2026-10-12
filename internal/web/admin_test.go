@@ -813,38 +813,90 @@ func TestAdminCampaignDelete(t *testing.T) {
 		t.Fatalf("Failed to insert linked ledger entry: %v", err)
 	}
 
-	// Delete draft campaign -> must succeed and remove batches, numbers, unlinking ledger
+	// 1. Delete draft campaign with linked ledger entry -> MUST BE REJECTED!
 	reqDel := httptest.NewRequest("POST", fmt.Sprintf("/admin/campaigns/%d/delete", draftID), nil)
 	reqDel.SetPathValue("id", fmt.Sprintf("%d", draftID))
 	reqDel = reqDel.WithContext(ctxAdmin)
 	rrDel := httptest.NewRecorder()
 	srv.HandleAdminCampaignDelete(rrDel, reqDel)
 
-	if rrDel.Code != http.StatusSeeOther {
-		t.Errorf("Expected 303 after deleting draft campaign, got %d: %s", rrDel.Code, rrDel.Body.String())
+	if !strings.Contains(rrDel.Header().Get("Location"), "err=") {
+		t.Errorf("Expected redirect with err when deleting draft campaign with ledger entries, got location: %s", rrDel.Header().Get("Location"))
 	}
 
 	var count int
 	_ = pool.QueryRow(ctx, "SELECT COUNT(*) FROM campaigns WHERE id = $1", draftID).Scan(&count)
-	if count != 0 {
-		t.Errorf("Draft campaign was not deleted from DB!")
-	}
-	_ = pool.QueryRow(ctx, "SELECT COUNT(*) FROM number_batches WHERE campaign_id = $1", draftID).Scan(&count)
-	if count != 0 {
-		t.Errorf("Number batches were not deleted from DB!")
-	}
-	_ = pool.QueryRow(ctx, "SELECT COUNT(*) FROM campaign_numbers WHERE campaign_id = $1", draftID).Scan(&count)
-	if count != 0 {
-		t.Errorf("Campaign numbers were not deleted from DB!")
+	if count != 1 {
+		t.Errorf("Draft campaign with ledger should NOT be deleted!")
 	}
 
-	var unlinkedNumID *int64
-	_ = pool.QueryRow(ctx, "SELECT campaign_number_id FROM ledger_entries WHERE id = $1", ledgerEntryID).Scan(&unlinkedNumID)
-	if unlinkedNumID != nil {
-		t.Errorf("Expected ledger entry to have campaign_number_id unlinked (NULL), got %v", *unlinkedNumID)
+	// 2. Draft campaign with sent numbers ('terkirim') -> MUST BE REJECTED!
+	var draftSentID int64
+	err = pool.QueryRow(ctx, `
+		INSERT INTO campaigns (name, status, button_mode, body, elements, created_by)
+		VALUES ('Draft with Sent Numbers', 'draf', 'kartu_link', 'Test body', '{}', $1)
+		RETURNING id
+	`, adminID).Scan(&draftSentID)
+	if err != nil {
+		t.Fatalf("Failed to create draft campaign: %v", err)
+	}
+	var batchSentID int64
+	err = pool.QueryRow(ctx, `
+		INSERT INTO number_batches (campaign_id, filename, uploaded_by, total, accepted)
+		VALUES ($1, 'sent.csv', $2, 1, 1)
+		RETURNING id
+	`, draftSentID, adminID).Scan(&batchSentID)
+	if err != nil {
+		t.Fatalf("Failed to create number batch: %v", err)
+	}
+	_, err = pool.Exec(ctx, `
+		INSERT INTO campaign_numbers (campaign_id, batch_id, phone_e164, country_code, status)
+		VALUES ($1, $2, '628999888777', '62', 'terkirim')
+	`, draftSentID, batchSentID)
+	if err != nil {
+		t.Fatalf("Failed to create sent campaign number: %v", err)
 	}
 
-	// 2. Create a running campaign
+	reqDelSent := httptest.NewRequest("POST", fmt.Sprintf("/admin/campaigns/%d/delete", draftSentID), nil)
+	reqDelSent.SetPathValue("id", fmt.Sprintf("%d", draftSentID))
+	reqDelSent = reqDelSent.WithContext(ctxAdmin)
+	rrDelSent := httptest.NewRecorder()
+	srv.HandleAdminCampaignDelete(rrDelSent, reqDelSent)
+
+	if !strings.Contains(rrDelSent.Header().Get("Location"), "err=") {
+		t.Errorf("Expected redirect with err when deleting campaign with sent numbers, got location: %s", rrDelSent.Header().Get("Location"))
+	}
+	_ = pool.QueryRow(ctx, "SELECT COUNT(*) FROM campaigns WHERE id = $1", draftSentID).Scan(&count)
+	if count != 1 {
+		t.Errorf("Draft campaign with sent numbers should NOT be deleted!")
+	}
+
+	// 3. Empty draft campaign -> MUST SUCCEED!
+	var emptyDraftID int64
+	err = pool.QueryRow(ctx, `
+		INSERT INTO campaigns (name, status, button_mode, body, elements, created_by)
+		VALUES ('Empty Draft Test', 'draf', 'kartu_link', 'Test body', '{}', $1)
+		RETURNING id
+	`, adminID).Scan(&emptyDraftID)
+	if err != nil {
+		t.Fatalf("Failed to create empty draft campaign: %v", err)
+	}
+
+	reqDelEmpty := httptest.NewRequest("POST", fmt.Sprintf("/admin/campaigns/%d/delete", emptyDraftID), nil)
+	reqDelEmpty.SetPathValue("id", fmt.Sprintf("%d", emptyDraftID))
+	reqDelEmpty = reqDelEmpty.WithContext(ctxAdmin)
+	rrDelEmpty := httptest.NewRecorder()
+	srv.HandleAdminCampaignDelete(rrDelEmpty, reqDelEmpty)
+
+	if rrDelEmpty.Code != http.StatusSeeOther {
+		t.Errorf("Expected 303 after deleting empty draft campaign, got %d", rrDelEmpty.Code)
+	}
+	_ = pool.QueryRow(ctx, "SELECT COUNT(*) FROM campaigns WHERE id = $1", emptyDraftID).Scan(&count)
+	if count != 0 {
+		t.Errorf("Empty draft campaign should be deleted from DB!")
+	}
+
+	// 4. Create a running campaign -> MUST BE BLOCKED!
 	var runningID int64
 	err = pool.QueryRow(ctx, `
 		INSERT INTO campaigns (name, status, button_mode, body, elements, created_by)
@@ -869,6 +921,132 @@ func TestAdminCampaignDelete(t *testing.T) {
 	_ = pool.QueryRow(ctx, "SELECT COUNT(*) FROM campaigns WHERE id = $1", runningID).Scan(&count)
 	if count != 1 {
 		t.Errorf("Running campaign should NOT be deleted!")
+	}
+}
+
+func TestAdminCampaignArchiveAndNumbersUpload(t *testing.T) {
+	srv, pool, adminID, _ := setupAdminTest(t)
+	ctx := context.Background()
+	ctxAdmin := context.WithValue(context.Background(), userContextKey, UserSession{ID: adminID, Role: "admin", Language: "id"})
+
+	// 1. Create a draft campaign
+	var campID int64
+	uniqueName := fmt.Sprintf("Arsip Test Camp %d", time.Now().UnixNano())
+	err := pool.QueryRow(ctx, `
+		INSERT INTO campaigns (name, status, button_mode, body, elements, created_by)
+		VALUES ($1, 'draf', 'kartu_link', 'Test body', '{}', $2)
+		RETURNING id
+	`, uniqueName, adminID).Scan(&campID)
+	if err != nil {
+		t.Fatalf("Failed to create campaign: %v", err)
+	}
+
+	// 2. Archive campaign
+	reqArchive := httptest.NewRequest("POST", fmt.Sprintf("/admin/campaigns/%d/archive", campID), nil)
+	reqArchive.SetPathValue("id", fmt.Sprintf("%d", campID))
+	reqArchive = reqArchive.WithContext(ctxAdmin)
+	rrArchive := httptest.NewRecorder()
+	srv.HandleAdminCampaignArchive(rrArchive, reqArchive)
+
+	if rrArchive.Code != http.StatusSeeOther {
+		t.Errorf("Expected 303 after archiving campaign, got %d", rrArchive.Code)
+	}
+
+	var archivedAt *time.Time
+	_ = pool.QueryRow(ctx, "SELECT archived_at FROM campaigns WHERE id = $1", campID).Scan(&archivedAt)
+	if archivedAt == nil {
+		t.Fatalf("Expected campaign archived_at to be set!")
+	}
+
+	// 3. Verify archived campaign is hidden from default list
+	reqList := httptest.NewRequest("GET", "/admin/campaigns", nil)
+	reqList = reqList.WithContext(ctxAdmin)
+	rrList := httptest.NewRecorder()
+	srv.HandleAdminCampaigns(rrList, reqList)
+
+	if strings.Contains(rrList.Body.String(), uniqueName) {
+		t.Errorf("Default campaign list should HIDE archived campaign, but it was found in response!")
+	}
+	if !strings.Contains(rrList.Body.String(), "Tampilkan Arsip") {
+		t.Errorf("Default campaign list should have 'Tampilkan Arsip' link!")
+	}
+
+	// 4. Verify archived campaign is shown when ?show_archived=1
+	reqListArchived := httptest.NewRequest("GET", "/admin/campaigns?show_archived=1", nil)
+	reqListArchived = reqListArchived.WithContext(ctxAdmin)
+	rrListArchived := httptest.NewRecorder()
+	srv.HandleAdminCampaigns(rrListArchived, reqListArchived)
+
+	if !strings.Contains(rrListArchived.Body.String(), uniqueName) {
+		t.Errorf("Campaign list with ?show_archived=1 should show archived campaign!")
+	}
+	if !strings.Contains(rrListArchived.Body.String(), "Arsip") {
+		t.Errorf("Campaign list should display 'Arsip' badge for archived campaign!")
+	}
+
+	// 5. Verify archiving running campaign is rejected
+	var runCampID int64
+	_ = pool.QueryRow(ctx, `
+		INSERT INTO campaigns (name, status, button_mode, body, elements, created_by)
+		VALUES ('Running Camp Archive Test', 'berjalan', 'kartu_link', 'Test body', '{}', $1)
+		RETURNING id
+	`, adminID).Scan(&runCampID)
+
+	reqRunArchive := httptest.NewRequest("POST", fmt.Sprintf("/admin/campaigns/%d/archive", runCampID), nil)
+	reqRunArchive.SetPathValue("id", fmt.Sprintf("%d", runCampID))
+	reqRunArchive = reqRunArchive.WithContext(ctxAdmin)
+	rrRunArchive := httptest.NewRecorder()
+	srv.HandleAdminCampaignArchive(rrRunArchive, reqRunArchive)
+
+	if !strings.Contains(rrRunArchive.Header().Get("Location"), "err=") {
+		t.Errorf("Expected error redirect when archiving running campaign, got: %s", rrRunArchive.Header().Get("Location"))
+	}
+
+	// 6. Upload numbers to archived campaign is rejected
+	// 6a. GET /admin/campaigns/{id}/numbers
+	reqNumGET := httptest.NewRequest("GET", fmt.Sprintf("/admin/campaigns/%d/numbers", campID), nil)
+	reqNumGET.SetPathValue("id", fmt.Sprintf("%d", campID))
+	reqNumGET = reqNumGET.WithContext(ctxAdmin)
+	rrNumGET := httptest.NewRecorder()
+	srv.HandleAdminCampaignNumbersGET(rrNumGET, reqNumGET)
+
+	if rrNumGET.Code != http.StatusBadRequest {
+		t.Errorf("Expected 400 for numbers GET on archived campaign, got %d", rrNumGET.Code)
+	}
+
+	// 6b. POST /admin/campaigns/{id}/numbers/preview
+	reqNumPrev := httptest.NewRequest("POST", fmt.Sprintf("/admin/campaigns/%d/numbers/preview", campID), strings.NewReader("pasted=628123456789"))
+	reqNumPrev.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	reqNumPrev.SetPathValue("id", fmt.Sprintf("%d", campID))
+	reqNumPrev = reqNumPrev.WithContext(ctxAdmin)
+	rrNumPrev := httptest.NewRecorder()
+	srv.HandleAdminCampaignNumbersPreview(rrNumPrev, reqNumPrev)
+
+	if rrNumPrev.Code != http.StatusBadRequest {
+		t.Errorf("Expected 400 for numbers preview on archived campaign, got %d", rrNumPrev.Code)
+	}
+
+	// 6c. POST /admin/campaigns/{id}/numbers/confirm
+	reqNumConf := httptest.NewRequest("POST", fmt.Sprintf("/admin/campaigns/%d/numbers/confirm", campID), strings.NewReader("preview_id=test_preview"))
+	reqNumConf.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	reqNumConf.SetPathValue("id", fmt.Sprintf("%d", campID))
+	reqNumConf = reqNumConf.WithContext(ctxAdmin)
+	rrNumConf := httptest.NewRecorder()
+	srv.HandleAdminCampaignNumbersConfirm(rrNumConf, reqNumConf)
+
+	if rrNumConf.Code != http.StatusBadRequest {
+		t.Errorf("Expected 400 for numbers confirm on archived campaign, got %d", rrNumConf.Code)
+	}
+
+	// 7. Edit archived campaign is rejected
+	reqEditGET := httptest.NewRequest("GET", fmt.Sprintf("/admin/campaigns/%d/edit", campID), nil)
+	reqEditGET.SetPathValue("id", fmt.Sprintf("%d", campID))
+	reqEditGET = reqEditGET.WithContext(ctxAdmin)
+	rrEditGET := httptest.NewRecorder()
+	srv.HandleAdminCampaignEditGET(rrEditGET, reqEditGET)
+
+	if rrEditGET.Code != http.StatusForbidden {
+		t.Errorf("Expected 403 for edit GET on archived campaign, got %d", rrEditGET.Code)
 	}
 }
 

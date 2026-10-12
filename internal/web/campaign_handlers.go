@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -23,7 +24,15 @@ func (s *Server) HandleAdminCampaigns(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rows, err := s.DB.Pool.Query(r.Context(), "SELECT id, name, status, button_mode, created_at FROM campaigns ORDER BY id DESC")
+	showArchived := r.URL.Query().Get("show_archived") == "1" || r.URL.Query().Get("archived") == "1"
+
+	query := "SELECT id, name, status, button_mode, created_at, archived_at FROM campaigns"
+	if !showArchived {
+		query += " WHERE archived_at IS NULL"
+	}
+	query += " ORDER BY id DESC"
+
+	rows, err := s.DB.Pool.Query(r.Context(), query)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -33,7 +42,7 @@ func (s *Server) HandleAdminCampaigns(w http.ResponseWriter, r *http.Request) {
 	var campaigns []campaign.Campaign
 	for rows.Next() {
 		var c campaign.Campaign
-		if err := rows.Scan(&c.ID, &c.Name, &c.Status, &c.ButtonMode, &c.CreatedAt); err != nil {
+		if err := rows.Scan(&c.ID, &c.Name, &c.Status, &c.ButtonMode, &c.CreatedAt, &c.ArchivedAt); err != nil {
 			continue
 		}
 		campaigns = append(campaigns, c)
@@ -45,20 +54,26 @@ func (s *Server) HandleAdminCampaigns(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := struct {
-		Lang      string
-		Title     string
-		Theme     string
-		CSRFToken string
-		ActiveNav string
-		Campaigns []campaign.Campaign
-		T         func(string) string
+		Lang         string
+		Title        string
+		Theme        string
+		CSRFToken    string
+		ActiveNav    string
+		Campaigns    []campaign.Campaign
+		ShowArchived bool
+		Error        string
+		Message      string
+		T            func(string) string
 	}{
-		Lang:      lang,
-		Title:     "Campaigns - GO BLAST",
-		Theme:     getTheme(r),
-		CSRFToken: getCSRF(r),
-		ActiveNav: "campaigns",
-		Campaigns: campaigns,
+		Lang:         lang,
+		Title:        "Campaigns - GO BLAST",
+		Theme:        getTheme(r),
+		CSRFToken:    getCSRF(r),
+		ActiveNav:    "campaigns",
+		Campaigns:    campaigns,
+		ShowArchived: showArchived,
+		Error:        r.URL.Query().Get("err"),
+		Message:      r.URL.Query().Get("msg"),
 		T: func(key string) string {
 			return i18n.T(lang, key)
 		},
@@ -221,11 +236,17 @@ func (s *Server) HandleAdminCampaignEditGET(w http.ResponseWriter, r *http.Reque
 	var c campaign.Campaign
 	var elJSON string
 	var imgPath *string
-	err := s.DB.Pool.QueryRow(r.Context(), "SELECT id, name, status, button_mode, body, image_path, elements FROM campaigns WHERE id = $1", id).Scan(
-		&c.ID, &c.Name, &c.Status, &c.ButtonMode, &c.Body, &imgPath, &elJSON)
+	var archivedAt *time.Time
+	err := s.DB.Pool.QueryRow(r.Context(), "SELECT id, name, status, button_mode, body, image_path, elements, archived_at FROM campaigns WHERE id = $1", id).Scan(
+		&c.ID, &c.Name, &c.Status, &c.ButtonMode, &c.Body, &imgPath, &elJSON, &archivedAt)
 
 	if err != nil {
 		http.NotFound(w, r)
+		return
+	}
+
+	if archivedAt != nil {
+		http.Error(w, "Campaign terarsip hanya-baca", http.StatusForbidden)
 		return
 	}
 
@@ -276,9 +297,15 @@ func (s *Server) HandleAdminCampaignEditPOST(w http.ResponseWriter, r *http.Requ
 
 	var currentStatus string
 	var currentImagePath *string
-	err := s.DB.Pool.QueryRow(r.Context(), "SELECT status, image_path FROM campaigns WHERE id = $1 FOR UPDATE", id).Scan(&currentStatus, &currentImagePath)
+	var archivedAt *time.Time
+	err := s.DB.Pool.QueryRow(r.Context(), "SELECT status, image_path, archived_at FROM campaigns WHERE id = $1 FOR UPDATE", id).Scan(&currentStatus, &currentImagePath, &archivedAt)
 	if err != nil {
 		http.NotFound(w, r)
+		return
+	}
+
+	if archivedAt != nil {
+		http.Error(w, "Campaign terarsip hanya-baca", http.StatusForbidden)
 		return
 	}
 
@@ -473,9 +500,9 @@ func (s *Server) HandleAdminCampaignDetail(w http.ResponseWriter, r *http.Reques
 	var elJSON string
 	var imgPath *string
 	err = s.DB.Pool.QueryRow(r.Context(), `
-		SELECT id, name, status, button_mode, body, image_path, elements, created_at, started_at, finished_at 
+		SELECT id, name, status, button_mode, body, image_path, elements, created_at, started_at, finished_at, archived_at 
 		FROM campaigns WHERE id = $1
-	`, id).Scan(&c.ID, &c.Name, &c.Status, &c.ButtonMode, &c.Body, &imgPath, &elJSON, &c.CreatedAt, &c.StartedAt, &c.FinishedAt)
+	`, id).Scan(&c.ID, &c.Name, &c.Status, &c.ButtonMode, &c.Body, &imgPath, &elJSON, &c.CreatedAt, &c.StartedAt, &c.FinishedAt, &c.ArchivedAt)
 
 	if err != nil {
 		http.NotFound(w, r)
@@ -526,6 +553,7 @@ func (s *Server) HandleAdminCampaignDetail(w http.ResponseWriter, r *http.Reques
 		ActiveNav string
 		Campaign  campaign.Campaign
 		Counts    map[string]int
+		Error     string
 		T         func(string) string
 	}{
 		Lang:      lang,
@@ -535,6 +563,7 @@ func (s *Server) HandleAdminCampaignDetail(w http.ResponseWriter, r *http.Reques
 		ActiveNav: "campaigns",
 		Campaign:  c,
 		Counts:    counts,
+		Error:     r.URL.Query().Get("err"),
 		T: func(key string) string {
 			return i18n.T(lang, key)
 		},
@@ -552,9 +581,15 @@ func (s *Server) HandleAdminCampaignStart(w http.ResponseWriter, r *http.Request
 	}
 
 	var status string
-	err = s.DB.Pool.QueryRow(r.Context(), "SELECT status FROM campaigns WHERE id = $1 FOR UPDATE", id).Scan(&status)
+	var archivedAt *time.Time
+	err = s.DB.Pool.QueryRow(r.Context(), "SELECT status, archived_at FROM campaigns WHERE id = $1 FOR UPDATE", id).Scan(&status, &archivedAt)
 	if err != nil {
 		http.NotFound(w, r)
+		return
+	}
+
+	if archivedAt != nil {
+		http.Error(w, "Campaign terarsip tidak bisa dimulai", http.StatusBadRequest)
 		return
 	}
 
@@ -667,6 +702,11 @@ func (s *Server) HandleAdminCampaignDelete(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	lang := "id"
+	if user.Language != "" {
+		lang = user.Language
+	}
+
 	ctx := r.Context()
 	tx, err := s.DB.Pool.Begin(ctx)
 	if err != nil {
@@ -683,38 +723,57 @@ func (s *Server) HandleAdminCampaignDelete(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	// Campaign berjalan tidak boleh dihapus!
-	if status == campaign.StatusBerjalan {
-		http.Redirect(w, r, fmt.Sprintf("/admin/campaigns/%d?err=Kampanye+yang+sedang+berjalan+tidak+dapat+dihapus", id), http.StatusSeeOther)
+	// 1. Hanya boleh menghapus campaign berstatus draf
+	if status != campaign.StatusDraf {
+		errMsg := i18n.T(lang, "campaign.err_delete_not_draft")
+		http.Redirect(w, r, fmt.Sprintf("/admin/campaigns/%d?err=%s", id, url.QueryEscape(errMsg)), http.StatusSeeOther)
 		return
 	}
 
-	// 1. Unlink ledger entries foreign key to prevent constraint violation
-	_, err = tx.Exec(ctx, `
-		UPDATE ledger_entries 
-		SET campaign_number_id = NULL 
-		WHERE campaign_number_id IN (SELECT id FROM campaign_numbers WHERE campaign_id = $1)
-	`, id)
+	// 2. Tidak boleh punya nomor berstatus terkirim
+	var sentCount int
+	err = tx.QueryRow(ctx, "SELECT COUNT(*) FROM campaign_numbers WHERE campaign_id = $1 AND status = 'terkirim'", id).Scan(&sentCount)
 	if err != nil {
-		http.Error(w, "Gagal melepaskan relasi buku besar: "+err.Error(), http.StatusInternalServerError)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+	if sentCount > 0 {
+		errMsg := i18n.T(lang, "campaign.err_delete_has_sent")
+		http.Redirect(w, r, fmt.Sprintf("/admin/campaigns/%d?err=%s", id, url.QueryEscape(errMsg)), http.StatusSeeOther)
 		return
 	}
 
-	// 2. Delete campaign numbers
+	// 3. Tidak boleh punya baris ledger_entries yang merujuk nomornya
+	var ledgerCount int
+	err = tx.QueryRow(ctx, `
+		SELECT COUNT(*) FROM ledger_entries 
+		WHERE campaign_number_id IN (SELECT id FROM campaign_numbers WHERE campaign_id = $1)
+	`, id).Scan(&ledgerCount)
+	if err != nil {
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+	if ledgerCount > 0 {
+		errMsg := i18n.T(lang, "campaign.err_delete_has_ledger")
+		http.Redirect(w, r, fmt.Sprintf("/admin/campaigns/%d?err=%s", id, url.QueryEscape(errMsg)), http.StatusSeeOther)
+		return
+	}
+
+	// 4. Hapus campaign_numbers jika ada
 	_, err = tx.Exec(ctx, "DELETE FROM campaign_numbers WHERE campaign_id = $1", id)
 	if err != nil {
 		http.Error(w, "Gagal menghapus nomor kampanye: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	// 3. Delete number batches to satisfy number_batches_campaign_id_fkey
+	// 5. Hapus number_batches jika ada
 	_, err = tx.Exec(ctx, "DELETE FROM number_batches WHERE campaign_id = $1", id)
 	if err != nil {
 		http.Error(w, "Gagal menghapus batch nomor kampanye: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	// 4. Delete campaign
+	// 6. Hapus campaign
 	_, err = tx.Exec(ctx, "DELETE FROM campaigns WHERE id = $1", id)
 	if err != nil {
 		http.Error(w, "Gagal menghapus kampanye: "+err.Error(), http.StatusInternalServerError)
@@ -726,12 +785,56 @@ func (s *Server) HandleAdminCampaignDelete(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	// Remove uploaded image file if present
+	// Hapus file gambar jika ada
 	if imagePath != nil && *imagePath != "" {
 		_ = os.Remove(*imagePath)
 	}
 
 	s.logAudit(&user.ID, "campaign_delete", "campaign", strconv.FormatInt(id, 10), "campaign deleted")
+	http.Redirect(w, r, "/admin/campaigns", http.StatusSeeOther)
+}
+
+func (s *Server) HandleAdminCampaignArchive(w http.ResponseWriter, r *http.Request) {
+	user, ok := currentUser(r)
+	if !ok || user.Role != "admin" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	idStr := r.PathValue("id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		http.Error(w, "ID tidak valid", http.StatusBadRequest)
+		return
+	}
+
+	lang := "id"
+	if user.Language != "" {
+		lang = user.Language
+	}
+
+	ctx := r.Context()
+	var status string
+	var archivedAt *time.Time
+	err = s.DB.Pool.QueryRow(ctx, "SELECT status, archived_at FROM campaigns WHERE id = $1 FOR UPDATE", id).Scan(&status, &archivedAt)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+
+	if status == campaign.StatusBerjalan {
+		errMsg := i18n.T(lang, "campaign.err_archive_running")
+		http.Redirect(w, r, fmt.Sprintf("/admin/campaigns/%d?err=%s", id, url.QueryEscape(errMsg)), http.StatusSeeOther)
+		return
+	}
+
+	_, err = s.DB.Pool.Exec(ctx, "UPDATE campaigns SET archived_at = CURRENT_TIMESTAMP WHERE id = $1", id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	s.logAudit(&user.ID, "campaign_archive", "campaign", strconv.FormatInt(id, 10), "campaign archived")
 	http.Redirect(w, r, "/admin/campaigns", http.StatusSeeOther)
 }
 

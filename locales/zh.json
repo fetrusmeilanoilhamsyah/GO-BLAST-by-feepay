@@ -292,6 +292,15 @@
   "campaign.delete_btn": "删除",
   "campaign.delete_confirm": "确定要删除此营销活动吗？活动下的所有目标号码将被清除。",
   "admin.tickets": "工单",
-  "admin.broadcasts": "广播"
+  "admin.broadcasts": "广播",
+  "campaign.err_delete_not_draft": "只有草稿状态的营销活动才能被删除",
+  "campaign.err_delete_has_sent": "包含已发送号码的营销活动无法删除",
+  "campaign.err_delete_has_ledger": "包含账本工资记录的营销活动无法删除",
+  "campaign.err_archive_running": "正在运行的营销活动无法归档",
+  "campaign.archived_badge": "已归档",
+  "campaign.show_archived": "显示归档",
+  "campaign.hide_archived": "隐藏归档",
+  "campaign.archive_btn": "归档",
+  "campaign.archive_confirm": "归档此营销活动？已归档活动将变为只读。"
 }
 

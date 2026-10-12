@@ -51,6 +51,19 @@ type RejectedRow struct {
 // ProcessPreview reads the raw uploaded data, normalizes it, checks DB for duplicates,
 // generates a preview ID, and saves the rejected list to a CSV file.
 func ProcessPreview(ctx context.Context, db *pgxpool.Pool, campaignID int64, rawData []byte, filename string, defaultCC string) (PreviewData, error) {
+	var status string
+	var archivedAt *time.Time
+	err := db.QueryRow(ctx, "SELECT status, archived_at FROM campaigns WHERE id = $1", campaignID).Scan(&status, &archivedAt)
+	if err != nil {
+		return PreviewData{}, fmt.Errorf("campaign tidak ditemukan: %w", err)
+	}
+	if archivedAt != nil {
+		return PreviewData{}, errors.New("campaign terarsip tidak menerima unggahan nomor baru")
+	}
+	if status != "draf" && status != "berjalan" {
+		return PreviewData{}, errors.New("nomor hanya bisa ditambahkan ke campaign draf atau berjalan")
+	}
+
 	// Read and parse
 	rawNums, err := numbers.Read(bytes.NewReader(rawData), filename)
 	if err != nil {
@@ -230,9 +243,13 @@ func ConfirmUpload(ctx context.Context, db *pgxpool.Pool, campaignID int64, user
 
 	// Check campaign status
 	var status string
-	err = tx.QueryRow(ctx, "SELECT status FROM campaigns WHERE id = $1 FOR UPDATE", campaignID).Scan(&status)
+	var archivedAt *time.Time
+	err = tx.QueryRow(ctx, "SELECT status, archived_at FROM campaigns WHERE id = $1 FOR UPDATE", campaignID).Scan(&status, &archivedAt)
 	if err != nil {
 		return fmt.Errorf("campaign tidak ditemukan")
+	}
+	if archivedAt != nil {
+		return fmt.Errorf("campaign terarsip tidak menerima unggahan nomor baru")
 	}
 	if status != "draf" && status != "berjalan" {
 		return fmt.Errorf("nomor hanya bisa ditambahkan ke campaign draf atau berjalan")

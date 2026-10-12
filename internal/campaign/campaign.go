@@ -33,6 +33,7 @@ type Campaign struct {
 	CreatedAt  time.Time  `json:"created_at"`
 	StartedAt  *time.Time `json:"started_at"`
 	FinishedAt *time.Time `json:"finished_at"`
+	ArchivedAt *time.Time `json:"archived_at"`
 }
 
 type Elements struct {

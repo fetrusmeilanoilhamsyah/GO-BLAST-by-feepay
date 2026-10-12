@@ -1,17 +1,33 @@
 {{define "content"}}
 {{ template "admin_nav" . }}
 <div style="max-width: 900px; margin: 0 auto; padding: 20px;">
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+    {{if .Error}}
+    <div style="background-color: var(--color-danger); color: var(--color-on-primary); padding: 12px 16px; border-radius: 6px; margin-bottom: 20px; font-weight: 500;">
+        {{.Error}}
+    </div>
+    {{end}}
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px;">
         <div>
             <a href="/admin/campaigns" style="color: var(--color-muted); text-decoration: none; font-size: 14px;">&larr; Kembali ke daftar campaign</a>
             <h2 style="margin: 8px 0 0 0;">{{.Campaign.Name}}</h2>
         </div>
-        <div>
+        <div style="display: flex; align-items: center; gap: 8px;">
             <span style="padding: 6px 14px; border-radius: 20px; font-size: 14px; font-weight: bold; color: var(--color-on-primary); background-color: {{if eq .Campaign.Status "draf"}}var(--color-status-draft){{else if eq .Campaign.Status "berjalan"}}var(--color-status-running){{else}}var(--color-status-done){{end}};">
                 {{.Campaign.Status}}
             </span>
+            {{if .Campaign.ArchivedAt}}
+            <span style="padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: bold; background-color: var(--color-surface-muted); color: var(--color-muted); border: 1px solid var(--color-border);">
+                {{ call $.T "campaign.archived_badge" }}
+            </span>
+            {{end}}
         </div>
     </div>
+
+    {{if .Campaign.ArchivedAt}}
+    <div style="background-color: var(--color-surface-muted); border: 1px solid var(--color-border); color: var(--color-muted); padding: 12px 16px; border-radius: 6px; margin-bottom: 20px; font-size: 14px;">
+        Campaign telah diarsipkan (hanya-baca). Tidak menerima unggahan nomor baru atau modifikasi.
+    </div>
+    {{end}}
 
     <div style="background-color: var(--color-card); border-radius: 8px; padding: 20px; margin-bottom: 20px; box-shadow: 0 4px 6px var(--color-shadow);">
         <h3 style="margin-top: 0; margin-bottom: 15px; border-bottom: 1px solid var(--color-border); padding-bottom: 10px;">Statistik Nomor</h3>
@@ -39,13 +55,19 @@
         </div>
 
         <div style="display: flex; gap: 10px; align-items: center; border-top: 1px solid var(--color-border); padding-top: 20px; flex-wrap: wrap;">
-            {{if eq .Campaign.Status "draf"}}
+            {{if .Campaign.ArchivedAt}}
+            <span style="color: var(--color-muted); font-size: 14px;">Campaign terarsip (hanya-baca).</span>
+            {{else if eq .Campaign.Status "draf"}}
             <form method="post" action="/admin/campaigns/{{.Campaign.ID}}/start" style="margin: 0;">
                 <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
                 <button type="submit" class="btn btn-primary" {{if lt (index .Counts "tersedia") 1}}disabled title="Tambahkan nomor terlebih dahulu"{{end}}>{{if .Campaign.StartedAt}}Lanjutkan Kampanye{{else}}Mulai Kampanye{{end}}</button>
             </form>
             <a href="/admin/campaigns/{{.Campaign.ID}}/numbers" class="btn btn-secondary">Upload Nomor</a>
             <a href="/admin/campaigns/{{.Campaign.ID}}/edit" class="btn btn-secondary">Edit Template</a>
+            <form method="post" action="/admin/campaigns/{{.Campaign.ID}}/archive" style="margin: 0;" onsubmit="return confirm('{{ call $.T "campaign.archive_confirm" }}');">
+                <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+                <button type="submit" class="btn btn-secondary">{{ call $.T "campaign.archive_btn" }}</button>
+            </form>
             <form method="post" action="/admin/campaigns/{{.Campaign.ID}}/delete" style="margin: 0; margin-left: auto;" onsubmit="return confirm('{{ call $.T "campaign.delete_confirm" }}');">
                 <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
                 <button type="submit" class="btn btn-secondary" style="color: var(--color-danger); border-color: var(--color-danger);">{{ call $.T "campaign.delete_btn" }}</button>
@@ -62,9 +84,9 @@
             <a href="/admin/campaigns/{{.Campaign.ID}}/numbers" class="btn btn-secondary">Tambah Nomor</a>
             {{else}}
             <span style="color: var(--color-muted); font-size: 14px;">Campaign telah selesai.</span>
-            <form method="post" action="/admin/campaigns/{{.Campaign.ID}}/delete" style="margin: 0; margin-left: auto;" onsubmit="return confirm('{{ call $.T "campaign.delete_confirm" }}');">
+            <form method="post" action="/admin/campaigns/{{.Campaign.ID}}/archive" style="margin: 0;" onsubmit="return confirm('{{ call $.T "campaign.archive_confirm" }}');">
                 <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-                <button type="submit" class="btn btn-secondary" style="color: var(--color-danger); border-color: var(--color-danger);">{{ call $.T "campaign.delete_btn" }}</button>
+                <button type="submit" class="btn btn-secondary">{{ call $.T "campaign.archive_btn" }}</button>
             </form>
             {{end}}
         </div>
