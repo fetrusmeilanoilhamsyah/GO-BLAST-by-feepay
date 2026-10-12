@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 	"regexp"
 	"strings"
@@ -188,7 +189,23 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		`, emailVal, username, hash, displayName, lang, newRefCode, referredBy)
 
 		if err != nil {
-			s.renderRegister(w, r, "Username sudah terdaftar. Coba username lain.")
+			var emailStr string
+			if emailVal != nil {
+				emailStr = *emailVal
+			}
+			slog.Error("Registration failed in DB", "err", err, "username", username, "email", emailStr)
+			errStr := strings.ToLower(err.Error())
+			if strings.Contains(errStr, "users_pkey") {
+				s.renderRegister(w, r, "Gangguan nomor urut ID database (users_pkey). Silakan sinkronkan users_id_seq.")
+			} else if strings.Contains(errStr, "email") {
+				s.renderRegister(w, r, "Email sudah terdaftar. Gunakan email lain atau kosongkan email.")
+			} else if strings.Contains(errStr, "username") {
+				s.renderRegister(w, r, "Username sudah terdaftar. Coba username lain.")
+			} else if strings.Contains(errStr, "referral_code") {
+				s.renderRegister(w, r, "Kode referral bentrok, silakan coba klik daftar lagi.")
+			} else {
+				s.renderRegister(w, r, "Gagal mendaftar: "+err.Error())
+			}
 			return
 		}
 

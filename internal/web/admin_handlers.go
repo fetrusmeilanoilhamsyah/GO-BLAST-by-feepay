@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math"
 	"net/http"
 	"net/url"
@@ -181,7 +182,7 @@ func (s *Server) fetchDashboardData(ctx context.Context) (*DashboardData, error)
 	// 3. Worker stats
 	var workers []WorkerStatRow
 	wRows, err := s.DB.Pool.Query(ctx, `
-		SELECT u.id, COALESCE(u.username, u.email), u.email,
+		SELECT u.id, COALESCE(u.username, u.email), COALESCE(u.email, '-'),
 		       COUNT(CASE WHEN le.kind = 'upah' AND le.created_at >= $1 THEN 1 END) AS sent_today,
 		       COUNT(CASE WHEN le.kind = 'upah' THEN 1 END) AS sent_total,
 		       COALESCE(SUM(CASE WHEN le.currency = 'IDR' AND le.kind IN ('upah', 'referral') THEN le.amount ELSE 0 END), 0) AS earnings_idr,
@@ -1209,7 +1210,7 @@ func (s *Server) HandleAdminWorkers(w http.ResponseWriter, r *http.Request) {
 	var args []interface{}
 	if q != "" {
 		query = `
-			SELECT u.id, COALESCE(u.username, u.email), u.email, u.status,
+			SELECT u.id, COALESCE(u.username, u.email), COALESCE(u.email, '-'), u.status,
 			       (SELECT COUNT(*) FROM wa_accounts WHERE worker_id = u.id) AS account_count,
 			       (SELECT COUNT(*) FROM wa_accounts WHERE worker_id = u.id AND status = 'terhubung') AS active_account_count,
 			       (SELECT COUNT(*) FROM ledger_entries WHERE user_id = u.id AND kind = 'upah') AS sent_count,
@@ -1222,7 +1223,7 @@ func (s *Server) HandleAdminWorkers(w http.ResponseWriter, r *http.Request) {
 		args = append(args, "%"+q+"%")
 	} else {
 		query = `
-			SELECT u.id, COALESCE(u.username, u.email), u.email, u.status,
+			SELECT u.id, COALESCE(u.username, u.email), COALESCE(u.email, '-'), u.status,
 			       (SELECT COUNT(*) FROM wa_accounts WHERE worker_id = u.id) AS account_count,
 			       (SELECT COUNT(*) FROM wa_accounts WHERE worker_id = u.id AND status = 'terhubung') AS active_account_count,
 			       (SELECT COUNT(*) FROM ledger_entries WHERE user_id = u.id AND kind = 'upah') AS sent_count,
@@ -1244,11 +1245,13 @@ func (s *Server) HandleAdminWorkers(w http.ResponseWriter, r *http.Request) {
 	var workers []WorkerListItem
 	for rows.Next() {
 		var item WorkerListItem
-		if err := rows.Scan(&item.ID, &item.Username, &item.Email, &item.Status, &item.AccountCount, &item.ActiveAccountCount, &item.SentCount, &item.BalanceIDR, &item.BalanceUSDT); err == nil {
-			item.BalanceIDRFormatted = formatIDR(item.BalanceIDR)
-			item.BalanceUSDTFormatted = formatUSDT(item.BalanceUSDT)
-			workers = append(workers, item)
+		if err := rows.Scan(&item.ID, &item.Username, &item.Email, &item.Status, &item.AccountCount, &item.ActiveAccountCount, &item.SentCount, &item.BalanceIDR, &item.BalanceUSDT); err != nil {
+			slog.Error("Failed to scan worker row in admin list", "err", err)
+			continue
 		}
+		item.BalanceIDRFormatted = formatIDR(item.BalanceIDR)
+		item.BalanceUSDTFormatted = formatUSDT(item.BalanceUSDT)
+		workers = append(workers, item)
 	}
 
 	lang := "id"
