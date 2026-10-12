@@ -64,7 +64,8 @@
             <div class="card" style="margin: 0; padding: 24px;">
                 <h3 style="margin-top: 0; margin-bottom: 16px; font-size: 18px;">{{ call .T "worker.referral_history_title" }}</h3>
 
-                <div class="responsive-table-container">
+                <!-- DESKTOP: TABEL -->
+                <div class="desktop-only responsive-table-container">
                     <table class="responsive-table">
                         <thead>
                             <tr>
@@ -93,6 +94,32 @@
                             {{end}}
                         </tbody>
                     </table>
+                </div>
+
+                <!-- MOBILE: KARTU BONUS REFERRAL SIMETRIS DI SMARTPHONE -->
+                <div class="mobile-only account-card-list">
+                    {{range .BonusList}}
+                    <div class="account-card-item">
+                        <div class="account-card-header">
+                            <span style="font-size: 12px; color: var(--color-muted); font-weight: 600;">#{{.ID}}</span>
+                            <div style="font-size: 15px; font-weight: 800; color: var(--color-success);">
+                                +{{.Amount}} {{.Currency}}
+                            </div>
+                        </div>
+                        {{if .Note}}
+                        <div style="margin-top: 4px; font-size: 12px; color: var(--color-text); line-height: 1.4;">
+                            {{.Note}}
+                        </div>
+                        {{end}}
+                        <div style="margin-top: 4px; font-size: 11px; color: var(--color-muted);">
+                            {{.CreatedAt}}
+                        </div>
+                    </div>
+                    {{else}}
+                    <div class="account-card-item" style="padding: 24px 16px; text-align: center; color: var(--color-muted); font-size: 13px;">
+                        {{ call $.T "worker.referral_no_history" }}
+                    </div>
+                    {{end}}
                 </div>
             </div>
     </main>

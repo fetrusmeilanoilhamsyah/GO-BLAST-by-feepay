@@ -280,7 +280,8 @@
                 <a href="/worker/withdrawals" style="font-size: 13px; color: var(--color-link); text-decoration: none; font-weight: 600;">Riwayat Penarikan &gt;</a>
             </div>
 
-            <div class="responsive-table-container">
+            <!-- DESKTOP: TABEL -->
+            <div class="desktop-only responsive-table-container">
                 <table class="responsive-table">
                     <thead>
                         <tr>
@@ -333,6 +334,52 @@
                         {{end}}
                     </tbody>
                 </table>
+            </div>
+
+            <!-- MOBILE: KARTU MUTASI SIMETRIS DI LAYAR SMARTPHONE -->
+            <div class="mobile-only account-card-list">
+                {{range .Activities}}
+                <div class="account-card-item">
+                    <div class="account-card-header">
+                        <div>
+                            {{if eq .Kind "upah"}}
+                            <span class="badge badge-success">Upah Blast</span>
+                            {{else if eq .Kind "referral"}}
+                            <span class="badge badge-success">Bonus Referral</span>
+                            {{else if eq .Kind "penarikan"}}
+                            <span class="badge badge-warning">Penarikan Saldo</span>
+                            {{else if eq .Kind "koreksi"}}
+                                {{if .IsCredit}}
+                                <span class="badge badge-success">Konversi Masuk</span>
+                                {{else}}
+                                <span class="badge badge-muted">Konversi Keluar</span>
+                                {{end}}
+                            {{else}}
+                            <span class="badge badge-muted">{{.Kind}}</span>
+                            {{end}}
+                        </div>
+                        <div style="font-size: 15px; font-weight: 800;">
+                            {{if .IsCredit}}
+                            <span style="color: var(--color-success);">{{.AmountFormatted}}</span>
+                            {{else}}
+                            <span style="color: var(--color-danger);">{{.AmountFormatted}}</span>
+                            {{end}}
+                        </div>
+                    </div>
+                    {{if .Note}}
+                    <div style="margin-top: 6px; font-size: 12px; color: var(--color-text); line-height: 1.4;">
+                        {{.Note}}
+                    </div>
+                    {{end}}
+                    <div style="margin-top: 6px; font-size: 11px; color: var(--color-muted);">
+                        {{.CreatedAt}}
+                    </div>
+                </div>
+                {{else}}
+                <div class="account-card-item" style="padding: 24px 16px; text-align: center; color: var(--color-muted); font-size: 13px;">
+                    {{ call $.T "worker.no_activity" }}
+                </div>
+                {{end}}
             </div>
         </div>
     </main>

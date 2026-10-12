@@ -742,6 +742,7 @@ textarea.input {
 /* Responsive Table */
 .responsive-table-container {
   width: 100%;
+  max-width: 100%;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
   border: 1px solid var(--color-border);
@@ -750,15 +751,27 @@ textarea.input {
   box-sizing: border-box;
 }
 
+.responsive-table-container::-webkit-scrollbar {
+  height: 6px;
+}
+
+.responsive-table-container::-webkit-scrollbar-track {
+  background: var(--color-surface-muted);
+}
+
+.responsive-table-container::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 3px;
+}
+
 .responsive-table {
   width: 100%;
   border-collapse: collapse;
   text-align: left;
-  min-width: 600px;
 }
 
 .responsive-table th {
-  padding: 12px 16px;
+  padding: 10px 14px;
   background-color: var(--color-surface-muted);
   border-bottom: 1px solid var(--color-border);
   font-size: 13px;
@@ -767,9 +780,9 @@ textarea.input {
 }
 
 .responsive-table td {
-  padding: 12px 16px;
+  padding: 10px 14px;
   border-bottom: 1px solid var(--color-border);
-  font-size: 14px;
+  font-size: 13px;
   color: var(--color-text);
 }
 
@@ -1163,11 +1176,12 @@ textarea.input {
 
   .admin-content {
     grid-area: content;
-    padding: 28px 32px;
-    max-width: 1200px;
+    padding: 24px 28px;
+    max-width: 100%;
     width: 100%;
     margin: 0;
     box-sizing: border-box;
+    min-width: 0;
   }
 
   .admin-topbar-nav,

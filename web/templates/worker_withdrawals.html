@@ -270,7 +270,8 @@
             <div class="card" style="margin: 0; padding: 24px;">
                 <h3 style="margin-top: 0; margin-bottom: 16px; font-size: 18px;">{{ call .T "worker.withdraw_history_title" }}</h3>
 
-                <div class="responsive-table-container">
+                <!-- DESKTOP: TABEL -->
+                <div class="desktop-only responsive-table-container">
                     <table class="responsive-table">
                         <thead>
                             <tr>
@@ -313,6 +314,48 @@
                             {{end}}
                         </tbody>
                     </table>
+                </div>
+
+                <!-- MOBILE: KARTU RIWAYAT PENARIKAN SIMETRIS DI SMARTPHONE -->
+                <div class="mobile-only account-card-list">
+                    {{range .Withdrawals}}
+                    <div class="account-card-item">
+                        <div class="account-card-header">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <span style="font-weight: 700; font-size: 14px;">#{{.ID}}</span>
+                                <span class="badge badge-muted" style="text-transform: uppercase; font-size: 10.5px;">{{.Method}}</span>
+                            </div>
+                            <div>
+                                {{if eq .Status "selesai"}}
+                                <span class="badge badge-muted">Selesai</span>
+                                {{else if eq .Status "menunggu"}}
+                                <span class="badge badge-warning">Menunggu</span>
+                                {{else if eq .Status "ditolak"}}
+                                <span class="badge badge-danger">Ditolak</span>
+                                {{else}}
+                                <span class="badge badge-muted">{{.Status}}</span>
+                                {{end}}
+                            </div>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; align-items: baseline; margin-top: 8px;">
+                            <div style="font-size: 16px; font-weight: 800; color: var(--color-text);">
+                                {{if eq .Currency "IDR"}}Rp {{.AmountFormatted}}{{else}}{{.AmountFormatted}} USDT{{end}}
+                            </div>
+                            <div style="font-size: 11px; color: var(--color-muted);">
+                                {{.RequestedAt}}
+                            </div>
+                        </div>
+                        {{if .ProcessedAt}}
+                        <div style="font-size: 11px; color: var(--color-muted); margin-top: 4px;">
+                            Diproses: {{.ProcessedAt}}
+                        </div>
+                        {{end}}
+                    </div>
+                    {{else}}
+                    <div class="account-card-item" style="padding: 24px 16px; text-align: center; color: var(--color-muted); font-size: 13px;">
+                        {{ call $.T "worker.withdraw_no_history" }}
+                    </div>
+                    {{end}}
                 </div>
             </div>
     </main>
