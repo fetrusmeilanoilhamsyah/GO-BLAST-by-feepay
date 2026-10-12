@@ -841,4 +841,143 @@ func TestWorkerPanelFlows(t *testing.T) {
 			t.Errorf("Expected worker home to contain broadcast announcement banner")
 		}
 	})
+
+	t.Run("Tahap B: IDR to USDT Conversion and USDT Withdrawal Flow", func(t *testing.T) {
+		// Set rate_idr_to_usdt in settings = 15000
+		_, err := pool.Exec(context.Background(), `
+			INSERT INTO settings (key, value)
+			VALUES ('rate_idr_to_usdt', '15000'::jsonb)
+			ON CONFLICT (key) DO UPDATE SET value = '15000'::jsonb
+		`)
+		if err != nil {
+			t.Fatalf("Failed to set rate_idr_to_usdt: %v", err)
+		}
+
+		// Create dedicated worker for conversion tests
+		var convWorkerID int64
+		_ = pool.QueryRow(context.Background(), `
+			INSERT INTO users (email, username, password_hash, role, display_name, language, currency, referral_code)
+			VALUES ($1, $2, 'hash_pass', 'worker', 'Pekerja Konversi', 'id', 'IDR', $3)
+			RETURNING id
+		`, fmt.Sprintf("conv_%d@example.com", time.Now().UnixNano()), fmt.Sprintf("conv_%d", time.Now().UnixNano()), fmt.Sprintf("RF_CONV_%d", time.Now().UnixNano())).Scan(&convWorkerID)
+		createdUserIDs = append(createdUserIDs, convWorkerID)
+
+		withConvWorker := func(r *http.Request) *http.Request {
+			sess := UserSession{
+				ID:       convWorkerID,
+				Role:     "worker",
+				Language: "id",
+				Currency: "IDR",
+			}
+			return r.WithContext(context.WithValue(r.Context(), userContextKey, sess))
+		}
+
+		// 1. Convert with zero balance -> insufficient balance
+		{
+			form := url.Values{"amount_idr": {"15000"}}
+			req := httptest.NewRequest("POST", "/worker/convert", strings.NewReader(form.Encode()))
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			req = withConvWorker(req)
+			rr := httptest.NewRecorder()
+
+			srv.HandleWorkerConvertPOST(rr, req)
+			if rr.Code != http.StatusSeeOther || !strings.Contains(rr.Header().Get("Location"), "error=") {
+				t.Errorf("Expected redirect with error on insufficient balance, got code %d, loc %s", rr.Code, rr.Header().Get("Location"))
+			}
+		}
+
+		// 2. Credit 45,000 IDR to convWorker
+		_, err = pool.Exec(context.Background(), `
+			INSERT INTO ledger_entries (user_id, kind, currency, amount, note)
+			VALUES ($1, 'upah', 'IDR', 45000, 'Upah konversi')
+		`, convWorkerID)
+		if err != nil {
+			t.Fatalf("Failed to credit IDR: %v", err)
+		}
+
+		// Convert 30,000 IDR at rate 15,000 -> should yield 2,000,000 micro-USDT (2 USDT)
+		{
+			form := url.Values{"amount_idr": {"30000"}}
+			req := httptest.NewRequest("POST", "/worker/convert", strings.NewReader(form.Encode()))
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			req = withConvWorker(req)
+			rr := httptest.NewRecorder()
+
+			srv.HandleWorkerConvertPOST(rr, req)
+			if rr.Code != http.StatusSeeOther || !strings.Contains(rr.Header().Get("Location"), "success=") {
+				t.Fatalf("Expected redirect with success on conversion, got code %d, loc %s", rr.Code, rr.Header().Get("Location"))
+			}
+
+			// Verify remaining IDR balance is 15,000
+			var balIDR int64
+			_ = pool.QueryRow(context.Background(), "SELECT user_balance($1, 'IDR')", convWorkerID).Scan(&balIDR)
+			if balIDR != 15000 {
+				t.Errorf("Expected remaining IDR balance 15000, got %d", balIDR)
+			}
+
+			// Verify USDT balance is 2,000,000 micro-USDT
+			var balUSDT int64
+			_ = pool.QueryRow(context.Background(), "SELECT user_balance($1, 'USDT')", convWorkerID).Scan(&balUSDT)
+			if balUSDT != 2000000 {
+				t.Errorf("Expected USDT balance 2000000, got %d", balUSDT)
+			}
+		}
+
+		// 3. Test USDT Withdrawal: withdraw 1 USDT (entered as "1")
+		{
+			form := url.Values{
+				"amount":      {"1"},
+				"method":      {"usdt_bep20"},
+				"destination": {"0x1234567890abcdef1234567890abcdef12345678"},
+			}
+			req := httptest.NewRequest("POST", "/worker/withdrawals", strings.NewReader(form.Encode()))
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			req = withConvWorker(req)
+			rr := httptest.NewRecorder()
+
+			srv.HandleWorkerWithdrawalsPOST(rr, req)
+			if rr.Code != http.StatusSeeOther || !strings.Contains(rr.Header().Get("Location"), "success=1") {
+				t.Fatalf("Expected redirect with success=1 for USDT withdrawal, got code %d, loc %s", rr.Code, rr.Header().Get("Location"))
+			}
+
+			// Remaining USDT balance should be 1,000,000
+			var balUSDT int64
+			_ = pool.QueryRow(context.Background(), "SELECT user_balance($1, 'USDT')", convWorkerID).Scan(&balUSDT)
+			if balUSDT != 1000000 {
+				t.Errorf("Expected remaining USDT balance 1000000, got %d", balUSDT)
+			}
+
+			// Verify withdrawal row in DB has currency='USDT' and amount=1000000
+			var wAmount int64
+			var wCurr, wMethod string
+			err = pool.QueryRow(context.Background(), `
+				SELECT amount, currency, method
+				FROM withdrawals
+				WHERE user_id = $1
+				ORDER BY id DESC LIMIT 1
+			`, convWorkerID).Scan(&wAmount, &wCurr, &wMethod)
+			if err != nil {
+				t.Fatalf("Failed to query withdrawal row: %v", err)
+			}
+			if wAmount != 1000000 || wCurr != "USDT" || wMethod != "usdt_bep20" {
+				t.Errorf("Expected withdrawal amount=1000000, currency=USDT, method=usdt_bep20; got %d %s %s", wAmount, wCurr, wMethod)
+			}
+		}
+
+		// 4. Test GET /worker/withdrawals renders both balances
+		{
+			req := httptest.NewRequest("GET", "/worker/withdrawals", nil)
+			req = withConvWorker(req)
+			rr := httptest.NewRecorder()
+
+			srv.HandleWorkerWithdrawalsGET(rr, req)
+			if rr.Code != http.StatusOK {
+				t.Errorf("Expected status 200, got %d", rr.Code)
+			}
+			body := rr.Body.String()
+			if !strings.Contains(body, "15.000") || !strings.Contains(body, "Tukar Saldo IDR ke USDT") {
+				t.Errorf("Expected page to show IDR balance and converter card")
+			}
+		}
+	})
 }

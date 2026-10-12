@@ -292,8 +292,10 @@ type SettingsViewData struct {
 	RateWageUSDT           *int64
 	RateWageUSDTDisplay    string
 	RateReferralIDR        *int64
-	RateReferralUSDT       *int64
+	RateReferralUSDT        *int64
 	RateReferralUSDTDisplay string
+	RateIDRtoUSDT           *int64
+	RateIDRtoUSDTDisplay    string
 }
 
 func (s *Server) HandleAdminSettingsGET(w http.ResponseWriter, r *http.Request) {
@@ -510,6 +512,18 @@ func (s *Server) HandleAdminSettingsPOST(w http.ResponseWriter, r *http.Request)
 		"USDT": rateRefUSDT,
 	}
 
+	// 11. Validate rate_idr_to_usdt (IDR per 1 USDT, > 0)
+	rateIDRtoUSDTStr := strings.TrimSpace(r.FormValue("rate_idr_to_usdt"))
+	var rateIDRtoUSDT int64 = 15000
+	if rateIDRtoUSDTStr != "" {
+		var convErr error
+		rateIDRtoUSDT, convErr = strconv.ParseInt(rateIDRtoUSDTStr, 10, 64)
+		if convErr != nil || rateIDRtoUSDT <= 0 {
+			s.renderSettingsError(w, r, "rate_idr_to_usdt harus bernilai lebih dari 0 (contoh: 15000)")
+			return
+		}
+	}
+
 	// Save all settings with audit log
 	ip := getIP(r)
 	updates := []struct {
@@ -526,6 +540,7 @@ func (s *Server) HandleAdminSettingsPOST(w http.ResponseWriter, r *http.Request)
 		{"default_country_code", defaultCC},
 		{"rate_wage", rateWage},
 		{"rate_referral", rateReferral},
+		{"rate_idr_to_usdt", rateIDRtoUSDT},
 	}
 
 	for _, up := range updates {
@@ -699,6 +714,11 @@ func (s *Server) readSettingsFromDB(ctx context.Context) (*SettingsViewData, err
 					data.RateReferralUSDT = &val
 				}
 			}
+		case "rate_idr_to_usdt":
+			var v int64
+			if err := json.Unmarshal([]byte(valStr), &v); err == nil {
+				data.RateIDRtoUSDT = &v
+			}
 		}
 	}
 
@@ -709,6 +729,9 @@ func (s *Server) readSettingsFromDB(ctx context.Context) (*SettingsViewData, err
 	if data.RateReferralUSDT != nil {
 		f := float64(*data.RateReferralUSDT) / 1000000.0
 		data.RateReferralUSDTDisplay = strings.TrimRight(strings.TrimRight(fmt.Sprintf("%.6f", f), "0"), ".")
+	}
+	if data.RateIDRtoUSDT != nil {
+		data.RateIDRtoUSDTDisplay = formatIDR(*data.RateIDRtoUSDT)
 	}
 
 	return data, nil

@@ -45,7 +45,17 @@
             </div>
         </div>
 
-        <!-- 2. Tarif Referral (rate_referral) -->
+        <!-- 2. Kurs Konversi IDR ke USDT -->
+        <div class="card" style="margin: 0;">
+            <h2 style="font-size: 16px; font-weight: 700; margin-top: 0; margin-bottom: 6px; color: var(--color-text);">Kurs Konversi IDR ke USDT <span class="badge badge-warning" style="font-size: 11px;">{{ call .T "admin.required_label" }}</span></h2>
+            <p style="font-size: 12px; color: var(--color-muted); margin-bottom: 16px;">1 USDT = berapa rupiah. Digunakan saat pekerja mengonversi saldo IDR ke USDT untuk penarikan BEP20. Contoh: 15000 berarti 1 USDT = Rp 15.000.</p>
+            <div class="field">
+                <label for="rate_idr_to_usdt">1 USDT = Rp</label>
+                <input type="number" id="rate_idr_to_usdt" name="rate_idr_to_usdt" class="input" min="1" {{if .Settings.RateIDRtoUSDT}}value="{{.Settings.RateIDRtoUSDT}}"{{else}}value="15000" placeholder="contoh: 15000"{{end}} required>
+            </div>
+        </div>
+
+        <!-- 3. Tarif Referral (rate_referral) -->
         <div class="card" style="margin: 0;">
             <h2 style="font-size: 16px; font-weight: 700; margin-top: 0; margin-bottom: 6px; color: var(--color-text);">{{ call .T "admin.rate_referral" }}</h2>
             <p style="font-size: 12px; color: var(--color-muted); margin-bottom: 16px;">Disimpan sekarang untuk digunakan pada sistem referral (Tahap 18).</p>
@@ -152,6 +162,7 @@
 function fillRecommendedSettings() {
     document.getElementById('rate_wage_idr').value = '25';
     document.getElementById('rate_wage_usdt').value = '0.002';
+    document.getElementById('rate_idr_to_usdt').value = '15000';
     document.getElementById('rate_referral_idr').value = '5';
     document.getElementById('rate_referral_usdt').value = '0.0005';
     document.getElementById('speed_delay_fast').value = '5';

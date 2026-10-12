@@ -10,9 +10,10 @@ Nomor tahap mengacu ke tabel "Daftar Tahap" di bawah.
 ## Posisi sekarang
 
 - **Fase**: 1 (MVP)
-- **Terakhir dikerjakan**: Tahap A selesai (Bug Fix — query nomor tersedia, bug deskripsi penarikan, email opsional).
-- **Sedang dikerjakan**: Menunggu arahan pemilik untuk Tahap B (sistem mata uang IDR/USDT baru) dan Tahap C (UX notifikasi lonceng).
-- **Blocker**: Tidak ada. Keputusan sistem mata uang sudah diambil pemilik (lihat catatan keputusan).
+- **Terakhir dikerjakan**: Tahap B selesai (Sistem Mata Uang IDR/USDT Baru — rate_idr_to_usdt admin setting, POST /worker/convert konversi saldo IDR→USDT, alur penarikan pintar IDR & USDT, dual balance display).
+- **Sedang dikerjakan**: Menunggu arahan pemilik untuk Tahap C (Sistem Notifikasi Lonceng & Integrasi Broadcast).
+- **Blocker**: Tidak ada.
+
 
 
 ---
@@ -93,6 +94,8 @@ Terbaru di atas. Agen menambah baris di sini setiap ada keputusan baru, dari pem
 
 | Tanggal | Keputusan | Alasan | Oleh |
 |---|---|---|---|
+| 2026-10-13 | Tahap B: Implementasi Konversi IDR→USDT via `POST /worker/convert` dengan formula `(amount_idr * 1000000) / rate_idr_to_usdt`, transaksi atomik dan lock `users` row (`FOR UPDATE`), insert ganda `ledger_entries` kind `koreksi` (-IDR dan +USDT mikro-USDT), audit log | Menjamin pencegahan race-condition konversi saldo secara bersamaan, presisi bilangan bulat tanpa pembulatan float, dan transparansi jejak finansial | pemilik dan agen |
+| 2026-10-13 | Tahap B: Penarikan Pintar Terpisah per Mata Uang (`usdt_bep20` memotong saldo USDT dan validasi via `parseUSDTInput`, metode lokal memotong saldo IDR), form penarikan menampilkan dual card IDR & USDT serta kalkulator konversi interaktif | Memastikan pekerja dengan metode USDT BEP20 menarik dari saldo USDT hasil konversi, sedangkan pekerja lokal menarik dari saldo rupiah tanpa kebingungan | pemilik dan agen |
 | 2026-10-13 | Sistem mata uang baru: semua saldo pekerja dalam IDR, konversi IDR→USDT dilakukan manual pekerja via kalkulator di panel, kurs diatur admin manual (`rate_idr_to_usdt`), tidak ada auto exchange rate | Menyeragamkan denominasi saldo agar tidak ada pekerja yang salah mata uang, konversi eksplisit mencegah manipulasi | pemilik |
 | 2026-10-13 | Database dev di-reset/purge untuk data penarikan dan saldo USDT lama yang tidak kompatibel dengan sistem baru | Mulai fresh menghindari data corrupt dari sistem lama | pemilik |
 | 2026-10-13 | Tabel `broadcasts` dipertahankan untuk admin membuat broadcast, tapi hasilnya masuk ke tabel `notifications` sebagai insert ke semua pekerja — bukan banner terpisah | Simplifikasi UX, semua notifikasi terpusat di lonceng | pemilik |
@@ -202,6 +205,7 @@ Langkah uji sambung dan putus satu nomor cadangan:
 
 Terbaru di atas. Format: `tanggal: ringkasan satu baris` (Log Tahap 0 - 5 diarsipkan di [ARSIP_PROGRES.md](ARSIP_PROGRES.md)).
 
+- 2026-10-13: **Tahap B selesai** — Sistem Mata Uang Baru IDR/USDT & Konversi Saldo: (1) Setting admin baru `rate_idr_to_usdt` (kurs 1 USDT = berapa Rupiah) dengan form validation, display pemisah ribuan, dan simpan di tabel settings dengan audit log; (2) Endpoint baru `POST /worker/convert` untuk konversi atomik saldo pekerja dari IDR ke USDT via kalkulator kurs admin dengan penguncian baris `users` (`FOR UPDATE`) dan pencatatan buku besar kind `koreksi` berpasangan; (3) Refactoring `HandleWorkerWithdrawalsPOST` agar penarikan USDT (`usdt_bep20`) memotong saldo USDT dan divalidasi presisi mikro-USDT, sementara penarikan lokal (SeaBank, BCA, DANA, Bank) memotong saldo IDR; (4) Desain ulang halaman penarikan pekerja (`worker_withdrawals.html`) menampilkan kartu saldo ganda (IDR & USDT), kalkulator konversi interaktif live, peringatan saldo USDT kosong jika rekening BEP20, chip nominal pintar per metode, dan riwayat penarikan terformat rapi; (5) Suite tes unit & integrasi konversi saldo dan penarikan USDT baru ditambahkan dan seluruh 13 paket tes lulus 100% (0 gagal).
 - 2026-10-13: **Tahap A selesai** — Bug Fix pra-produksi: (1) Fix query `availableNumbers` di panel pekerja agar hanya menghitung nomor dari kampanye berstatus `berjalan` — kampanye dijeda/selesai tidak masuk hitungan; (2) Fix tampilan Destination saat dekripsi gagal di panel admin penarikan — tampilkan pesan informatif berwarna merah "Enkripsi lama — tidak dapat dibaca" bukan teks generik; (3) Email pekerja dijadikan opsional — backend menangani `NULL` email, template form register dihapus `required`, login diperbarui agar aman dengan email NULL; (4) Migrasi 0015: `users.email` nullable, tabel `notifications` baru untuk sistem lonceng, kolom reply di `support_tickets`; (5) DOC_SKEMA.md dan DOC_PROGRES.md diperbarui. Build dan seluruh tes lulus 100% (13 paket, 0 gagal).
 
 - 2026-10-12: Koreksi integritas buku besar dan campaign: migrasi 0014_restore_strict_ledger.sql (trigger ketat prevent_ledger_update_delete tolak semua UPDATE & DELETE, FK ON DELETE RESTRICT, kolom campaigns.archived_at), hapus campaign dibatasi hanya draf tanpa nomor terkirim dan tanpa referensi ledger, rute baru arsip campaign POST /admin/campaigns/{id}/archive, filter daftar campaign (archived disembunyikan default, show_archived=1), tolak aksi upload nomor/edit pada campaign terarsip, pembersihan testutil aman trigger, DOC_SKEMA diperbarui, dan seluruh tes integrasi lulus 100% (0 skip).

@@ -1,6 +1,7 @@
 package web
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -23,13 +24,14 @@ type WorkerActivityView struct {
 }
 
 type WorkerWithdrawalView struct {
-	ID          int64
-	Currency    string
-	Amount      int64
-	Method      string
-	Status      string
-	RequestedAt string
-	ProcessedAt string
+	ID              int64
+	Currency        string
+	Amount          int64
+	AmountFormatted string
+	Method          string
+	Status          string
+	RequestedAt     string
+	ProcessedAt     string
 }
 
 type WorkerAccountSummaryView struct {
@@ -371,8 +373,21 @@ func (s *Server) HandleWorkerWithdrawalsGET(w http.ResponseWriter, r *http.Reque
 	}
 
 	// 1. Saldo dapat ditarik
-	var balance int64
-	_ = s.DB.Pool.QueryRow(ctx, "SELECT user_balance($1, $2)", user.ID, user.Currency).Scan(&balance)
+	var balanceIDR int64
+	_ = s.DB.Pool.QueryRow(ctx, "SELECT user_balance($1, 'IDR')", user.ID).Scan(&balanceIDR)
+
+	var balanceUSDT int64
+	_ = s.DB.Pool.QueryRow(ctx, "SELECT user_balance($1, 'USDT')", user.ID).Scan(&balanceUSDT)
+
+	// Baca rate_idr_to_usdt dari settings
+	var rateJSON string
+	var rateIDRtoUSDT int64 = 15000
+	if err := s.DB.Pool.QueryRow(ctx, "SELECT value::text FROM settings WHERE key = 'rate_idr_to_usdt'").Scan(&rateJSON); err == nil {
+		_ = json.Unmarshal([]byte(rateJSON), &rateIDRtoUSDT)
+	}
+	if rateIDRtoUSDT <= 0 {
+		rateIDRtoUSDT = 15000
+	}
 
 	// Segarkan info wallet user dari DB jika ada
 	var dbMethod, dbDestEnc, dbAccName *string
@@ -422,6 +437,11 @@ func (s *Server) HandleWorkerWithdrawalsGET(w http.ResponseWriter, r *http.Reque
 				} else {
 					wRow.ProcessedAt = "-"
 				}
+				if wRow.Currency == "IDR" {
+					wRow.AmountFormatted = formatIDR(wRow.Amount)
+				} else {
+					wRow.AmountFormatted = formatUSDT(wRow.Amount)
+				}
 				list = append(list, wRow)
 			}
 		}
@@ -434,28 +454,40 @@ func (s *Server) HandleWorkerWithdrawalsGET(w http.ResponseWriter, r *http.Reque
 	}
 
 	data := struct {
-		Lang        string
-		Title       string
-		Theme       string
-		CSRFToken   string
-		ActiveNav   string
-		User        UserSession
-		Balance     int64
-		Withdrawals []WorkerWithdrawalView
-		Error       string
-		Success     string
-		T           func(string) string
+		Lang                 string
+		Title                string
+		Theme                string
+		CSRFToken            string
+		ActiveNav            string
+		User                 UserSession
+		Balance              int64
+		BalanceIDR           int64
+		BalanceIDRFormatted  string
+		BalanceUSDT          int64
+		BalanceUSDTFormatted string
+		RateIDRtoUSDT        int64
+		RateIDRtoUSDTDisplay string
+		Withdrawals          []WorkerWithdrawalView
+		Error                string
+		Success              string
+		T                    func(string) string
 	}{
-		Lang:        lang,
-		Title:       i18n.T(lang, "nav.withdrawals"),
-		Theme:       getTheme(r),
-		CSRFToken:   getCSRF(r),
-		ActiveNav:   "withdrawals",
-		User:        user,
-		Balance:     balance,
-		Withdrawals: list,
-		Error:       errMsg,
-		Success:     successMsg,
+		Lang:                 lang,
+		Title:                i18n.T(lang, "nav.withdrawals"),
+		Theme:                getTheme(r),
+		CSRFToken:            getCSRF(r),
+		ActiveNav:            "withdrawals",
+		User:                 user,
+		Balance:              balanceIDR,
+		BalanceIDR:           balanceIDR,
+		BalanceIDRFormatted:  formatIDR(balanceIDR),
+		BalanceUSDT:          balanceUSDT,
+		BalanceUSDTFormatted: formatUSDT(balanceUSDT),
+		RateIDRtoUSDT:        rateIDRtoUSDT,
+		RateIDRtoUSDTDisplay: formatIDR(rateIDRtoUSDT),
+		Withdrawals:          list,
+		Error:                errMsg,
+		Success:              successMsg,
 		T: func(key string) string {
 			return i18n.T(lang, key)
 		},
@@ -477,12 +509,6 @@ func (s *Server) HandleWorkerWithdrawalsPOST(w http.ResponseWriter, r *http.Requ
 	method := strings.ToLower(strings.TrimSpace(r.FormValue("method")))
 	dest := strings.TrimSpace(r.FormValue("destination"))
 	accountName := strings.TrimSpace(r.FormValue("account_name"))
-
-	amount, err := strconv.ParseInt(amountStr, 10, 64)
-	if err != nil || amount <= 0 {
-		http.Redirect(w, r, "/worker/withdrawals?error=Nominal+penarikan+tidak+valid", http.StatusSeeOther)
-		return
-	}
 
 	var payoutMethod string
 	var encryptedDest string
@@ -522,7 +548,7 @@ func (s *Server) HandleWorkerWithdrawalsPOST(w http.ResponseWriter, r *http.Requ
 	} else {
 		// Gunakan rekening yang sudah tersimpan di akun user
 		var dbMethod, dbDestEnc, dbAccName *string
-		err = s.DB.Pool.QueryRow(ctx, `
+		err := s.DB.Pool.QueryRow(ctx, `
 			SELECT payout_method, payout_dest_encrypted, payout_account_name
 			FROM users
 			WHERE id = $1
@@ -535,9 +561,29 @@ func (s *Server) HandleWorkerWithdrawalsPOST(w http.ResponseWriter, r *http.Requ
 		encryptedDest = *dbDestEnc
 	}
 
-	// Cek saldo
+	var currency string
+	var amount int64
+	if payoutMethod == "usdt_bep20" {
+		currency = "USDT"
+		parsed, pErr := parseUSDTInput(amountStr)
+		if pErr != nil || parsed <= 0 {
+			http.Redirect(w, r, "/worker/withdrawals?error=Nominal+penarikan+tidak+valid", http.StatusSeeOther)
+			return
+		}
+		amount = parsed
+	} else {
+		currency = "IDR"
+		parsed, pErr := strconv.ParseInt(amountStr, 10, 64)
+		if pErr != nil || parsed <= 0 {
+			http.Redirect(w, r, "/worker/withdrawals?error=Nominal+penarikan+tidak+valid", http.StatusSeeOther)
+			return
+		}
+		amount = parsed
+	}
+
+	// Cek saldo sesuai mata uang penarikan
 	var currentBalance int64
-	_ = s.DB.Pool.QueryRow(ctx, "SELECT user_balance($1, $2)", user.ID, user.Currency).Scan(&currentBalance)
+	_ = s.DB.Pool.QueryRow(ctx, "SELECT user_balance($1, $2)", user.ID, currency).Scan(&currentBalance)
 	if currentBalance < amount {
 		http.Redirect(w, r, "/worker/withdrawals?error=Saldo+Anda+tidak+mencukupi+untuk+penarikan+ini", http.StatusSeeOther)
 		return
@@ -556,7 +602,7 @@ func (s *Server) HandleWorkerWithdrawalsPOST(w http.ResponseWriter, r *http.Requ
 		INSERT INTO withdrawals (user_id, currency, amount, method, destination_encrypted, status)
 		VALUES ($1, $2, $3, $4, $5, 'menunggu')
 		RETURNING id
-	`, user.ID, user.Currency, amount, payoutMethod, encryptedDest).Scan(&withdrawalID)
+	`, user.ID, currency, amount, payoutMethod, encryptedDest).Scan(&withdrawalID)
 	if err != nil {
 		http.Redirect(w, r, "/worker/withdrawals?error=Gagal+membuat+pengajuan+penarikan", http.StatusSeeOther)
 		return
@@ -567,7 +613,7 @@ func (s *Server) HandleWorkerWithdrawalsPOST(w http.ResponseWriter, r *http.Requ
 	_, err = tx.Exec(ctx, `
 		INSERT INTO ledger_entries (user_id, kind, currency, amount, note)
 		VALUES ($1, 'penarikan', $2, $3, $4)
-	`, user.ID, user.Currency, -amount, note)
+	`, user.ID, currency, -amount, note)
 	if err != nil {
 		http.Redirect(w, r, "/worker/withdrawals?error=Saldo+tidak+mencukupi+atau+transaksi+batal", http.StatusSeeOther)
 		return
@@ -578,8 +624,94 @@ func (s *Server) HandleWorkerWithdrawalsPOST(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	s.logAudit(&user.ID, "request_withdrawal", "withdrawals", strconv.FormatInt(withdrawalID, 10), fmt.Sprintf("%d %s (%s)", amount, user.Currency, payoutMethod))
+	s.logAudit(&user.ID, "request_withdrawal", "withdrawals", strconv.FormatInt(withdrawalID, 10), fmt.Sprintf("%d %s (%s)", amount, currency, payoutMethod))
 	http.Redirect(w, r, "/worker/withdrawals?success=1", http.StatusSeeOther)
+}
+
+func (s *Server) HandleWorkerConvertPOST(w http.ResponseWriter, r *http.Request) {
+	user, ok := currentUser(r)
+	if !ok {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+
+	ctx := r.Context()
+	amountIDRStr := strings.TrimSpace(r.FormValue("amount_idr"))
+	amountIDR, err := strconv.ParseInt(amountIDRStr, 10, 64)
+	if err != nil || amountIDR <= 0 {
+		http.Redirect(w, r, "/worker/withdrawals?error=Nominal+konversi+IDR+tidak+valid", http.StatusSeeOther)
+		return
+	}
+
+	// Baca rate_idr_to_usdt dari settings DB
+	var rateJSON string
+	err = s.DB.Pool.QueryRow(ctx, "SELECT value::text FROM settings WHERE key = 'rate_idr_to_usdt'").Scan(&rateJSON)
+	if err != nil {
+		http.Redirect(w, r, "/worker/withdrawals?error=Kurs+konversi+belum+diatur+admin", http.StatusSeeOther)
+		return
+	}
+
+	var rateIDRtoUSDT int64
+	if err := json.Unmarshal([]byte(rateJSON), &rateIDRtoUSDT); err != nil || rateIDRtoUSDT <= 0 {
+		http.Redirect(w, r, "/worker/withdrawals?error=Kurs+konversi+belum+diatur+admin", http.StatusSeeOther)
+		return
+	}
+
+	// Atomic transaction: lock user row, check balance, insert koreksi ledger entries
+	tx, err := s.DB.Pool.Begin(ctx)
+	if err != nil {
+		http.Redirect(w, r, "/worker/withdrawals?error=Terjadi+kesalahan+sistem", http.StatusSeeOther)
+		return
+	}
+	defer tx.Rollback(ctx)
+
+	var lockedUserID int64
+	err = tx.QueryRow(ctx, "SELECT id FROM users WHERE id = $1 FOR UPDATE", user.ID).Scan(&lockedUserID)
+	if err != nil {
+		http.Redirect(w, r, "/worker/withdrawals?error=Terjadi+kesalahan+sistem", http.StatusSeeOther)
+		return
+	}
+
+	var balanceIDR int64
+	_ = tx.QueryRow(ctx, "SELECT user_balance($1, 'IDR')", user.ID).Scan(&balanceIDR)
+	if balanceIDR < amountIDR {
+		http.Redirect(w, r, "/worker/withdrawals?error=Saldo+IDR+Anda+tidak+mencukupi+untuk+konversi+ini", http.StatusSeeOther)
+		return
+	}
+
+	usdtAmount := (amountIDR * 1000000) / rateIDRtoUSDT
+	if usdtAmount <= 0 {
+		http.Redirect(w, r, "/worker/withdrawals?error=Jumlah+terlalu+kecil+untuk+dikonversi", http.StatusSeeOther)
+		return
+	}
+
+	noteIDR := fmt.Sprintf("Konversi ke USDT (kurs Rp %s/USDT)", formatIDR(rateIDRtoUSDT))
+	_, err = tx.Exec(ctx, `
+		INSERT INTO ledger_entries (user_id, kind, currency, amount, note)
+		VALUES ($1, 'koreksi', 'IDR', $2, $3)
+	`, user.ID, -amountIDR, noteIDR)
+	if err != nil {
+		http.Redirect(w, r, "/worker/withdrawals?error=Gagal+mengurangi+saldo+IDR", http.StatusSeeOther)
+		return
+	}
+
+	noteUSDT := fmt.Sprintf("Hasil konversi dari IDR (Rp %s)", formatIDR(amountIDR))
+	_, err = tx.Exec(ctx, `
+		INSERT INTO ledger_entries (user_id, kind, currency, amount, note)
+		VALUES ($1, 'koreksi', 'USDT', $2, $3)
+	`, user.ID, usdtAmount, noteUSDT)
+	if err != nil {
+		http.Redirect(w, r, "/worker/withdrawals?error=Gagal+menambah+saldo+USDT", http.StatusSeeOther)
+		return
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		http.Redirect(w, r, "/worker/withdrawals?error=Gagal+menyelesaikan+transaksi+konversi", http.StatusSeeOther)
+		return
+	}
+
+	s.logAudit(&user.ID, "convert_idr_to_usdt", "users", strconv.FormatInt(user.ID, 10), fmt.Sprintf("converted %d IDR to %d micro-USDT at rate %d", amountIDR, usdtAmount, rateIDRtoUSDT))
+	http.Redirect(w, r, "/worker/withdrawals?success=Konversi+ke+USDT+berhasil", http.StatusSeeOther)
 }
 
 func (s *Server) HandleWorkerWalletPOST(w http.ResponseWriter, r *http.Request) {
