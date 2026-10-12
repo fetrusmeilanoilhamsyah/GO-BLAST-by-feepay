@@ -146,6 +146,7 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.Handle("POST /admin/campaigns/new", s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignNewPOST, "admin")))
 	mux.Handle("GET /admin/campaigns/{id}", s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignDetail, "admin")))
 	mux.Handle("POST /admin/campaigns/{id}/start", s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignStart, "admin")))
+	mux.Handle("POST /admin/campaigns/{id}/pause", s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignPause, "admin")))
 	mux.Handle("POST /admin/campaigns/{id}/finish", s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignFinish, "admin")))
 	mux.Handle("POST /admin/campaigns/{id}/delete", s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignDelete, "admin")))
 	mux.Handle("GET /admin/campaigns/{id}/edit", s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignEditGET, "admin")))

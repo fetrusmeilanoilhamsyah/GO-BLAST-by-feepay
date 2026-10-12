@@ -576,7 +576,7 @@ func (s *Server) HandleAdminCampaignStart(w http.ResponseWriter, r *http.Request
 	}
 
 	now := time.Now()
-	_, err = s.DB.Pool.Exec(r.Context(), "UPDATE campaigns SET status = 'berjalan', started_at = $1 WHERE id = $2", now, id)
+	_, err = s.DB.Pool.Exec(r.Context(), "UPDATE campaigns SET status = 'berjalan', started_at = COALESCE(started_at, $1) WHERE id = $2", now, id)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -584,6 +584,38 @@ func (s *Server) HandleAdminCampaignStart(w http.ResponseWriter, r *http.Request
 
 	user, _ := currentUser(r)
 	s.logAudit(&user.ID, "campaign_start", "campaign", strconv.FormatInt(id, 10), "")
+
+	http.Redirect(w, r, fmt.Sprintf("/admin/campaigns/%d", id), http.StatusSeeOther)
+}
+
+func (s *Server) HandleAdminCampaignPause(w http.ResponseWriter, r *http.Request) {
+	idStr := r.PathValue("id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		http.Error(w, "ID tidak valid", http.StatusBadRequest)
+		return
+	}
+
+	var status string
+	err = s.DB.Pool.QueryRow(r.Context(), "SELECT status FROM campaigns WHERE id = $1 FOR UPDATE", id).Scan(&status)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+
+	if status != campaign.StatusBerjalan {
+		http.Error(w, "Campaign hanya bisa dijeda dari status berjalan", http.StatusBadRequest)
+		return
+	}
+
+	_, err = s.DB.Pool.Exec(r.Context(), "UPDATE campaigns SET status = 'draf' WHERE id = $1", id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	user, _ := currentUser(r)
+	s.logAudit(&user.ID, "campaign_pause", "campaign", strconv.FormatInt(id, 10), "campaign dijeda")
 
 	http.Redirect(w, r, fmt.Sprintf("/admin/campaigns/%d", id), http.StatusSeeOther)
 }

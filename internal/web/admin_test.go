@@ -416,6 +416,7 @@ func TestWorkerAccessToAdminRoutesForbidden(t *testing.T) {
 		{"POST", "/admin/workers/1/disable"},
 		{"POST", "/admin/workers/1/enable"},
 		{"GET", "/admin/campaigns"},
+		{"POST", "/admin/campaigns/1/pause"},
 		{"GET", "/admin/tickets"},
 		{"GET", "/admin/broadcasts"},
 		{"GET", "/admin/nonexistent_route"},
@@ -861,6 +862,112 @@ func TestAdminCampaignDelete(t *testing.T) {
 	_ = pool.QueryRow(ctx, "SELECT COUNT(*) FROM campaigns WHERE id = $1", runningID).Scan(&count)
 	if count != 1 {
 		t.Errorf("Running campaign should NOT be deleted!")
+	}
+}
+
+func TestAdminCampaignPauseAndResume(t *testing.T) {
+	srv, pool, adminID, _ := setupAdminTest(t)
+	ctx := context.Background()
+	ctxAdmin := context.WithValue(context.Background(), userContextKey, UserSession{ID: adminID, Role: "admin", Language: "id"})
+
+	// 1. Create a draft campaign with numbers
+	var campID int64
+	err := pool.QueryRow(ctx, `
+		INSERT INTO campaigns (name, status, button_mode, body, elements, created_by)
+		VALUES ('Pause Resume Test', 'draf', 'kartu_link', 'Test body', '{}', $1)
+		RETURNING id
+	`, adminID).Scan(&campID)
+	if err != nil {
+		t.Fatalf("Failed to create campaign: %v", err)
+	}
+
+	var batchID int64
+	err = pool.QueryRow(ctx, `
+		INSERT INTO number_batches (campaign_id, filename, uploaded_by, total, accepted)
+		VALUES ($1, 'test.csv', $2, 1, 1)
+		RETURNING id
+	`, campID, adminID).Scan(&batchID)
+	if err != nil {
+		t.Fatalf("Failed to create batch: %v", err)
+	}
+
+	_, err = pool.Exec(ctx, `
+		INSERT INTO campaign_numbers (campaign_id, batch_id, phone_e164, country_code, status)
+		VALUES ($1, $2, '628119998881', '62', 'tersedia')
+	`, campID, batchID)
+	if err != nil {
+		t.Fatalf("Failed to create number: %v", err)
+	}
+
+	// 2. Start campaign
+	reqStart := httptest.NewRequest("POST", fmt.Sprintf("/admin/campaigns/%d/start", campID), nil)
+	reqStart.SetPathValue("id", fmt.Sprintf("%d", campID))
+	reqStart = reqStart.WithContext(ctxAdmin)
+	rrStart := httptest.NewRecorder()
+	srv.HandleAdminCampaignStart(rrStart, reqStart)
+
+	if rrStart.Code != http.StatusSeeOther {
+		t.Fatalf("Expected 303 after starting campaign, got %d", rrStart.Code)
+	}
+
+	var status string
+	var startedAt time.Time
+	err = pool.QueryRow(ctx, "SELECT status, started_at FROM campaigns WHERE id = $1", campID).Scan(&status, &startedAt)
+	if err != nil || status != "berjalan" {
+		t.Fatalf("Expected status berjalan, got %s (err: %v)", status, err)
+	}
+
+	// 3. Pause campaign
+	reqPause := httptest.NewRequest("POST", fmt.Sprintf("/admin/campaigns/%d/pause", campID), nil)
+	reqPause.SetPathValue("id", fmt.Sprintf("%d", campID))
+	reqPause = reqPause.WithContext(ctxAdmin)
+	rrPause := httptest.NewRecorder()
+	srv.HandleAdminCampaignPause(rrPause, reqPause)
+
+	if rrPause.Code != http.StatusSeeOther {
+		t.Fatalf("Expected 303 after pausing campaign, got %d", rrPause.Code)
+	}
+
+	err = pool.QueryRow(ctx, "SELECT status FROM campaigns WHERE id = $1", campID).Scan(&status)
+	if err != nil || status != "draf" {
+		t.Fatalf("Expected status draf after pause, got %s (err: %v)", status, err)
+	}
+
+	// Verify pause audit log exists
+	var auditCount int
+	_ = pool.QueryRow(ctx, "SELECT COUNT(*) FROM audit_logs WHERE action = 'campaign_pause' AND entity_id = $1", fmt.Sprintf("%d", campID)).Scan(&auditCount)
+	if auditCount < 1 {
+		t.Errorf("Expected audit log for campaign_pause")
+	}
+
+	// 4. Pausing a non-running campaign should fail with 400
+	reqPauseAgain := httptest.NewRequest("POST", fmt.Sprintf("/admin/campaigns/%d/pause", campID), nil)
+	reqPauseAgain.SetPathValue("id", fmt.Sprintf("%d", campID))
+	reqPauseAgain = reqPauseAgain.WithContext(ctxAdmin)
+	rrPauseAgain := httptest.NewRecorder()
+	srv.HandleAdminCampaignPause(rrPauseAgain, reqPauseAgain)
+	if rrPauseAgain.Code != http.StatusBadRequest {
+		t.Errorf("Expected 400 when pausing already-paused campaign, got %d", rrPauseAgain.Code)
+	}
+
+	// 5. Resume campaign -> must preserve original startedAt
+	reqResume := httptest.NewRequest("POST", fmt.Sprintf("/admin/campaigns/%d/start", campID), nil)
+	reqResume.SetPathValue("id", fmt.Sprintf("%d", campID))
+	reqResume = reqResume.WithContext(ctxAdmin)
+	rrResume := httptest.NewRecorder()
+	srv.HandleAdminCampaignStart(rrResume, reqResume)
+
+	if rrResume.Code != http.StatusSeeOther {
+		t.Fatalf("Expected 303 after resuming campaign, got %d", rrResume.Code)
+	}
+
+	var resumedStartedAt time.Time
+	err = pool.QueryRow(ctx, "SELECT status, started_at FROM campaigns WHERE id = $1", campID).Scan(&status, &resumedStartedAt)
+	if err != nil || status != "berjalan" {
+		t.Fatalf("Expected status berjalan after resume, got %s", status)
+	}
+	if !resumedStartedAt.Equal(startedAt) {
+		t.Errorf("Expected started_at to be preserved (%v), got %v", startedAt, resumedStartedAt)
 	}
 }
 

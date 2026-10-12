@@ -40,6 +40,14 @@
                             <a href="/admin/campaigns/{{.ID}}/numbers" class="link-action" style="color: var(--color-warning);">{{ call $.T "campaign.action_numbers" }}</a>
                             {{else}}
                             <a href="/admin/campaigns/{{.ID}}/numbers" class="link-action" style="color: var(--color-muted);">{{ call $.T "campaign.action_report" }}</a>
+                            {{if eq .Status "berjalan"}}
+                            <form method="POST" action="/admin/campaigns/{{.ID}}/pause" style="display: inline; margin: 0;">
+                                <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                                <button type="submit" class="btn btn-secondary" style="padding: 2px 8px; font-size: 11px; cursor: pointer;">
+                                    Jeda
+                                </button>
+                            </form>
+                            {{end}}
                             {{end}}
                             {{if or (eq .Status "draf") (eq .Status "selesai")}}
                             <form method="POST" action="/admin/campaigns/{{.ID}}/delete" style="display: inline; margin: 0;" onsubmit="return confirm('{{ call $.T "campaign.delete_confirm" }}');">

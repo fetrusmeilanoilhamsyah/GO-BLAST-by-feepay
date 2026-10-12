@@ -42,7 +42,7 @@
             {{if eq .Campaign.Status "draf"}}
             <form method="post" action="/admin/campaigns/{{.Campaign.ID}}/start" style="margin: 0;">
                 <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-                <button type="submit" class="btn btn-primary" {{if lt (index .Counts "tersedia") 1}}disabled title="Tambahkan nomor terlebih dahulu"{{end}}>Mulai</button>
+                <button type="submit" class="btn btn-primary" {{if lt (index .Counts "tersedia") 1}}disabled title="Tambahkan nomor terlebih dahulu"{{end}}>{{if .Campaign.StartedAt}}Lanjutkan Kampanye{{else}}Mulai Kampanye{{end}}</button>
             </form>
             <a href="/admin/campaigns/{{.Campaign.ID}}/numbers" class="btn btn-secondary">Upload Nomor</a>
             <a href="/admin/campaigns/{{.Campaign.ID}}/edit" class="btn btn-secondary">Edit Template</a>
@@ -51,9 +51,13 @@
                 <button type="submit" class="btn btn-secondary" style="color: var(--color-danger); border-color: var(--color-danger);">{{ call $.T "campaign.delete_btn" }}</button>
             </form>
             {{else if eq .Campaign.Status "berjalan"}}
-            <form method="post" action="/admin/campaigns/{{.Campaign.ID}}/finish" style="margin: 0;">
+            <form method="post" action="/admin/campaigns/{{.Campaign.ID}}/pause" style="margin: 0;">
                 <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-                <button type="submit" class="btn btn-danger">Selesai</button>
+                <button type="submit" class="btn btn-secondary" style="font-weight: 600;">Jeda Kampanye</button>
+            </form>
+            <form method="post" action="/admin/campaigns/{{.Campaign.ID}}/finish" style="margin: 0;" onsubmit="return confirm('Selesaikan kampanye secara permanen?');">
+                <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+                <button type="submit" class="btn btn-danger">Selesai Permanen</button>
             </form>
             <a href="/admin/campaigns/{{.Campaign.ID}}/numbers" class="btn btn-secondary">Tambah Nomor</a>
             {{else}}

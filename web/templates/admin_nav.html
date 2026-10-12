@@ -1,56 +1,229 @@
 {{define "admin_nav"}}
-<header style="background-color: var(--color-card); border-bottom: 1px solid var(--color-border); position: sticky; top: 0; z-index: 100;">
-    <div style="max-width: 1200px; margin: 0 auto; padding: 10px 16px;">
-        <!-- Top bar: Brand & User Controls -->
-        <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px;">
+<header class="admin-topbar">
+    <div class="admin-topbar-inner">
+        <!-- Left: Mobile Hamburger & Desktop Brand -->
+        <div style="display: flex; align-items: center; gap: 10px;">
+            <!-- Mobile Hamburger Button -->
+            <button type="button" class="btn btn-secondary mobile-only" onclick="toggleAdminDrawer()" aria-label="{{ call .T "worker.menu" }}" style="padding: 6px 10px; display: inline-flex; align-items: center; gap: 6px; font-size: 13px;">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="4" y1="7" x2="20" y2="7"></line>
+                    <line x1="4" y1="17" x2="20" y2="17"></line>
+                </svg>
+                <span>Menu</span>
+            </button>
+
             <!-- Brand -->
             <a href="/admin" style="display: inline-flex; align-items: baseline; gap: 6px; text-decoration: none; color: var(--color-text);">
                 <span style="font-size: 17px; font-weight: 800; letter-spacing: -0.02em;">{{ call .T "app.name" }}</span>
-                <span style="font-size: 11px; color: var(--color-muted); font-weight: 500;">{{ call .T "app.tagline" }}</span>
+                <span class="desktop-only" style="font-size: 11px; color: var(--color-muted); font-weight: 500;">{{ call .T "app.tagline" }}</span>
                 <span class="badge badge-muted" style="font-size: 10px; margin-left: 2px;">{{ call .T "admin.role" }}</span>
             </a>
-
-            <!-- Right: Language & Logout -->
-            <div style="display: flex; align-items: center; gap: 8px;">
-                <form method="POST" action="/language" style="display: inline-flex; align-items: center; margin: 0;">
-                    <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-                    <select name="lang" onchange="this.form.submit()" style="padding: 4px 8px; border: 1px solid var(--color-border); border-radius: 6px; background-color: var(--color-input-bg); color: var(--color-input-text); font-size: 12px; cursor: pointer;">
-                        <option value="id"{{if eq .Lang "id"}} selected{{end}}>ID</option>
-                        <option value="en"{{if eq .Lang "en"}} selected{{end}}>EN</option>
-                        <option value="zh"{{if eq .Lang "zh"}} selected{{end}}>ZH</option>
-                    </select>
-                </form>
-
-                <a href="/logout" class="btn btn-secondary" style="padding: 5px 10px; font-size: 12px; color: var(--color-danger); border-color: var(--color-border); text-decoration: none; border-radius: 6px;">
-                    {{ call .T "common.logout" }}
-                </a>
-            </div>
         </div>
 
-        <!-- Navigation Tabs: Horizontal scrolling on mobile/Android, flex on desktop -->
-        <nav style="display: flex; align-items: center; gap: 6px; overflow-x: auto; -webkit-overflow-scrolling: touch; white-space: nowrap; padding-bottom: 4px; scrollbar-width: none;">
-            <a href="/admin" class="btn btn-secondary{{if eq .ActiveNav "dashboard"}} btn-primary{{end}}" style="padding: 6px 14px; font-size: 13px; text-decoration: none; border-radius: 6px; flex-shrink: 0;">
+        <!-- Center: Desktop Navigation Tabs (Hidden on mobile) -->
+        <nav class="admin-topbar-nav desktop-only">
+            <a href="/admin" class="admin-nav-tab{{if eq .ActiveNav "dashboard"}} active{{end}}">
                 {{ call .T "admin.dashboard" }}
             </a>
-            <a href="/admin/campaigns" class="btn btn-secondary{{if eq .ActiveNav "campaigns"}} btn-primary{{end}}" style="padding: 6px 14px; font-size: 13px; text-decoration: none; border-radius: 6px; flex-shrink: 0;">
+            <a href="/admin/campaigns" class="admin-nav-tab{{if eq .ActiveNav "campaigns"}} active{{end}}">
                 {{ call .T "admin.campaigns" }}
             </a>
-            <a href="/admin/workers" class="btn btn-secondary{{if eq .ActiveNav "workers"}} btn-primary{{end}}" style="padding: 6px 14px; font-size: 13px; text-decoration: none; border-radius: 6px; flex-shrink: 0;">
+            <a href="/admin/workers" class="admin-nav-tab{{if eq .ActiveNav "workers"}} active{{end}}">
                 {{ call .T "admin.workers" }}
             </a>
-            <a href="/admin/withdrawals" class="btn btn-secondary{{if eq .ActiveNav "withdrawals"}} btn-primary{{end}}" style="padding: 6px 14px; font-size: 13px; text-decoration: none; border-radius: 6px; flex-shrink: 0;">
+            <a href="/admin/withdrawals" class="admin-nav-tab{{if eq .ActiveNav "withdrawals"}} active{{end}}">
                 {{ call .T "admin.withdrawals" }}
             </a>
-            <a href="/admin/settings" class="btn btn-secondary{{if eq .ActiveNav "settings"}} btn-primary{{end}}" style="padding: 6px 14px; font-size: 13px; text-decoration: none; border-radius: 6px; flex-shrink: 0;">
+            <a href="/admin/settings" class="admin-nav-tab{{if eq .ActiveNav "settings"}} active{{end}}">
                 {{ call .T "admin.settings" }}
             </a>
-            <a href="/admin/tickets" class="btn btn-secondary{{if eq .ActiveNav "tickets"}} btn-primary{{end}}" style="padding: 6px 14px; font-size: 13px; text-decoration: none; border-radius: 6px; flex-shrink: 0;">
+            <a href="/admin/tickets" class="admin-nav-tab{{if eq .ActiveNav "tickets"}} active{{end}}">
                 {{ call .T "admin.tickets" }}
             </a>
-            <a href="/admin/broadcasts" class="btn btn-secondary{{if eq .ActiveNav "broadcasts"}} btn-primary{{end}}" style="padding: 6px 14px; font-size: 13px; text-decoration: none; border-radius: 6px; flex-shrink: 0;">
+            <a href="/admin/broadcasts" class="admin-nav-tab{{if eq .ActiveNav "broadcasts"}} active{{end}}">
                 {{ call .T "admin.broadcasts" }}
             </a>
         </nav>
+
+        <!-- Right: Language & Logout -->
+        <div style="display: flex; align-items: center; gap: 8px;">
+            <form method="POST" action="/language" style="display: inline-flex; align-items: center; margin: 0;">
+                <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+                <select name="lang" onchange="this.form.submit()" style="padding: 4px 8px; border: 1px solid var(--color-border); border-radius: 6px; background-color: var(--color-input-bg); color: var(--color-input-text); font-size: 12px; cursor: pointer;">
+                    <option value="id"{{if eq .Lang "id"}} selected{{end}}>ID</option>
+                    <option value="en"{{if eq .Lang "en"}} selected{{end}}>EN</option>
+                    <option value="zh"{{if eq .Lang "zh"}} selected{{end}}>ZH</option>
+                </select>
+            </form>
+
+            <a href="/logout" class="btn btn-secondary" style="padding: 5px 10px; font-size: 12px; color: var(--color-danger); border-color: var(--color-border); text-decoration: none; border-radius: 6px;">
+                {{ call .T "common.logout" }}
+            </a>
+        </div>
     </div>
 </header>
+
+<!-- OVERLAY BACKDROP -->
+<div id="admin-drawer-backdrop" class="drawer-backdrop" onclick="closeAdminDrawer()"></div>
+
+<!-- MOBILE OFF-CANVAS DRAWER -->
+<aside id="admin-drawer" class="admin-drawer" aria-label="Menu Admin">
+    <div class="worker-drawer-header">
+        <div style="display: inline-flex; align-items: baseline; gap: 6px;">
+            <span style="font-size: 16px; font-weight: 800; color: var(--color-text);">{{ call .T "app.name" }}</span>
+            <span class="badge badge-muted" style="font-size: 10px;">{{ call .T "admin.role" }}</span>
+        </div>
+        <button type="button" class="worker-drawer-close" onclick="closeAdminDrawer()" aria-label="Tutup">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+        </button>
+    </div>
+
+    <div class="worker-drawer-body">
+        <!-- Navigasi Utama -->
+        <div class="worker-drawer-section">
+            <div class="worker-drawer-section-title">Menu Navigasi</div>
+            <nav style="display: flex; flex-direction: column;">
+                <a href="/admin" class="worker-drawer-link{{if eq .ActiveNav "dashboard"}} active{{end}}">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+                        <rect width="7" height="9" x="3" y="3" rx="1"></rect>
+                        <rect width="7" height="5" x="14" y="3" rx="1"></rect>
+                        <rect width="7" height="9" x="14" y="12" rx="1"></rect>
+                        <rect width="7" height="5" x="3" y="16" rx="1"></rect>
+                    </svg>
+                    <span>{{ call .T "admin.dashboard" }}</span>
+                </a>
+                <a href="/admin/campaigns" class="worker-drawer-link{{if eq .ActiveNav "campaigns"}} active{{end}}">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="m3 11 18-5v12L3 13v-2z"></path>
+                        <path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"></path>
+                    </svg>
+                    <span>{{ call .T "admin.campaigns" }}</span>
+                </a>
+                <a href="/admin/workers" class="worker-drawer-link{{if eq .ActiveNav "workers"}} active{{end}}">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path>
+                        <circle cx="9" cy="7" r="4"></circle>
+                        <path d="M22 21v-2a4 4 0 0 0-3-3.87"></path>
+                        <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                    </svg>
+                    <span>{{ call .T "admin.workers" }}</span>
+                </a>
+                <a href="/admin/withdrawals" class="worker-drawer-link{{if eq .ActiveNav "withdrawals"}} active{{end}}">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+                        <rect width="20" height="14" x="2" y="5" rx="2"></rect>
+                        <line x1="2" x2="22" y1="10" y2="10"></line>
+                    </svg>
+                    <span>{{ call .T "admin.withdrawals" }}</span>
+                </a>
+                <a href="/admin/settings" class="worker-drawer-link{{if eq .ActiveNav "settings"}} active{{end}}">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="3"></circle>
+                        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                    </svg>
+                    <span>{{ call .T "admin.settings" }}</span>
+                </a>
+                <a href="/admin/tickets" class="worker-drawer-link{{if eq .ActiveNav "tickets"}} active{{end}}">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                    </svg>
+                    <span>{{ call .T "admin.tickets" }}</span>
+                </a>
+                <a href="/admin/broadcasts" class="worker-drawer-link{{if eq .ActiveNav "broadcasts"}} active{{end}}">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M4.9 19.1C1 15.2 1 8.8 4.9 4.9"></path>
+                        <path d="M7.8 16.2c-2.3-2.3-2.3-6.1 0-8.5"></path>
+                        <circle cx="12" cy="12" r="2"></circle>
+                        <path d="M16.2 7.8c2.3 2.3 2.3 6.1 0 8.5"></path>
+                        <path d="M19.1 4.9C23 8.8 23 15.1 19.1 19.1"></path>
+                    </svg>
+                    <span>{{ call .T "admin.broadcasts" }}</span>
+                </a>
+            </nav>
+        </div>
+
+        <hr style="border: none; border-top: 1px solid var(--color-border); margin: 20px 0;">
+
+        <!-- Pengaturan Bahasa -->
+        <div class="worker-drawer-section">
+            <div class="worker-drawer-section-title">{{ call .T "worker.language_title" }}</div>
+            <form method="POST" action="/language">
+                <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+                <div class="worker-segment-group">
+                    <button type="submit" name="lang" value="id" class="worker-segment-btn{{if eq .Lang "id"}} active{{end}}">
+                        Indonesia
+                    </button>
+                    <button type="submit" name="lang" value="en" class="worker-segment-btn{{if eq .Lang "en"}} active{{end}}">
+                        English
+                    </button>
+                    <button type="submit" name="lang" value="zh" class="worker-segment-btn{{if eq .Lang "zh"}} active{{end}}">
+                        中文
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <hr style="border: none; border-top: 1px solid var(--color-border); margin: 20px 0;">
+
+        <!-- Mode Tema -->
+        <div class="worker-drawer-section">
+            <div class="worker-drawer-section-title">{{ call .T "worker.theme_title" }}</div>
+            <form method="POST" action="/theme">
+                <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+                <div class="worker-segment-group">
+                    <button type="submit" name="theme" value="auto" class="worker-segment-btn{{if or (eq .Theme "") (eq .Theme "auto")}} active{{end}}">
+                        {{ call .T "theme.auto" }}
+                    </button>
+                    <button type="submit" name="theme" value="light" class="worker-segment-btn{{if eq .Theme "light"}} active{{end}}">
+                        {{ call .T "theme.light" }}
+                    </button>
+                    <button type="submit" name="theme" value="dark" class="worker-segment-btn{{if eq .Theme "dark"}} active{{end}}">
+                        {{ call .T "theme.dark" }}
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <hr style="border: none; border-top: 1px solid var(--color-border); margin: 20px 0;">
+
+        <!-- Keluar Akun -->
+        <a href="/logout" class="btn btn-secondary" style="display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; box-sizing: border-box; color: var(--color-danger); border-color: var(--color-danger); text-decoration: none; padding: 10px; font-size: 13px; font-weight: 600;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                <polyline points="16 17 21 12 16 7"></polyline>
+                <line x1="21" y1="12" x2="9" y2="12"></line>
+            </svg>
+            <span>{{ call .T "common.logout" }}</span>
+        </a>
+    </div>
+</aside>
+
+<script>
+function toggleAdminDrawer() {
+    var drawer = document.getElementById('admin-drawer');
+    var backdrop = document.getElementById('admin-drawer-backdrop');
+    if (!drawer) return;
+    if (drawer.classList.contains('is-open')) {
+        closeAdminDrawer();
+    } else {
+        drawer.classList.add('is-open');
+        if (backdrop) backdrop.classList.add('is-open');
+    }
+}
+
+function closeAdminDrawer() {
+    var drawer = document.getElementById('admin-drawer');
+    var backdrop = document.getElementById('admin-drawer-backdrop');
+    if (drawer) drawer.classList.remove('is-open');
+    if (backdrop) backdrop.classList.remove('is-open');
+}
+
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        closeAdminDrawer();
+    }
+});
+</script>
 {{end}}
