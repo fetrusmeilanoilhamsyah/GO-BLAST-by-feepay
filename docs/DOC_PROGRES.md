@@ -10,9 +10,9 @@ Nomor tahap mengacu ke tabel "Daftar Tahap" di bawah.
 ## Posisi sekarang
 
 - **Fase**: 1 (MVP)
-- **Terakhir dikerjakan**: Tahap 12 selesai dan diverifikasi.
-- **Sedang dikerjakan**: Menunggu arahan pemilik proyek untuk tahap berikutnya (Tahap 13. Halaman publik).
-- **Blocker**: tidak ada.
+- **Terakhir dikerjakan**: Tahap A selesai (Bug Fix — query nomor tersedia, bug deskripsi penarikan, email opsional).
+- **Sedang dikerjakan**: Menunggu arahan pemilik untuk Tahap B (sistem mata uang IDR/USDT baru) dan Tahap C (UX notifikasi lonceng).
+- **Blocker**: Tidak ada. Keputusan sistem mata uang sudah diambil pemilik (lihat catatan keputusan).
 
 
 ---
@@ -93,6 +93,13 @@ Terbaru di atas. Agen menambah baris di sini setiap ada keputusan baru, dari pem
 
 | Tanggal | Keputusan | Alasan | Oleh |
 |---|---|---|---|
+| 2026-10-13 | Sistem mata uang baru: semua saldo pekerja dalam IDR, konversi IDR→USDT dilakukan manual pekerja via kalkulator di panel, kurs diatur admin manual (`rate_idr_to_usdt`), tidak ada auto exchange rate | Menyeragamkan denominasi saldo agar tidak ada pekerja yang salah mata uang, konversi eksplisit mencegah manipulasi | pemilik |
+| 2026-10-13 | Database dev di-reset/purge untuk data penarikan dan saldo USDT lama yang tidak kompatibel dengan sistem baru | Mulai fresh menghindari data corrupt dari sistem lama | pemilik |
+| 2026-10-13 | Tabel `broadcasts` dipertahankan untuk admin membuat broadcast, tapi hasilnya masuk ke tabel `notifications` sebagai insert ke semua pekerja — bukan banner terpisah | Simplifikasi UX, semua notifikasi terpusat di lonceng | pemilik |
+| 2026-10-13 | Email pekerja menjadi opsional (nullable) sejak migrasi 0015; username tetap wajib; login bisa via username saja | Mempermudah pekerja internasional yang tidak mau isi email, mengurangi friction daftar | pemilik |
+| 2026-10-13 | Query nomor tersedia di panel pekerja difilter hanya kampanye berstatus `berjalan` (bukan semua status) | Fix bug: kampanye dijeda/selesai tidak boleh ikut dihitung dalam counter tersedia | agen |
+| 2026-10-13 | Sistem notifikasi lonceng: tabel `notifications` baru (migrasi 0015) menampung broadcast, balasan tiket, dan notifikasi sistem — menggantikan banner broadcast di dashboard pekerja | UX lebih natural, pekerja tidak terganggu banner yang menempel terus, semua notifikasi terpusat | pemilik dan agen |
+
 | 2026-10-12 | Fitur Jeda Kampanye (`POST /admin/campaigns/{id}/pause`) & Preservasi `started_at` saat Lanjutkan (`POST /admin/campaigns/{id}/start`) | Memberikan kontrol penuh bagi admin untuk menghentikan sementara pengiriman kampanye yang sedang berjalan tanpa menghapus atau menyelesaikan permanen. Sisa nomor aman di database dan kampanye dapat dilanjutkan kapan saja | pemilik dan agen |
 | 2026-10-12 | Standarisasi Navbar Admin: Mobile Hamburger Drawer & Desktop Single-bar Topbar | Menyelaraskan UX panel admin dengan panel pekerja/publik, menghilangkan bar tab horizontal yang terpotong di layar HP Android/iOS, dan menampilkan drawer vertikal lengkap berikon SVG serta bilah desktop yang rapi | pemilik dan agen |
 | 2026-10-12 | Keputusan #5: Dompet admin murni untuk pembukuan dan pemantauan sisa modal per mata uang (bebas upload nomor tanpa memblokir saldo); kunci kurs_acuan tidak dibuat | Menjaga fleksibilitas alur upload campaign agar tidak terkunci/macet, dan mengelola saldo modal IDR & USDT secara terpisah | pemilik |
@@ -194,6 +201,8 @@ Langkah uji sambung dan putus satu nomor cadangan:
 ## Log kerja
 
 Terbaru di atas. Format: `tanggal: ringkasan satu baris` (Log Tahap 0 - 5 diarsipkan di [ARSIP_PROGRES.md](ARSIP_PROGRES.md)).
+
+- 2026-10-13: **Tahap A selesai** — Bug Fix pra-produksi: (1) Fix query `availableNumbers` di panel pekerja agar hanya menghitung nomor dari kampanye berstatus `berjalan` — kampanye dijeda/selesai tidak masuk hitungan; (2) Fix tampilan Destination saat dekripsi gagal di panel admin penarikan — tampilkan pesan informatif berwarna merah "Enkripsi lama — tidak dapat dibaca" bukan teks generik; (3) Email pekerja dijadikan opsional — backend menangani `NULL` email, template form register dihapus `required`, login diperbarui agar aman dengan email NULL; (4) Migrasi 0015: `users.email` nullable, tabel `notifications` baru untuk sistem lonceng, kolom reply di `support_tickets`; (5) DOC_SKEMA.md dan DOC_PROGRES.md diperbarui. Build dan seluruh tes lulus 100% (13 paket, 0 gagal).
 
 - 2026-10-12: Koreksi integritas buku besar dan campaign: migrasi 0014_restore_strict_ledger.sql (trigger ketat prevent_ledger_update_delete tolak semua UPDATE & DELETE, FK ON DELETE RESTRICT, kolom campaigns.archived_at), hapus campaign dibatasi hanya draf tanpa nomor terkirim dan tanpa referensi ledger, rute baru arsip campaign POST /admin/campaigns/{id}/archive, filter daftar campaign (archived disembunyikan default, show_archived=1), tolak aksi upload nomor/edit pada campaign terarsip, pembersihan testutil aman trigger, DOC_SKEMA diperbarui, dan seluruh tes integrasi lulus 100% (0 skip).
 - 2026-10-12: Penguatan keamanan tes & kunci enkripsi: seluruh tes database beralih hanya membaca TEST_DATABASE_URL tanpa skip (0 skip), validasi nama database berakhiran '_test' dan beda dari DATABASE_URL via helper testutil.TestDB & testutil.TestDBInstance, isolasi pembersihan t.Cleanup per-tes tanpa TRUNCATE/DELETE blanket, ENCRYPTION_KEY wajib tanpa fallback bawaan di config & withdraw, validasi tepat 32 byte, dan suite tes enkripsi withdraw baru (70 top-level tes lulus, 0 gagal, 0 lewati).

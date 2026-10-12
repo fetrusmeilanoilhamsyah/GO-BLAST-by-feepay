@@ -18,12 +18,21 @@ Dokumen ini menjelaskan struktur database dan relasi antar tabel untuk aplikasi 
 
 ### `users`
 Menyimpan data pengguna (admin dan pekerja).
-- `email`: Unik dan huruf kecil.
+- `email`: Unik dan huruf kecil. **Nullable sejak migrasi 0015** — email opsional saat pendaftaran pekerja. Admin selalu punya email.
 - `password_hash`: Kata sandi yang di-hash.
 - `role`: `admin` atau `worker`.
-- `currency`: Mata uang preferensi (`IDR` atau `USDT`).
+- `currency`: Mata uang preferensi (`IDR` atau `USDT`). Default `IDR`.
 - `referral_code`: Kode referral unik.
 - `referred_by`: Merujuk ke `users(id)` orang yang mengajak (nullable).
+
+### `notifications`
+Notifikasi sistem untuk pekerja (lonceng di panel pekerja). Ditambahkan migrasi 0015.
+- `user_id`: Penerima notifikasi (pekerja).
+- `title`: Judul singkat notifikasi.
+- `message`: Isi notifikasi.
+- `kind`: Jenis — `broadcast` (dari admin), `ticket_reply` (balasan tiket), `system` (sistem).
+- `ref_id`: ID referensi ke entitas asal (opsional, misal ID tiket).
+- `read_at`: NULL = belum dibaca. Diisi saat dibaca.
 
 ### `web_sessions`
 Menyimpan sesi login dari web.

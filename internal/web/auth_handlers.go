@@ -26,17 +26,19 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 
 		var id int64
 		var role, hash, lang string
+		// Email bisa NULL (opsional saat daftar), query cocok via username atau email
 		err := s.DB.Pool.QueryRow(context.Background(), `
 			SELECT id, role, password_hash, language 
 			FROM users 
-			WHERE (LOWER(email) = LOWER($1) OR LOWER(username) = LOWER($1)) AND status = 'active'
+			WHERE (email IS NOT NULL AND LOWER(email) = LOWER($1) OR LOWER(username) = LOWER($1)) AND status = 'active'
 		`, identifier).Scan(&id, &role, &hash, &lang)
 
 		if err != nil {
 			s.logAudit(nil, "login_failed", "users", identifier, "invalid identifier or inactive")
-			s.renderLogin(w, r, "Email/Username atau kata sandi salah")
+			s.renderLogin(w, r, "Username/Email atau kata sandi salah")
 			return
 		}
+
 
 		match, err := auth.VerifyPassword(password, hash)
 		if err != nil || !match {
@@ -134,9 +136,11 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		referralCode := strings.TrimSpace(r.FormValue("referral_code"))
 
 		if username == "" {
-			parts := strings.Split(email, "@")
-			if len(parts) > 0 {
-				username = strings.ToLower(parts[0])
+			if email != "" {
+				parts := strings.Split(email, "@")
+				if len(parts) > 0 {
+					username = strings.ToLower(parts[0])
+				}
 			}
 		}
 
@@ -172,13 +176,19 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 
 		displayName := username
 
+		// Email opsional: simpan NULL jika kosong
+		var emailVal *string
+		if email != "" {
+			emailVal = &email
+		}
+
 		_, err = s.DB.Pool.Exec(context.Background(), `
 			INSERT INTO users (email, username, password_hash, role, display_name, language, currency, referral_code, referred_by)
 			VALUES ($1, $2, $3, 'worker', $4, $5, 'IDR', $6, $7)
-		`, email, username, hash, displayName, lang, newRefCode, referredBy)
+		`, emailVal, username, hash, displayName, lang, newRefCode, referredBy)
 
 		if err != nil {
-			s.renderRegister(w, r, "Email atau Username sudah terdaftar")
+			s.renderRegister(w, r, "Username sudah terdaftar. Coba username lain.")
 			return
 		}
 

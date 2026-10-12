@@ -138,9 +138,15 @@ func (s *Server) HandleWorkerHome(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// 8. Sisa nomor tersedia (angka agregat sistem)
+	// 8. Sisa nomor tersedia — hanya kampanye berstatus 'berjalan'
+	// Kampanye dijeda atau selesai tidak dihitung agar angka akurat
 	var availableNumbers int64
-	_ = s.DB.Pool.QueryRow(ctx, "SELECT COUNT(*) FROM campaign_numbers WHERE status = 'tersedia'").Scan(&availableNumbers)
+	_ = s.DB.Pool.QueryRow(ctx, `
+		SELECT COUNT(*)
+		FROM campaign_numbers cn
+		JOIN campaigns c ON c.id = cn.campaign_id
+		WHERE cn.status = 'tersedia' AND c.status = 'berjalan'
+	`).Scan(&availableNumbers)
 
 	// 9. Daftar akun WhatsApp milik pekerja
 	var accounts []WorkerAccountSummaryView
