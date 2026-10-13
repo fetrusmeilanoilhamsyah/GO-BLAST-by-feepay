@@ -18,6 +18,7 @@ import (
 	"github.com/nyaruka/phonenumbers"
 	"goblast/internal/auth"
 	"goblast/internal/campaign"
+	"goblast/internal/config"
 	"goblast/internal/engine"
 	"goblast/internal/i18n"
 	"goblast/internal/money"
@@ -1703,6 +1704,13 @@ func (s *Server) HandleAdminBroadcastDeletePOST(w http.ResponseWriter, r *http.R
 // --- Panel Maintenance & Health Check ---
 // =====================================================================
 
+type HealthCheckItem struct {
+	Key     string `json:"key"`
+	Name    string `json:"name"`
+	Status  string `json:"status"` // "ok", "peringatan", "gagal"
+	Message string `json:"message"`
+}
+
 type MaintenanceHealthViewData struct {
 	Lang                  string
 	Title                 string
@@ -1712,6 +1720,10 @@ type MaintenanceHealthViewData struct {
 	Message               string
 	Error                 string
 	MaintenanceMode       bool
+	LockWithdrawals       bool
+	LockLinking           bool
+	LockEngine            bool
+	LockMessage           string
 	DBOnline              bool
 	DBPingLatency         string
 	DBAcquiredConns       int32
@@ -1725,6 +1737,7 @@ type MaintenanceHealthViewData struct {
 	AvailableNumbersCount int64
 	EngineStatus          string
 	RecentAuditLogs       []AuditLogRow
+	HealthChecks          []HealthCheckItem
 	T                     func(string) string
 }
 
@@ -1737,6 +1750,341 @@ type AuditLogRow struct {
 	Meta      string
 	IP        string
 	CreatedAt string
+}
+
+// RunHealthChecks menjalankan 9 pemeriksaan kesehatan sistem komprehensif.
+func (s *Server) RunHealthChecks(ctx context.Context) []HealthCheckItem {
+	var results []HealthCheckItem
+
+	// 1. Database dan latensi
+	startPing := time.Now()
+	pingErr := s.DB.Pool.Ping(ctx)
+	pingLatency := time.Since(startPing)
+	if pingErr != nil {
+		results = append(results, HealthCheckItem{
+			Key:     "db_latency",
+			Name:    "Database & Latensi",
+			Status:  "gagal",
+			Message: fmt.Sprintf("Koneksi database terputus: %s", pingErr.Error()),
+		})
+	} else if pingLatency > 500*time.Millisecond {
+		results = append(results, HealthCheckItem{
+			Key:     "db_latency",
+			Name:    "Database & Latensi",
+			Status:  "peringatan",
+			Message: fmt.Sprintf("Latensi database tinggi (%.2f ms)", float64(pingLatency.Microseconds())/1000.0),
+		})
+	} else {
+		results = append(results, HealthCheckItem{
+			Key:     "db_latency",
+			Name:    "Database & Latensi",
+			Status:  "ok",
+			Message: fmt.Sprintf("Koneksi online, latensi normal (%.2f ms)", float64(pingLatency.Microseconds())/1000.0),
+		})
+	}
+
+	// 2. Versi migrasi
+	var migrationVer int64
+	var isApplied bool
+	errMig := s.DB.Pool.QueryRow(ctx, "SELECT version_id, is_applied FROM goose_db_version ORDER BY id DESC LIMIT 1").Scan(&migrationVer, &isApplied)
+	if errMig != nil {
+		results = append(results, HealthCheckItem{
+			Key:     "migration_version",
+			Name:    "Versi Migrasi Skema",
+			Status:  "gagal",
+			Message: "Tabel versi goose_db_version tidak ditemukan",
+		})
+	} else if !isApplied {
+		results = append(results, HealthCheckItem{
+			Key:     "migration_version",
+			Name:    "Versi Migrasi Skema",
+			Status:  "gagal",
+			Message: fmt.Sprintf("Migrasi versi %d belum selesai diterapkan", migrationVer),
+		})
+	} else if migrationVer < 16 {
+		results = append(results, HealthCheckItem{
+			Key:     "migration_version",
+			Name:    "Versi Migrasi Skema",
+			Status:  "peringatan",
+			Message: fmt.Sprintf("Versi skema saat ini %d (tersedia versi lebih baru)", migrationVer),
+		})
+	} else {
+		results = append(results, HealthCheckItem{
+			Key:     "migration_version",
+			Name:    "Versi Migrasi Skema",
+			Status:  "ok",
+			Message: fmt.Sprintf("Skema database versi %d (terbaru)", migrationVer),
+		})
+	}
+
+	// 3. Mesin kirim (akun bekerja, pengiriman sukses terakhir, persentase gagal 15 menit)
+	runningWorkers := 0
+	if s.WorkCtrl != nil {
+		runningWorkers = s.WorkCtrl.RunningCount()
+	}
+	var lastSentAt *time.Time
+	_ = s.DB.Pool.QueryRow(ctx, "SELECT MAX(sent_at) FROM campaign_numbers WHERE status = 'terkirim'").Scan(&lastSentAt)
+	var sent15, fail15 int64
+	_ = s.DB.Pool.QueryRow(ctx, `
+		SELECT COUNT(CASE WHEN status = 'terkirim' THEN 1 END),
+		       COUNT(CASE WHEN status = 'gagal' THEN 1 END)
+		FROM campaign_numbers
+		WHERE sent_at >= NOW() - INTERVAL '15 minutes'
+	`).Scan(&sent15, &fail15)
+	total15 := sent15 + fail15
+	failRate := 0
+	if total15 > 0 {
+		failRate = int((fail15 * 100) / total15)
+	}
+	lastSentStr := "belum ada pengiriman"
+	if lastSentAt != nil {
+		lastSentStr = lastSentAt.Format("02 Jan 15:04:05")
+	}
+	if failRate > 50 {
+		results = append(results, HealthCheckItem{
+			Key:     "engine",
+			Name:    "Mesin Pengiriman Pesan",
+			Status:  "gagal",
+			Message: fmt.Sprintf("%d akun aktif, tingkat gagal 15 mnt tinggi: %d%% (%d/%d), sukses terakhir: %s", runningWorkers, failRate, fail15, total15, lastSentStr),
+		})
+	} else if failRate > 20 {
+		results = append(results, HealthCheckItem{
+			Key:     "engine",
+			Name:    "Mesin Pengiriman Pesan",
+			Status:  "peringatan",
+			Message: fmt.Sprintf("%d akun aktif, tingkat gagal 15 mnt: %d%% (%d/%d), sukses terakhir: %s", runningWorkers, failRate, fail15, total15, lastSentStr),
+		})
+	} else {
+		results = append(results, HealthCheckItem{
+			Key:     "engine",
+			Name:    "Mesin Pengiriman Pesan",
+			Status:  "ok",
+			Message: fmt.Sprintf("%d akun aktif bekerja, kegagalan 15 mnt: %d%%, sukses terakhir: %s", runningWorkers, failRate, lastSentStr),
+		})
+	}
+
+	// 4. Sesi WhatsApp (terhubung dibanding terdaftar)
+	var totalWA, connectedWA int64
+	_ = s.DB.Pool.QueryRow(ctx, "SELECT COUNT(*), COUNT(CASE WHEN status = 'terhubung' THEN 1 END) FROM wa_accounts").Scan(&totalWA, &connectedWA)
+	if totalWA == 0 {
+		results = append(results, HealthCheckItem{
+			Key:     "wa_sessions",
+			Name:    "Sesi Akun WhatsApp",
+			Status:  "ok",
+			Message: "Belum ada akun WhatsApp terdaftar",
+		})
+	} else if connectedWA == 0 {
+		results = append(results, HealthCheckItem{
+			Key:     "wa_sessions",
+			Name:    "Sesi Akun WhatsApp",
+			Status:  "peringatan",
+			Message: fmt.Sprintf("0 dari %d akun WhatsApp terhubung aktif", totalWA),
+		})
+	} else {
+		results = append(results, HealthCheckItem{
+			Key:     "wa_sessions",
+			Name:    "Sesi Akun WhatsApp",
+			Status:  "ok",
+			Message: fmt.Sprintf("%d dari %d akun WhatsApp terhubung aktif", connectedWA, totalWA),
+		})
+	}
+
+	// 5. Nomor menggantung (status dikirim lebih lama dari ClaimTimeoutSeconds)
+	claimTimeout := engine.DefaultClaimTimeoutSeconds
+	var ctJSON string
+	if err := s.DB.Pool.QueryRow(ctx, "SELECT value::text FROM settings WHERE key = 'claim_timeout_seconds'").Scan(&ctJSON); err == nil {
+		var ctVal int
+		if err := json.Unmarshal([]byte(ctJSON), &ctVal); err == nil && ctVal > 0 {
+			claimTimeout = ctVal
+		}
+	}
+	var staleCount int64
+	errStale := s.DB.Pool.QueryRow(ctx, `
+		SELECT COUNT(*) FROM campaign_numbers
+		WHERE status = 'dikirim' AND claimed_at < NOW() - make_interval(secs => $1)
+	`, claimTimeout).Scan(&staleCount)
+	if errStale != nil {
+		results = append(results, HealthCheckItem{
+			Key:     "stale_numbers",
+			Name:    "Nomor Menggantung",
+			Status:  "gagal",
+			Message: "Gagal memeriksa nomor menggantung: " + errStale.Error(),
+		})
+	} else if staleCount > 0 {
+		results = append(results, HealthCheckItem{
+			Key:     "stale_numbers",
+			Name:    "Nomor Menggantung",
+			Status:  "gagal",
+			Message: fmt.Sprintf("Ditemukan %d nomor menggantung (dikirim > %d detik)", staleCount, claimTimeout),
+		})
+	} else {
+		results = append(results, HealthCheckItem{
+			Key:     "stale_numbers",
+			Name:    "Nomor Menggantung",
+			Status:  "ok",
+			Message: "Tidak ada nomor menggantung (semua klaim aktif valid)",
+		})
+	}
+
+	// 6. Penarikan menunggu lebih dari 24 jam
+	var overdueWithdrawals, totalPendingWithdrawals int64
+	_ = s.DB.Pool.QueryRow(ctx, `
+		SELECT COUNT(CASE WHEN requested_at < NOW() - INTERVAL '24 hours' THEN 1 END),
+		       COUNT(*)
+		FROM withdrawals
+		WHERE status = 'menunggu'
+	`).Scan(&overdueWithdrawals, &totalPendingWithdrawals)
+	if overdueWithdrawals > 0 {
+		results = append(results, HealthCheckItem{
+			Key:     "pending_withdrawals",
+			Name:    "Antrean Penarikan Dana",
+			Status:  "peringatan",
+			Message: fmt.Sprintf("%d penarikan menunggu > 24 jam (total antrean: %d)", overdueWithdrawals, totalPendingWithdrawals),
+		})
+	} else {
+		results = append(results, HealthCheckItem{
+			Key:     "pending_withdrawals",
+			Name:    "Antrean Penarikan Dana",
+			Status:  "ok",
+			Message: fmt.Sprintf("Semua penarikan tepat waktu (total antrean: %d)", totalPendingWithdrawals),
+		})
+	}
+
+	// 7. Kurs USDT basi
+	var rateVal int64
+	var rateRaw, updatedRaw string
+	_ = s.DB.Pool.QueryRow(ctx, "SELECT value::text FROM settings WHERE key = 'rate_idr_to_usdt'").Scan(&rateRaw)
+	_ = json.Unmarshal([]byte(rateRaw), &rateVal)
+	_ = s.DB.Pool.QueryRow(ctx, "SELECT value::text FROM settings WHERE key = 'rate_idr_to_usdt_updated_at'").Scan(&updatedRaw)
+	updatedRaw = strings.Trim(updatedRaw, `"`)
+	if rateVal <= 0 {
+		results = append(results, HealthCheckItem{
+			Key:     "usdt_rate",
+			Name:    "Kurs Konversi USDT",
+			Status:  "gagal",
+			Message: "Kurs USDT belum diatur admin",
+		})
+	} else if updatedRaw == "" || updatedRaw == "null" {
+		results = append(results, HealthCheckItem{
+			Key:     "usdt_rate",
+			Name:    "Kurs Konversi USDT",
+			Status:  "peringatan",
+			Message: "Timestamp pembaruan kurs USDT belum tercatat",
+		})
+	} else {
+		tUpdated, errT := time.Parse(time.RFC3339, updatedRaw)
+		if errT != nil {
+			results = append(results, HealthCheckItem{
+				Key:     "usdt_rate",
+				Name:    "Kurs Konversi USDT",
+				Status:  "peringatan",
+				Message: "Format waktu kurs tidak valid",
+			})
+		} else {
+			ageHours := time.Since(tUpdated).Hours()
+			if ageHours > float64(config.KursMaxAgeHours) {
+				results = append(results, HealthCheckItem{
+					Key:     "usdt_rate",
+					Name:    "Kurs Konversi USDT",
+					Status:  "peringatan",
+					Message: fmt.Sprintf("Kurs USDT kedaluwarsa (diperbarui %.1f jam lalu, batas: %d jam)", ageHours, config.KursMaxAgeHours),
+				})
+			} else {
+				results = append(results, HealthCheckItem{
+					Key:     "usdt_rate",
+					Name:    "Kurs Konversi USDT",
+					Status:  "ok",
+					Message: fmt.Sprintf("Kurs Rp %s/USDT segar (diperbarui %.1f jam lalu)", money.FormatIDR(rateVal), ageHours),
+				})
+			}
+		}
+	}
+
+	// 8. Uji enkripsi lalu dekripsi dengan kunci aktif
+	probe := "health_check_probe"
+	cipher, errEnc := withdraw.EncryptDestination(probe, s.EncryptionKey)
+	if errEnc != nil {
+		results = append(results, HealthCheckItem{
+			Key:     "encryption",
+			Name:    "Kunci Enkripsi Data",
+			Status:  "gagal",
+			Message: "Uji enkripsi AES-256-GCM gagal: " + errEnc.Error(),
+		})
+	} else {
+		plain, errDec := withdraw.DecryptDestination(cipher, s.EncryptionKey)
+		if errDec != nil {
+			results = append(results, HealthCheckItem{
+				Key:     "encryption",
+				Name:    "Kunci Enkripsi Data",
+				Status:  "gagal",
+				Message: "Uji dekripsi AES-256-GCM gagal: " + errDec.Error(),
+			})
+		} else if plain != probe {
+			results = append(results, HealthCheckItem{
+				Key:     "encryption",
+				Name:    "Kunci Enkripsi Data",
+				Status:  "gagal",
+				Message: "Hasil dekripsi tidak sesuai dengan teks awal",
+			})
+		} else {
+			results = append(results, HealthCheckItem{
+				Key:     "encryption",
+				Name:    "Kunci Enkripsi Data",
+				Status:  "ok",
+				Message: "Kunci aktif AES-256-GCM valid dan berhasil diverifikasi",
+			})
+		}
+	}
+
+	// 9. Rekonsiliasi buku besar
+	var sentCount, wageCount int64
+	_ = s.DB.Pool.QueryRow(ctx, "SELECT COUNT(*) FROM campaign_numbers WHERE status = 'terkirim'").Scan(&sentCount)
+	_ = s.DB.Pool.QueryRow(ctx, "SELECT COUNT(*) FROM ledger_entries WHERE kind = 'upah'").Scan(&wageCount)
+	diffWage := sentCount != wageCount
+
+	var negBalanceCount int64
+	_ = s.DB.Pool.QueryRow(ctx, "SELECT COUNT(*) FROM (SELECT user_id, currency, SUM(amount) AS bal FROM ledger_entries GROUP BY user_id, currency HAVING SUM(amount) < 0) sub").Scan(&negBalanceCount)
+
+	var globalSumIDR, usersSumIDR int64
+	_ = s.DB.Pool.QueryRow(ctx, "SELECT COALESCE(SUM(amount), 0) FROM ledger_entries WHERE currency = 'IDR'").Scan(&globalSumIDR)
+	_ = s.DB.Pool.QueryRow(ctx, "SELECT COALESCE(SUM(sub.s), 0) FROM (SELECT SUM(amount) AS s FROM ledger_entries WHERE currency = 'IDR' GROUP BY user_id) sub").Scan(&usersSumIDR)
+
+	var globalSumUSDT, usersSumUSDT int64
+	_ = s.DB.Pool.QueryRow(ctx, "SELECT COALESCE(SUM(amount), 0) FROM ledger_entries WHERE currency = 'USDT'").Scan(&globalSumUSDT)
+	_ = s.DB.Pool.QueryRow(ctx, "SELECT COALESCE(SUM(sub.s), 0) FROM (SELECT SUM(amount) AS s FROM ledger_entries WHERE currency = 'USDT' GROUP BY user_id) sub").Scan(&usersSumUSDT)
+	diffSum := (globalSumIDR != usersSumIDR) || (globalSumUSDT != usersSumUSDT)
+
+	if negBalanceCount > 0 {
+		results = append(results, HealthCheckItem{
+			Key:     "ledger_reconciliation",
+			Name:    "Rekonsiliasi Buku Besar",
+			Status:  "gagal",
+			Message: fmt.Sprintf("Terdeteksi %d akun pekerja bersaldo negatif", negBalanceCount),
+		})
+	} else if diffWage {
+		results = append(results, HealthCheckItem{
+			Key:     "ledger_reconciliation",
+			Name:    "Rekonsiliasi Buku Besar",
+			Status:  "gagal",
+			Message: fmt.Sprintf("Selisih nomor terkirim vs upah (%d terkirim != %d upah)", sentCount, wageCount),
+		})
+	} else if diffSum {
+		results = append(results, HealthCheckItem{
+			Key:     "ledger_reconciliation",
+			Name:    "Rekonsiliasi Buku Besar",
+			Status:  "gagal",
+			Message: "Total buku besar global tidak cocok dengan akumulasi per pekerja",
+		})
+	} else {
+		results = append(results, HealthCheckItem{
+			Key:     "ledger_reconciliation",
+			Name:    "Rekonsiliasi Buku Besar",
+			Status:  "ok",
+			Message: fmt.Sprintf("Buku besar seimbang: %d upah cocok terkirim, 0 saldo negatif, total mutasi konsisten", wageCount),
+		})
+	}
+
+	return results
 }
 
 func (s *Server) HandleAdminMaintenanceGET(w http.ResponseWriter, r *http.Request) {
@@ -1800,6 +2148,10 @@ func (s *Server) HandleAdminMaintenanceGET(w http.ResponseWriter, r *http.Reques
 		}
 	}
 
+	// 6. Kunci Sistem & Hasil Pemeriksaan Kesehatan
+	locks := s.GetSystemLocks(ctx)
+	healthChecks := s.RunHealthChecks(ctx)
+
 	viewData := MaintenanceHealthViewData{
 		Lang:                  lang,
 		Title:                 "Pemeliharaan & Diagnostik Sistem - GO BLAST",
@@ -1809,6 +2161,10 @@ func (s *Server) HandleAdminMaintenanceGET(w http.ResponseWriter, r *http.Reques
 		Message:               r.URL.Query().Get("msg"),
 		Error:                 r.URL.Query().Get("err"),
 		MaintenanceMode:       s.IsMaintenanceMode(ctx),
+		LockWithdrawals:       locks.LockWithdrawals,
+		LockLinking:           locks.LockLinking,
+		LockEngine:            locks.LockEngine,
+		LockMessage:           locks.LockMessage,
 		DBOnline:              dbOnline,
 		DBPingLatency:         pingLatency,
 		DBAcquiredConns:       stat.AcquiredConns(),
@@ -1822,6 +2178,7 @@ func (s *Server) HandleAdminMaintenanceGET(w http.ResponseWriter, r *http.Reques
 		AvailableNumbersCount: availNums,
 		EngineStatus:          engineStatus,
 		RecentAuditLogs:       auditLogs,
+		HealthChecks:          healthChecks,
 		T: func(key string) string {
 			return i18n.T(lang, key)
 		},
@@ -1847,11 +2204,92 @@ func (s *Server) HandleAdminMaintenanceTogglePOST(w http.ResponseWriter, r *http
 		return
 	}
 
+	s.InvalidateSystemLockCache()
+
 	statusMsg := "Mode+pemeliharaan+berhasil+diaktifkan+(pekerja+dialihkan)"
 	if !newMode {
 		statusMsg = "Mode+pemeliharaan+berhasil+dinonaktifkan+(layanan+normal)"
 	}
 	http.Redirect(w, r, "/admin/maintenance?msg="+statusMsg, http.StatusSeeOther)
+}
+
+func (s *Server) HandleAdminMaintenanceLocksPOST(w http.ResponseWriter, r *http.Request) {
+	admin, ok := currentUser(r)
+	if !ok || admin.Role != "admin" {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+
+	ctx := r.Context()
+	ip := getIP(r)
+
+	lockWithdrawals := r.FormValue("lock_withdrawals") == "1" || r.FormValue("lock_withdrawals") == "true" || r.FormValue("lock_withdrawals") == "on"
+	lockLinking := r.FormValue("lock_linking") == "1" || r.FormValue("lock_linking") == "true" || r.FormValue("lock_linking") == "on"
+	lockEngine := r.FormValue("lock_engine") == "1" || r.FormValue("lock_engine") == "true" || r.FormValue("lock_engine") == "on"
+	lockMessage := strings.TrimSpace(r.FormValue("lock_message"))
+
+	updates := []struct {
+		key string
+		val interface{}
+	}{
+		{"lock_withdrawals", lockWithdrawals},
+		{"lock_linking", lockLinking},
+		{"lock_engine", lockEngine},
+		{"lock_message", lockMessage},
+	}
+
+	for _, u := range updates {
+		if err := s.updateSettingWithAudit(ctx, admin.ID, u.key, u.val, ip); err != nil {
+			http.Redirect(w, r, "/admin/maintenance?err=Gagal+menyimpan+kunci: "+url.QueryEscape(err.Error()), http.StatusSeeOther)
+			return
+		}
+	}
+
+	s.InvalidateSystemLockCache()
+	http.Redirect(w, r, "/admin/maintenance?msg=Kunci+sistem+dan+pesan+berhasil+diperbarui", http.StatusSeeOther)
+}
+
+func (s *Server) HandleAdminMaintenanceLockTogglePOST(w http.ResponseWriter, r *http.Request) {
+	admin, ok := currentUser(r)
+	if !ok || admin.Role != "admin" {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+
+	ctx := r.Context()
+	ip := getIP(r)
+	key := strings.TrimSpace(r.FormValue("key"))
+
+	switch key {
+	case "lock_withdrawals", "lock_linking", "lock_engine":
+	default:
+		http.Redirect(w, r, "/admin/maintenance?err=Kunci+tidak+valid", http.StatusSeeOther)
+		return
+	}
+
+	locks := s.GetSystemLocks(ctx)
+	var current bool
+	switch key {
+	case "lock_withdrawals":
+		current = locks.LockWithdrawals
+	case "lock_linking":
+		current = locks.LockLinking
+	case "lock_engine":
+		current = locks.LockEngine
+	}
+	newVal := !current
+
+	if err := s.updateSettingWithAudit(ctx, admin.ID, key, newVal, ip); err != nil {
+		http.Redirect(w, r, "/admin/maintenance?err=Gagal+mengubah+kunci: "+url.QueryEscape(err.Error()), http.StatusSeeOther)
+		return
+	}
+
+	s.InvalidateSystemLockCache()
+	statusText := "diaktifkan"
+	if !newVal {
+		statusText = "dinonaktifkan"
+	}
+	http.Redirect(w, r, fmt.Sprintf("/admin/maintenance?msg=Kunci+%s+berhasil+%s", key, statusText), http.StatusSeeOther)
 }
 
 func (s *Server) HandleMaintenancePublicGET(w http.ResponseWriter, r *http.Request) {

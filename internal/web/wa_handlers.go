@@ -88,7 +88,7 @@ func (s *Server) HandleWorkerAccounts(w http.ResponseWriter, r *http.Request) {
 		Error                 string
 		T                     func(string) string
 	}{
-		CSLinks:               s.csLinks(),
+		CSLinks:               s.csLinks(r.Context()),
 		Lang:                  lang,
 		Title:                 i18n.T(lang, "wa.accounts_title"),
 		Theme:                 getTheme(r),
@@ -117,6 +117,15 @@ func (s *Server) HandleWorkerAccountInitPOST(w http.ResponseWriter, r *http.Requ
 	}
 
 	w.Header().Set("Content-Type", "application/json")
+
+	if s.IsLinkingLocked(r.Context()) {
+		w.WriteHeader(http.StatusForbidden)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "Penautan akun WhatsApp sedang dikunci oleh admin",
+		})
+		return
+	}
 
 	var activeAccountID int64
 	var label, speed string
@@ -208,6 +217,11 @@ func (s *Server) HandleWorkerAccountNewPOST(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	if s.IsLinkingLocked(r.Context()) {
+		http.Redirect(w, r, "/worker/accounts?err=Penautan+akun+WhatsApp+sedang+dikunci+oleh+admin", http.StatusSeeOther)
+		return
+	}
+
 	idStr := strings.TrimSpace(r.FormValue("id"))
 	label := strings.TrimSpace(r.FormValue("label"))
 	speed := strings.TrimSpace(r.FormValue("speed"))
@@ -277,6 +291,20 @@ func (s *Server) HandleWorkerAccountPairPOST(w http.ResponseWriter, r *http.Requ
 	user, ok := currentUser(r)
 	if !ok {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	if s.IsLinkingLocked(r.Context()) {
+		if strings.Contains(r.Header.Get("Accept"), "application/json") || r.FormValue("format") == "json" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusForbidden)
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"success": false,
+				"error":   "Penautan akun WhatsApp sedang dikunci oleh admin",
+			})
+			return
+		}
+		http.Redirect(w, r, "/worker/accounts?err=Penautan+akun+WhatsApp+sedang+dikunci+oleh+admin", http.StatusSeeOther)
 		return
 	}
 

@@ -50,6 +50,15 @@ type WhatsAppChecker interface {
 	IsOnWhatsApp(ctx context.Context, accountID int64, phone string) (bool, error)
 }
 
+// ErrEngineLocked dikembalikan saat engine dikunci via lock_engine atau mode pemeliharaan.
+var ErrEngineLocked = errors.New("sistem dalam perbaikan")
+
+type engineLockCache struct {
+	mu        sync.RWMutex
+	locked    bool
+	checkedAt time.Time
+}
+
 // Engine mengelola pengiriman pesan otomatis per akun WhatsApp pekerja.
 type Engine struct {
 	db       *db.DB
@@ -57,9 +66,10 @@ type Engine struct {
 	checker  WhatsAppChecker
 	settings SettingsReader
 
-	mu      sync.Mutex
-	workers map[int64]context.CancelFunc // accountID -> cancel goroutine
-	stopped bool
+	mu        sync.Mutex
+	workers   map[int64]context.CancelFunc // accountID -> cancel goroutine
+	stopped   bool
+	lockCache engineLockCache
 }
 
 // New membuat instance Engine baru.
@@ -190,8 +200,65 @@ type ClaimedNumber struct {
 	RecipientName string
 }
 
+// IsEngineLocked memeriksa apakah engine sedang dikunci via lock_engine atau mode pemeliharaan (cache 2 detik).
+func (e *Engine) IsEngineLocked(ctx context.Context) bool {
+	return e.isEngineLocked(ctx)
+}
+
+func (e *Engine) isEngineLocked(ctx context.Context) bool {
+	e.lockCache.mu.RLock()
+	if time.Since(e.lockCache.checkedAt) < 2*time.Second {
+		locked := e.lockCache.locked
+		e.lockCache.mu.RUnlock()
+		return locked
+	}
+	e.lockCache.mu.RUnlock()
+
+	e.lockCache.mu.Lock()
+	defer e.lockCache.mu.Unlock()
+
+	// Double-check setelah exclusive lock didapat
+	if time.Since(e.lockCache.checkedAt) < 2*time.Second {
+		return e.lockCache.locked
+	}
+
+	var lockEngine bool
+	if e.settings != nil {
+		_, _ = e.settings.GetJSON(ctx, "lock_engine", &lockEngine)
+	} else if e.db != nil && e.db.Pool != nil {
+		var raw string
+		if err := e.db.Pool.QueryRow(ctx, "SELECT value::text FROM settings WHERE key = 'lock_engine'").Scan(&raw); err == nil {
+			_ = json.Unmarshal([]byte(raw), &lockEngine)
+		}
+	}
+
+	var maintMode bool
+	if e.settings != nil {
+		_, _ = e.settings.GetJSON(ctx, "maintenance_mode", &maintMode)
+	} else if e.db != nil && e.db.Pool != nil {
+		var raw string
+		if err := e.db.Pool.QueryRow(ctx, "SELECT value::text FROM settings WHERE key = 'maintenance_mode'").Scan(&raw); err == nil {
+			_ = json.Unmarshal([]byte(raw), &maintMode)
+		}
+	}
+
+	e.lockCache.locked = lockEngine || maintMode
+	e.lockCache.checkedAt = time.Now()
+	return e.lockCache.locked
+}
+
+// InvalidateLockCache mengosongkan cache kunci agar pembacaan berikutnya langsung mengecek pengaturan.
+func (e *Engine) InvalidateLockCache() {
+	e.lockCache.mu.Lock()
+	e.lockCache.checkedAt = time.Time{}
+	e.lockCache.mu.Unlock()
+}
+
 // ClaimNextNumber mengklaim tepat satu nomor secara atomik dengan FOR UPDATE SKIP LOCKED.
 func (e *Engine) ClaimNextNumber(ctx context.Context, accountID int64) (*ClaimedNumber, error) {
+	if e.isEngineLocked(ctx) {
+		return nil, ErrEngineLocked
+	}
 	query := fmt.Sprintf(`
 		UPDATE campaign_numbers
 		SET status = 'dikirim', claimed_account_id = $1, claimed_at = now(), attempts = attempts + 1
@@ -279,6 +346,12 @@ func (e *Engine) runWorker(ctx context.Context, accountID, workerID int64) {
 		default:
 		}
 
+		// 0. Cek apakah engine dikunci (lock_engine atau mode pemeliharaan)
+		if e.isEngineLocked(ctx) {
+			e.setAccountStopReason(ctx, accountID, "sistem dalam perbaikan")
+			return
+		}
+
 		// 1. Ambil pengaturan penting (daily_limits, max_attempts, rate_wage)
 		// Jika salah satu belum diisi admin, mesin tidak mengirim apa pun dan mencatat alasannya.
 		var dailyLimits map[string]int
@@ -340,6 +413,11 @@ func (e *Engine) runWorker(ctx context.Context, accountID, workerID int64) {
 		// 3. Klaim nomor secara atomik
 		claimed, err := e.ClaimNextNumber(ctx, accountID)
 		if err != nil {
+			if errors.Is(err, ErrEngineLocked) {
+				e.setAccountStopReason(ctx, accountID, "sistem dalam perbaikan")
+				return
+			}
+
 			// Periksa apakah campaign yang berjalan sudah selesai (tidak ada nomor tersedia maupun dikirim)
 			e.checkAllRunningCampaigns(ctx)
 

@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"encoding/json"
 	"html/template"
 	"net/http"
 	"net/url"
@@ -32,6 +33,26 @@ type globalStatsCache struct {
 	runningCount int
 }
 
+type systemLockCache struct {
+	mu              sync.RWMutex
+	lastFetch       time.Time
+	lockWithdrawals bool
+	lockLinking     bool
+	lockEngine      bool
+	maintenanceMode bool
+	lockMessage     string
+}
+
+// SystemLocksViewData menampung data status kunci sistem dan pesan untuk pekerja.
+type SystemLocksViewData struct {
+	LockWithdrawals bool     `json:"lock_withdrawals"`
+	LockLinking     bool     `json:"lock_linking"`
+	LockEngine      bool     `json:"lock_engine"`
+	LockMessage     string   `json:"lock_message"`
+	AnyLocked       bool     `json:"any_locked"`
+	LockedFeatures  []string `json:"locked_features"`
+}
+
 type Server struct {
 	DB                 *db.DB
 	Tmpl               map[string]*template.Template
@@ -43,6 +64,7 @@ type Server struct {
 	CSTelegramURL      string
 	ChannelTelegramURL string
 	statsCache         globalStatsCache
+	lockCache          systemLockCache
 }
 
 func (s *Server) getGlobalStats(ctx context.Context) (int, int, error) {
@@ -71,6 +93,136 @@ func (s *Server) getGlobalStats(ctx context.Context) (int, int, error) {
 	s.statsCache.lastFetch = time.Now()
 
 	return count, running, nil
+}
+
+// InvalidateSystemLockCache mengosongkan cache kunci agar pembacaan berikutnya langsung ke database.
+func (s *Server) InvalidateSystemLockCache() {
+	s.lockCache.mu.Lock()
+	s.lockCache.lastFetch = time.Time{}
+	s.lockCache.mu.Unlock()
+}
+
+// GetSystemLocks mengambil status semua kunci granular sistem dan pesan admin (cache 2 detik).
+func (s *Server) GetSystemLocks(ctx context.Context) SystemLocksViewData {
+	s.lockCache.mu.RLock()
+	if !s.lockCache.lastFetch.IsZero() && time.Since(s.lockCache.lastFetch) < 2*time.Second {
+		lw := s.lockCache.lockWithdrawals
+		ll := s.lockCache.lockLinking
+		le := s.lockCache.lockEngine
+		msg := s.lockCache.lockMessage
+		s.lockCache.mu.RUnlock()
+
+		var features []string
+		if lw {
+			features = append(features, "Penarikan Saldo & Konversi USDT")
+		}
+		if ll {
+			features = append(features, "Penautan Akun WhatsApp Baru")
+		}
+		if le {
+			features = append(features, "Mesin Pengiriman Pesan (Broadcasting)")
+		}
+		return SystemLocksViewData{
+			LockWithdrawals: lw,
+			LockLinking:     ll,
+			LockEngine:      le,
+			LockMessage:     msg,
+			AnyLocked:       lw || ll || le,
+			LockedFeatures:  features,
+		}
+	}
+	s.lockCache.mu.RUnlock()
+
+	s.lockCache.mu.Lock()
+	defer s.lockCache.mu.Unlock()
+
+	if !s.lockCache.lastFetch.IsZero() && time.Since(s.lockCache.lastFetch) < 2*time.Second {
+		var features []string
+		if s.lockCache.lockWithdrawals {
+			features = append(features, "Penarikan Saldo & Konversi USDT")
+		}
+		if s.lockCache.lockLinking {
+			features = append(features, "Penautan Akun WhatsApp Baru")
+		}
+		if s.lockCache.lockEngine {
+			features = append(features, "Mesin Pengiriman Pesan (Broadcasting)")
+		}
+		return SystemLocksViewData{
+			LockWithdrawals: s.lockCache.lockWithdrawals,
+			LockLinking:     s.lockCache.lockLinking,
+			LockEngine:      s.lockCache.lockEngine,
+			LockMessage:     s.lockCache.lockMessage,
+			AnyLocked:       s.lockCache.lockWithdrawals || s.lockCache.lockLinking || s.lockCache.lockEngine,
+			LockedFeatures:  features,
+		}
+	}
+
+	if s.DB != nil && s.DB.Pool != nil {
+		rows, err := s.DB.Pool.Query(ctx, "SELECT key, value::text FROM settings WHERE key IN ('lock_withdrawals', 'lock_linking', 'lock_engine', 'maintenance_mode', 'lock_message')")
+		if err == nil {
+			defer rows.Close()
+			var lw, ll, le, mm bool
+			var msg string
+			for rows.Next() {
+				var k, v string
+				if err := rows.Scan(&k, &v); err == nil {
+					switch k {
+					case "lock_withdrawals":
+						_ = json.Unmarshal([]byte(v), &lw)
+					case "lock_linking":
+						_ = json.Unmarshal([]byte(v), &ll)
+					case "lock_engine":
+						_ = json.Unmarshal([]byte(v), &le)
+					case "maintenance_mode":
+						_ = json.Unmarshal([]byte(v), &mm)
+					case "lock_message":
+						if err := json.Unmarshal([]byte(v), &msg); err != nil {
+							msg = strings.Trim(v, `"`)
+						}
+					}
+				}
+			}
+			s.lockCache.lockWithdrawals = lw
+			s.lockCache.lockLinking = ll
+			s.lockCache.lockEngine = le
+			s.lockCache.maintenanceMode = mm
+			s.lockCache.lockMessage = msg
+			s.lockCache.lastFetch = time.Now()
+		}
+	}
+
+	var features []string
+	if s.lockCache.lockWithdrawals {
+		features = append(features, "Penarikan Saldo & Konversi USDT")
+	}
+	if s.lockCache.lockLinking {
+		features = append(features, "Penautan Akun WhatsApp Baru")
+	}
+	if s.lockCache.lockEngine {
+		features = append(features, "Mesin Pengiriman Pesan (Broadcasting)")
+	}
+
+	return SystemLocksViewData{
+		LockWithdrawals: s.lockCache.lockWithdrawals,
+		LockLinking:     s.lockCache.lockLinking,
+		LockEngine:      s.lockCache.lockEngine,
+		LockMessage:     s.lockCache.lockMessage,
+		AnyLocked:       s.lockCache.lockWithdrawals || s.lockCache.lockLinking || s.lockCache.lockEngine,
+		LockedFeatures:  features,
+	}
+}
+
+func (s *Server) IsWithdrawalsLocked(ctx context.Context) bool {
+	return s.GetSystemLocks(ctx).LockWithdrawals
+}
+
+func (s *Server) IsLinkingLocked(ctx context.Context) bool {
+	return s.GetSystemLocks(ctx).LockLinking
+}
+
+func (s *Server) IsEngineLocked(ctx context.Context) bool {
+	locks := s.GetSystemLocks(ctx)
+	return locks.LockEngine || s.IsMaintenanceMode(ctx)
 }
 
 func NewServer(database *db.DB, env string, waMgr *wa.Manager, workCtrl WorkController) (*Server, error) {
@@ -192,6 +344,8 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.Handle("POST /admin/broadcasts/{id}/delete", s.CSRFMiddleware(s.RequireRole(s.HandleAdminBroadcastDeletePOST, "admin")))
 	mux.Handle("GET /admin/maintenance", s.CSRFMiddleware(s.RequireRole(s.HandleAdminMaintenanceGET, "admin")))
 	mux.Handle("POST /admin/maintenance/toggle", s.CSRFMiddleware(s.RequireRole(s.HandleAdminMaintenanceTogglePOST, "admin")))
+	mux.Handle("POST /admin/maintenance/locks", s.CSRFMiddleware(s.RequireRole(s.HandleAdminMaintenanceLocksPOST, "admin")))
+	mux.Handle("POST /admin/maintenance/lock/toggle", s.CSRFMiddleware(s.RequireRole(s.HandleAdminMaintenanceLockTogglePOST, "admin")))
 	mux.Handle("/admin/", s.CSRFMiddleware(s.RequireRole(func(w http.ResponseWriter, r *http.Request) { http.NotFound(w, r) }, "admin")))
 
 	// Tahap 8

@@ -39,7 +39,7 @@
     </div>
     {{end}}
 
-    <!-- 1. KONTROL MODE PEMELIHARAAN -->
+    <!-- 1. KONTROL MODE PEMELIHARAAN UMUM -->
     <div class="card" style="margin-bottom: 24px; padding: 24px; border: 1px solid var(--color-border); border-radius: 10px; background: var(--color-card);">
         <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px;">
             <div>
@@ -55,14 +55,14 @@
                 </div>
                 <p style="font-size: 13px; color: var(--color-muted); margin: 0; line-height: 1.5; max-width: 680px;">
                     {{if .MaintenanceMode}}
-                    Sistem saat ini sedang dalam status pemeliharaan. Seluruh halaman panel pekerja dialihkan ke halaman pemberitahuan pemeliharaan. Admin tetap memiliki akses penuh.
+                    Sistem saat ini sedang dalam status pemeliharaan umum. Seluruh halaman panel pekerja dialihkan ke halaman pemeliharaan dan pengiriman mesin dihentikan otomatis. Admin tetap memiliki akses penuh.
                     {{else}}
                     Sistem beroperasi normal. Semua pekerja dapat mengakses panel, mengelola akun WhatsApp, dan melakukan penarikan.
                     {{end}}
                 </p>
             </div>
 
-            <form method="POST" action="/admin/maintenance/toggle" style="margin: 0;" onsubmit="return confirm('{{if .MaintenanceMode}}Nonaktifkan mode pemeliharaan dan buka kembali akses untuk semua pekerja?{{else}}Aktifkan mode pemeliharaan? Seluruh pekerja akan dialihkan ke halaman pemeliharaan.{{end}}');">
+            <form method="POST" action="/admin/maintenance/toggle" style="margin: 0;" onsubmit="return confirm('{{if .MaintenanceMode}}Nonaktifkan mode pemeliharaan dan buka kembali akses untuk semua pekerja?{{else}}Aktifkan mode pemeliharaan? Seluruh pekerja akan dialihkan ke halaman pemeliharaan dan engine akan dihentikan.{{end}}');">
                 <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
                 {{if .MaintenanceMode}}
                 <button type="submit" class="btn btn-secondary" style="padding: 10px 20px; font-size: 13px; font-weight: 600; cursor: pointer; color: var(--color-success); border-color: var(--color-success);">
@@ -77,9 +77,147 @@
         </div>
     </div>
 
-    <!-- 2. STATUS KESEHATAN SISTEM (HEALTH CHECK) -->
+    <!-- 1B. KUNCI GRANULAR SISTEM & PESAN PEKERJA -->
+    <div class="card" style="margin-bottom: 24px; padding: 24px; border: 1px solid var(--color-border); border-radius: 10px; background: var(--color-card);">
+        <div style="margin-bottom: 16px;">
+            <h2 style="font-size: 17px; font-weight: 700; color: var(--color-text); margin: 0 0 6px 0;">
+                Kunci Granular Sistem (Emergency Feature Locks)
+            </h2>
+            <p style="font-size: 13px; color: var(--color-muted); margin: 0; line-height: 1.5;">
+                Kunci fitur spesifik secara independen tanpa mematikan seluruh panel pekerja. Pekerja yang membuka halaman akan melihat jendela pemberitahuan fitur yang dikunci beserta pesan admin.
+            </p>
+        </div>
+
+        <form method="POST" action="/admin/maintenance/locks" style="margin: 0;">
+            <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin-bottom: 20px;">
+                <!-- Kunci 1: Penarikan & Konversi -->
+                <div style="padding: 16px; border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-surface-muted);">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
+                        <label for="lock_withdrawals" style="font-weight: 700; font-size: 14px; color: var(--color-text); cursor: pointer;">
+                            Tolak Penarikan & Konversi
+                        </label>
+                        {{if .LockWithdrawals}}
+                        <span class="badge badge-danger" style="font-size: 11px;">Terkunci</span>
+                        {{else}}
+                        <span class="badge badge-success" style="font-size: 11px;">Aktif</span>
+                        {{end}}
+                    </div>
+                    <p style="font-size: 12px; color: var(--color-muted); margin: 0 0 12px 0; line-height: 1.4;">
+                        Menolak permintaan pencairan saldo pekerja dan konversi IDR ke USDT (`lock_withdrawals`).
+                    </p>
+                    <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; cursor: pointer;">
+                        <input type="checkbox" id="lock_withdrawals" name="lock_withdrawals" value="1" {{if .LockWithdrawals}}checked{{end}}>
+                        <span>Aktifkan Kunci Penarikan</span>
+                    </label>
+                </div>
+
+                <!-- Kunci 2: Penautan Akun Baru -->
+                <div style="padding: 16px; border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-surface-muted);">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
+                        <label for="lock_linking" style="font-weight: 700; font-size: 14px; color: var(--color-text); cursor: pointer;">
+                            Tolak Penautan Akun WhatsApp
+                        </label>
+                        {{if .LockLinking}}
+                        <span class="badge badge-danger" style="font-size: 11px;">Terkunci</span>
+                        {{else}}
+                        <span class="badge badge-success" style="font-size: 11px;">Aktif</span>
+                        {{end}}
+                    </div>
+                    <p style="font-size: 12px; color: var(--color-muted); margin: 0 0 12px 0; line-height: 1.4;">
+                        Menolak inisialisasi QR dan penautan akun WhatsApp baru dari pekerja (`lock_linking`).
+                    </p>
+                    <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; cursor: pointer;">
+                        <input type="checkbox" id="lock_linking" name="lock_linking" value="1" {{if .LockLinking}}checked{{end}}>
+                        <span>Aktifkan Kunci Penautan</span>
+                    </label>
+                </div>
+
+                <!-- Kunci 3: Mesin Pengiriman (Engine) -->
+                <div style="padding: 16px; border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-surface-muted);">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
+                        <label for="lock_engine" style="font-weight: 700; font-size: 14px; color: var(--color-text); cursor: pointer;">
+                            Hentikan Klaim Mesin (Engine)
+                        </label>
+                        {{if or .LockEngine .MaintenanceMode}}
+                        <span class="badge badge-danger" style="font-size: 11px;">Terkunci</span>
+                        {{else}}
+                        <span class="badge badge-success" style="font-size: 11px;">Aktif</span>
+                        {{end}}
+                    </div>
+                    <p style="font-size: 12px; color: var(--color-muted); margin: 0 0 12px 0; line-height: 1.4;">
+                        Engine berhenti mengklaim nomor baru, mencatat `sistem dalam perbaikan`, tanpa memutus sesi WA (`lock_engine`).
+                    </p>
+                    <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; cursor: pointer;">
+                        <input type="checkbox" id="lock_engine" name="lock_engine" value="1" {{if .LockEngine}}checked{{end}}>
+                        <span>Aktifkan Kunci Engine</span>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Pesan untuk Pekerja -->
+            <div style="margin-bottom: 16px;">
+                <label for="lock_message" style="display: block; font-weight: 700; font-size: 13px; color: var(--color-text); margin-bottom: 6px;">
+                    Pesan Khusus untuk Pekerja (Ditampilkan di Jendela Peringatan Panel Pekerja)
+                </label>
+                <textarea id="lock_message" name="lock_message" rows="2" style="width: 100%; box-sizing: border-box; padding: 10px 12px; border: 1px solid var(--color-border); border-radius: 6px; background: var(--color-input); color: var(--color-text); font-size: 13px; font-family: inherit; resize: vertical;" placeholder="Contoh: Kami sedang melakukan sinkronisasi database buku besar. Penarikan akan dibuka kembali pukul 14:00 WIB.">{{.LockMessage}}</textarea>
+            </div>
+
+            <div style="display: flex; justify-content: flex-end;">
+                <button type="submit" class="btn btn-primary" style="padding: 10px 24px; font-size: 13px; font-weight: 700; cursor: pointer;">
+                    Simpan Pengaturan Kunci & Pesan
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <!-- 2. PEMERIKSAAN KESEHATAN SISTEM (COMPREHENSIVE HEALTH CHECKS) -->
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+        <h2 style="font-size: 16px; font-weight: 700; color: var(--color-text); margin: 0;">
+            Hasil Pemeriksaan Kesehatan Sistem (9 Indikator)
+        </h2>
+    </div>
+
+    <!-- TABEL HASIL HEALTH CHECK -->
+    <div class="card" style="margin-bottom: 24px; padding: 0; overflow-x: auto; border: 1px solid var(--color-border); border-radius: 10px; background: var(--color-card);">
+        <table class="table" style="width: 100%; border-collapse: collapse; font-size: 13px;">
+            <thead>
+                <tr style="border-bottom: 1px solid var(--color-border); text-align: left; background: var(--color-surface-muted);">
+                    <th style="padding: 12px 16px; width: 220px;">Pemeriksaan</th>
+                    <th style="padding: 12px 16px; width: 110px;">Status</th>
+                    <th style="padding: 12px 16px;">Keterangan & Diagnostik</th>
+                </tr>
+            </thead>
+            <tbody>
+                {{range .HealthChecks}}
+                <tr style="border-bottom: 1px solid var(--color-border);">
+                    <td style="padding: 12px 16px; font-weight: 700; color: var(--color-text);">{{.Name}}</td>
+                    <td style="padding: 12px 16px;">
+                        {{if eq .Status "ok"}}
+                        <span class="badge badge-success" style="font-size: 11px; text-transform: uppercase;">OK</span>
+                        {{else if eq .Status "peringatan"}}
+                        <span class="badge badge-warning" style="font-size: 11px; text-transform: uppercase;">Peringatan</span>
+                        {{else}}
+                        <span class="badge badge-danger" style="font-size: 11px; text-transform: uppercase;">Gagal</span>
+                        {{end}}
+                    </td>
+                    <td style="padding: 12px 16px; color: var(--color-text); font-size: 13px;">{{.Message}}</td>
+                </tr>
+                {{else}}
+                <tr>
+                    <td colspan="3" style="padding: 24px; text-align: center; color: var(--color-muted);">
+                        Pemeriksaan kesehatan belum dijalankan.
+                    </td>
+                </tr>
+                {{end}}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- 2B. STATISTIK OPERASIONAL SINGKAT -->
     <h2 style="font-size: 16px; font-weight: 700; color: var(--color-text); margin-top: 0; margin-bottom: 12px;">
-        Status Kesehatan & Diagnostik Sistem
+        Statistik Sumber Daya & Antrean
     </h2>
 
     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin-bottom: 28px;">

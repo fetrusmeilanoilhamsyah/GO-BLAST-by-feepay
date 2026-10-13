@@ -825,4 +825,62 @@ document.querySelectorAll('.worker-accordion').forEach(function(acc) {
     });
 });
 </script>
+
+{{if .SystemLocks.AnyLocked}}
+<!-- JENDELA PERINGATAN KUNCI SISTEM (MODAL DARURAT/PEMELIHARAAN) -->
+<div id="system-lock-modal" style="display: none; position: fixed; inset: 0; z-index: 9999; align-items: center; justify-content: center; background-color: var(--color-modal-backdrop); padding: 16px;">
+    <div style="background-color: var(--color-card); border: 1px solid var(--color-border); border-radius: 14px; max-width: 500px; width: 100%; padding: 24px; box-shadow: 0 12px 36px var(--color-shadow); text-align: left; position: relative;">
+        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
+            <div style="width: 44px; height: 44px; border-radius: 50%; background-color: var(--color-surface-muted); display: flex; align-items: center; justify-content: center; color: var(--color-warning); flex-shrink: 0;">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                </svg>
+            </div>
+            <div>
+                <h3 style="margin: 0; font-size: 17px; font-weight: 800; color: var(--color-text); letter-spacing: -0.01em;">Pemberitahuan Sistem</h3>
+                <span style="font-size: 12px; color: var(--color-muted);">Fitur tertentu sedang dibatasi untuk perbaikan</span>
+            </div>
+        </div>
+
+        <div style="font-size: 13px; line-height: 1.5; color: var(--color-text); margin-bottom: 16px;">
+            <p style="margin: 0 0 8px 0; font-weight: 600;">Fitur yang saat ini dikunci sementara:</p>
+            <ul style="margin: 0 0 12px 18px; padding: 0; color: var(--color-danger); font-size: 13px; font-weight: 600;">
+                {{range .SystemLocks.LockedFeatures}}
+                <li style="margin-bottom: 4px;">{{.}}</li>
+                {{end}}
+            </ul>
+            {{if .SystemLocks.LockMessage}}
+            <div style="background-color: var(--color-surface-muted); border-left: 3px solid var(--color-warning); padding: 10px 14px; border-radius: 6px; font-size: 13px; color: var(--color-text); margin-top: 12px;">
+                <strong style="color: var(--color-text);">Pesan Admin:</strong>
+                <div style="margin-top: 4px; color: var(--color-text); white-space: pre-wrap;">{{.SystemLocks.LockMessage}}</div>
+            </div>
+            {{end}}
+        </div>
+
+        <div style="display: flex; justify-content: flex-end; margin-top: 20px;">
+            <button type="button" id="btn-dismiss-lock-modal" onclick="dismissSystemLockModal()" class="btn btn-primary" style="padding: 10px 24px; font-size: 13px; font-weight: 700; cursor: pointer; border-radius: 8px;">
+                Mengerti
+            </button>
+        </div>
+    </div>
+</div>
+<script>
+(function() {
+    try {
+        if (!sessionStorage.getItem('dismissed_lock_modal')) {
+            var m = document.getElementById('system-lock-modal');
+            if (m) m.style.display = 'flex';
+        }
+    } catch (e) {}
+})();
+function dismissSystemLockModal() {
+    try {
+        sessionStorage.setItem('dismissed_lock_modal', '1');
+    } catch (e) {}
+    var m = document.getElementById('system-lock-modal');
+    if (m) m.style.display = 'none';
+}
+</script>
+{{end}}
 {{end}}

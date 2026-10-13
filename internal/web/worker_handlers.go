@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -75,9 +76,10 @@ type CSLinks struct {
 	CSWhatsAppURL      string
 	CSTelegramURL      string
 	ChannelTelegramURL string
+	SystemLocks        SystemLocksViewData
 }
 
-func (s *Server) csLinks() CSLinks {
+func (s *Server) csLinks(ctx ...context.Context) CSLinks {
 	waURL := s.CSWhatsAppURL
 	if waURL == "" || waURL == "https://wa.me/" {
 		waURL = "https://wa.me/6281200000000"
@@ -90,10 +92,15 @@ func (s *Server) csLinks() CSLinks {
 	if tgCh == "" {
 		tgCh = "https://t.me/goblast_channel"
 	}
+	var locks SystemLocksViewData
+	if len(ctx) > 0 && ctx[0] != nil {
+		locks = s.GetSystemLocks(ctx[0])
+	}
 	return CSLinks{
 		CSWhatsAppURL:      waURL,
 		CSTelegramURL:      tgCS,
 		ChannelTelegramURL: tgCh,
+		SystemLocks:        locks,
 	}
 }
 
@@ -388,7 +395,7 @@ func (s *Server) HandleWorkerHome(w http.ResponseWriter, r *http.Request) {
 		Activities                []WorkerActivityView
 		T                         func(string) string
 	}{
-		CSLinks:                   s.csLinks(),
+		CSLinks:                   s.csLinks(r.Context()),
 		Lang:                      lang,
 		Title:                     i18n.T(lang, "worker.home_title"),
 		Theme:                     getTheme(r),
@@ -514,7 +521,7 @@ func (s *Server) HandleWorkerHistoryGET(w http.ResponseWriter, r *http.Request) 
 		HasMore      bool
 		T            func(string) string
 	}{
-		CSLinks:      s.csLinks(),
+		CSLinks:      s.csLinks(r.Context()),
 		Lang:         lang,
 		Title:        i18n.T(lang, "nav.history"),
 		Theme:        getTheme(r),
@@ -653,7 +660,7 @@ func (s *Server) HandleWorkerWithdrawalsGET(w http.ResponseWriter, r *http.Reque
 		Success                 string
 		T                       func(string) string
 	}{
-		CSLinks:                 s.csLinks(),
+		CSLinks:                 s.csLinks(r.Context()),
 		Lang:                    lang,
 		Title:                   i18n.T(lang, "nav.withdrawals"),
 		Theme:                   getTheme(r),
@@ -689,6 +696,10 @@ func (s *Server) HandleWorkerWithdrawalsPOST(w http.ResponseWriter, r *http.Requ
 	}
 
 	ctx := r.Context()
+	if s.IsWithdrawalsLocked(ctx) {
+		http.Redirect(w, r, "/worker/withdrawals?error=Fitur+penarikan+dana+sedang+dikunci+sementara", http.StatusSeeOther)
+		return
+	}
 	amountStr := strings.TrimSpace(r.FormValue("amount"))
 	method := strings.ToLower(strings.TrimSpace(r.FormValue("method")))
 	dest := strings.TrimSpace(r.FormValue("destination"))
@@ -820,6 +831,10 @@ func (s *Server) HandleWorkerConvertPOST(w http.ResponseWriter, r *http.Request)
 	}
 
 	ctx := r.Context()
+	if s.IsWithdrawalsLocked(ctx) {
+		http.Redirect(w, r, "/worker/withdrawals?error=Fitur+konversi+saldo+sedang+dikunci+sementara", http.StatusSeeOther)
+		return
+	}
 	token := strings.TrimSpace(r.FormValue("request_token"))
 	if token == "" {
 		http.Redirect(w, r, "/worker/withdrawals?error=Permintaan+tidak+valid+(token+kosong)", http.StatusSeeOther)
@@ -1099,7 +1114,7 @@ func (s *Server) HandleWorkerReferralGET(w http.ResponseWriter, r *http.Request)
 		BonusList    []WorkerActivityView
 		T            func(string) string
 	}{
-		CSLinks:      s.csLinks(),
+		CSLinks:      s.csLinks(r.Context()),
 		Lang:         lang,
 		Title:        i18n.T(lang, "nav.referral"),
 		Theme:        getTheme(r),
