@@ -100,6 +100,13 @@ func (e *Engine) IsRunning(accountID int64) bool {
 	return exists
 }
 
+// RunningCount mengembalikan jumlah akun yang sedang bekerja secara global.
+func (e *Engine) RunningCount() int {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return len(e.workers)
+}
+
 // StopAccount menghentikan goroutine pengiriman untuk accountID dan melepaskan nomor yang dipegang.
 func (e *Engine) StopAccount(accountID int64) {
 	e.mu.Lock()
@@ -185,20 +192,20 @@ type ClaimedNumber struct {
 
 // ClaimNextNumber mengklaim tepat satu nomor secara atomik dengan FOR UPDATE SKIP LOCKED.
 func (e *Engine) ClaimNextNumber(ctx context.Context, accountID int64) (*ClaimedNumber, error) {
-	query := `
+	query := fmt.Sprintf(`
 		UPDATE campaign_numbers
 		SET status = 'dikirim', claimed_account_id = $1, claimed_at = now(), attempts = attempts + 1
 		WHERE id = (
 			SELECT cn.id
 			FROM campaign_numbers cn
 			JOIN campaigns c ON c.id = cn.campaign_id
-			WHERE cn.status = 'tersedia' AND c.status = 'berjalan'
+			WHERE %s
 			ORDER BY cn.id
 			FOR UPDATE SKIP LOCKED
 			LIMIT 1
 		)
 		RETURNING id, campaign_id, phone_e164, attempts, COALESCE(recipient_name, '')
-	`
+	`, campaign.ClaimableWhere)
 	var cn ClaimedNumber
 	err := e.db.Pool.QueryRow(ctx, query, accountID).Scan(
 		&cn.ID, &cn.CampaignID, &cn.PhoneE164, &cn.Attempts, &cn.RecipientName,

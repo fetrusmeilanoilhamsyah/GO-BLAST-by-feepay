@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"goblast/internal/auth"
+	"goblast/internal/campaign"
 	"goblast/internal/config"
 	"goblast/internal/i18n"
 	"goblast/internal/money"
@@ -228,14 +229,16 @@ func (s *Server) HandleWorkerHome(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// 9. Sisa nomor tersedia — hanya kampanye berstatus 'berjalan'
+	// 9. Sisa nomor tersedia — hanya kampanye berstatus 'berjalan' dan tidak diarsipkan (ClaimableCount)
 	var availableNumbers int64
-	_ = s.DB.Pool.QueryRow(ctx, `
-		SELECT COUNT(*)
-		FROM campaign_numbers cn
-		JOIN campaigns c ON c.id = cn.campaign_id
-		WHERE cn.status = 'tersedia' AND c.status = 'berjalan'
-	`).Scan(&availableNumbers)
+	if count, err := campaign.ClaimableCount(ctx, s.DB.Pool); err == nil {
+		availableNumbers = int64(count)
+	}
+
+	var runningAccountsGlobal int
+	if s.WorkCtrl != nil {
+		runningAccountsGlobal = s.WorkCtrl.RunningCount()
+	}
 
 	// 9b. Rate upah dari settings DB
 	var rateWageIDR int64 = 25
@@ -378,6 +381,7 @@ func (s *Server) HandleWorkerHome(w http.ResponseWriter, r *http.Request) {
 		TotalSent                 int64
 		AvailableNumbers          int64
 		AvailableNumbersFormatted string
+		RunningAccountsGlobal     int
 		Broadcast                 *WorkerBroadcastView
 		Accounts                  []WorkerAccountSummaryView
 		Incomes                   []CurrencyIncomeView
@@ -422,6 +426,7 @@ func (s *Server) HandleWorkerHome(w http.ResponseWriter, r *http.Request) {
 		TotalSent:                totalSent,
 		AvailableNumbers:         availableNumbers,
 		AvailableNumbersFormatted: formatIDR(availableNumbers),
+		RunningAccountsGlobal:     runningAccountsGlobal,
 		Broadcast:                activeBroadcast,
 		Accounts:                 accounts,
 		Incomes:                  incomes,
@@ -1398,4 +1403,59 @@ func (s *Server) HandleWorkerNotificationReadOnePOST(w http.ResponseWriter, r *h
 
 	w.Header().Set("Content-Type", "application/json")
 	w.Write([]byte(`{"ok":true}`))
+}
+
+type WorkerAPIStatsResponse struct {
+	DatabaseTersedia           int    `json:"database_tersedia"`
+	DatabaseTersediaFormatted  string `json:"database_tersedia_formatted"`
+	AkunBekerjaGlobal          int    `json:"akun_bekerja_global"`
+	PendapatanHariIni          int64  `json:"pendapatan_hari_ini"`
+	PendapatanHariIniFormatted string `json:"pendapatan_hari_ini_formatted"`
+	// Aliases untuk integrasi fleksibel:
+	AvailableNumbers           int    `json:"available_numbers"`
+	RunningAccountsGlobal      int    `json:"running_accounts_global"`
+	EarnedTodayIDR             int64  `json:"earned_today_idr"`
+}
+
+func (s *Server) HandleWorkerAPIStats(w http.ResponseWriter, r *http.Request) {
+	user, ok := currentUser(r)
+	if !ok {
+		http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+		return
+	}
+
+	ctx := r.Context()
+	claimable, running, err := s.getGlobalStats(ctx)
+	if err != nil {
+		http.Error(w, `{"error":"gagal mengambil statistik global"}`, http.StatusInternalServerError)
+		return
+	}
+
+	loc, err := time.LoadLocation("Asia/Jakarta")
+	if err != nil {
+		loc = time.FixedZone("Asia/Jakarta", 7*3600)
+	}
+	nowWIB := time.Now().In(loc)
+	startOfTodayWIB := time.Date(nowWIB.Year(), nowWIB.Month(), nowWIB.Day(), 0, 0, 0, 0, loc)
+
+	var earnedTodayIDR int64
+	_ = s.DB.Pool.QueryRow(ctx, `
+		SELECT COALESCE(SUM(amount), 0)
+		FROM ledger_entries
+		WHERE user_id = $1 AND kind IN ('upah', 'referral') AND currency = 'IDR' AND created_at >= $2
+	`, user.ID, startOfTodayWIB).Scan(&earnedTodayIDR)
+
+	resp := WorkerAPIStatsResponse{
+		DatabaseTersedia:           claimable,
+		DatabaseTersediaFormatted:  formatIDR(int64(claimable)),
+		AkunBekerjaGlobal:          running,
+		PendapatanHariIni:          earnedTodayIDR,
+		PendapatanHariIniFormatted: "Rp " + formatIDR(earnedTodayIDR),
+		AvailableNumbers:           claimable,
+		RunningAccountsGlobal:      running,
+		EarnedTodayIDR:             earnedTodayIDR,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(resp)
 }

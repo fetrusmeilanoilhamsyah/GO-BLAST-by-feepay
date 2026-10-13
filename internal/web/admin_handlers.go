@@ -17,6 +17,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/nyaruka/phonenumbers"
 	"goblast/internal/auth"
+	"goblast/internal/campaign"
 	"goblast/internal/engine"
 	"goblast/internal/i18n"
 	"goblast/internal/money"
@@ -25,16 +26,7 @@ import (
 
 // --- Structs for Admin Dashboard & API Stats ---
 
-type CampaignStatRow struct {
-	ID             int64  `json:"id"`
-	Name           string `json:"name"`
-	Status         string `json:"status"`
-	Tersedia       int    `json:"tersedia"`
-	Dikirim        int    `json:"dikirim"`
-	Terkirim       int    `json:"terkirim"`
-	Gagal          int    `json:"gagal"`
-	TidakTerdaftar int    `json:"tidak_terdaftar"`
-}
+type CampaignStatRow = campaign.CampaignStatRow
 
 type WorkerStatRow struct {
 	ID           int64  `json:"id"`
@@ -143,6 +135,7 @@ func (s *Server) fetchDashboardData(ctx context.Context) (*DashboardData, error)
 		"terkirim":        0,
 		"gagal":           0,
 		"tidak_terdaftar": 0,
+		"tertahan":        0,
 	}
 	rows, err := s.DB.Pool.Query(ctx, `SELECT status, COUNT(*) FROM campaign_numbers GROUP BY status`)
 	if err == nil {
@@ -156,29 +149,17 @@ func (s *Server) fetchDashboardData(ctx context.Context) (*DashboardData, error)
 		rows.Close()
 	}
 
-	// 2. Per campaign counts
-	var campaigns []CampaignStatRow
-	cRows, err := s.DB.Pool.Query(ctx, `
-		SELECT c.id, c.name, c.status,
-		       COUNT(CASE WHEN cn.status = 'tersedia' THEN 1 END) AS count_tersedia,
-		       COUNT(CASE WHEN cn.status = 'dikirim' THEN 1 END) AS count_dikirim,
-		       COUNT(CASE WHEN cn.status = 'terkirim' THEN 1 END) AS count_terkirim,
-		       COUNT(CASE WHEN cn.status = 'gagal' THEN 1 END) AS count_gagal,
-		       COUNT(CASE WHEN cn.status = 'tidak_terdaftar' THEN 1 END) AS count_tidak_terdaftar
-		FROM campaigns c
-		LEFT JOIN campaign_numbers cn ON cn.campaign_id = c.id
-		GROUP BY c.id, c.name, c.status
-		ORDER BY c.id DESC
-	`)
-	if err == nil {
-		for cRows.Next() {
-			var c CampaignStatRow
-			if err := cRows.Scan(&c.ID, &c.Name, &c.Status, &c.Tersedia, &c.Dikirim, &c.Terkirim, &c.Gagal, &c.TidakTerdaftar); err == nil {
-				campaigns = append(campaigns, c)
-			}
-		}
-		cRows.Close()
+	// Gunakan ClaimableCount untuk nomor tersedia yang benar-benar siap kirim
+	if claimable, err := campaign.ClaimableCount(ctx, s.DB.Pool); err == nil {
+		overall["tersedia"] = claimable
 	}
+	// Hitung angka "tertahan" (nomor berstatus tersedia milik campaign yang tidak berjalan atau diarsipkan)
+	if tertahan, err := campaign.TertahanCount(ctx, s.DB.Pool); err == nil {
+		overall["tertahan"] = tertahan
+	}
+
+	// 2. Per campaign counts
+	campaigns, _ := campaign.GetCampaignStats(ctx, s.DB.Pool)
 
 	// 3. Worker stats
 	var workers []WorkerStatRow
@@ -1786,12 +1767,9 @@ func (s *Server) HandleAdminMaintenanceGET(w http.ResponseWriter, r *http.Reques
 	_ = s.DB.Pool.QueryRow(ctx, "SELECT COUNT(*) FROM wa_accounts WHERE status != 'terhubung'").Scan(&disconnectedWA)
 	_ = s.DB.Pool.QueryRow(ctx, "SELECT COUNT(*) FROM withdrawals WHERE status = 'menunggu'").Scan(&pendingWithdrawals)
 	_ = s.DB.Pool.QueryRow(ctx, "SELECT COUNT(*) FROM campaigns WHERE status = 'berjalan'").Scan(&runningCamps)
-	_ = s.DB.Pool.QueryRow(ctx, `
-		SELECT COUNT(*)
-		FROM campaign_numbers cn
-		JOIN campaigns c ON c.id = cn.campaign_id
-		WHERE cn.status = 'tersedia' AND c.status = 'berjalan'
-	`).Scan(&availNums)
+	if claimable, err := campaign.ClaimableCount(ctx, s.DB.Pool); err == nil {
+		availNums = int64(claimable)
+	}
 
 	// 4. Status Mesin
 	engineStatus := "Siap / Aktif"

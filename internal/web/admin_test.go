@@ -30,6 +30,7 @@ func (f *fakeWorkController) StopAccount(accountID int64) {
 	f.stoppedAccounts = append(f.stoppedAccounts, accountID)
 }
 func (f *fakeWorkController) IsRunning(accountID int64) bool { return false }
+func (f *fakeWorkController) RunningCount() int                { return 0 }
 
 func setupAdminTest(t *testing.T) (*Server, *pgxpool.Pool, int64, int64) {
 	t.Helper()

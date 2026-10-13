@@ -598,8 +598,7 @@ func (s *Server) HandleAdminCampaignStart(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	var availableCount int
-	err = s.DB.Pool.QueryRow(r.Context(), "SELECT COUNT(*) FROM campaign_numbers WHERE campaign_id = $1 AND status = 'tersedia'", id).Scan(&availableCount)
+	availableCount, err := campaign.CampaignAvailableCount(r.Context(), s.DB.Pool, id)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

@@ -21,6 +21,10 @@
             <div class="stat-value" id="overall-tersedia">{{index .Stats.OverallCounts "tersedia"}}</div>
         </div>
         <div class="stat-card">
+            <div class="stat-label">{{ call .T "admin.status_tertahan" }}</div>
+            <div class="stat-value" id="overall-tertahan" style="color: var(--color-warning);">{{index .Stats.OverallCounts "tertahan"}}</div>
+        </div>
+        <div class="stat-card">
             <div class="stat-label">{{ call .T "admin.status_dikirim" }}</div>
             <div class="stat-value" id="overall-dikirim">{{index .Stats.OverallCounts "dikirim"}}</div>
         </div>
@@ -362,6 +366,8 @@ setInterval(function() {
             if (data.overall_counts) {
                 var elTk = document.getElementById('overall-tersedia');
                 if (elTk) elTk.textContent = data.overall_counts.tersedia || 0;
+                var elTh = document.getElementById('overall-tertahan');
+                if (elTh) elTh.textContent = data.overall_counts.tertahan || 0;
                 var elDk = document.getElementById('overall-dikirim');
                 if (elDk) elDk.textContent = data.overall_counts.dikirim || 0;
                 var elTr = document.getElementById('overall-terkirim');

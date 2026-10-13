@@ -243,6 +243,7 @@
   "admin.dashboard_title": "Dashboard & Laporan Operasional",
   "admin.status_overall": "Status Nomor Keseluruhan",
   "admin.status_tersedia": "Tersedia",
+  "admin.status_tertahan": "Tertahan",
   "admin.status_dikirim": "Sedang Dikirim",
   "admin.status_terkirim": "Terkirim",
   "admin.status_gagal": "Gagal",

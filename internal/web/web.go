@@ -7,9 +7,11 @@ import (
 	"net/url"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"goblast/internal/auth"
+	"goblast/internal/campaign"
 	"goblast/internal/db"
 	"goblast/internal/i18n"
 	"goblast/internal/wa"
@@ -20,6 +22,14 @@ type WorkController interface {
 	StartAccount(accountID, workerID int64)
 	StopAccount(accountID int64)
 	IsRunning(accountID int64) bool
+	RunningCount() int
+}
+
+type globalStatsCache struct {
+	mu           sync.Mutex
+	lastFetch    time.Time
+	claimable    int
+	runningCount int
 }
 
 type Server struct {
@@ -32,6 +42,35 @@ type Server struct {
 	CSWhatsAppURL      string
 	CSTelegramURL      string
 	ChannelTelegramURL string
+	statsCache         globalStatsCache
+}
+
+func (s *Server) getGlobalStats(ctx context.Context) (int, int, error) {
+	s.statsCache.mu.Lock()
+	defer s.statsCache.mu.Unlock()
+
+	if !s.statsCache.lastFetch.IsZero() && time.Since(s.statsCache.lastFetch) < 2*time.Second {
+		return s.statsCache.claimable, s.statsCache.runningCount, nil
+	}
+
+	count, err := campaign.ClaimableCount(ctx, s.DB.Pool)
+	if err != nil {
+		if !s.statsCache.lastFetch.IsZero() {
+			return s.statsCache.claimable, s.statsCache.runningCount, nil
+		}
+		return 0, 0, err
+	}
+
+	running := 0
+	if s.WorkCtrl != nil {
+		running = s.WorkCtrl.RunningCount()
+	}
+
+	s.statsCache.claimable = count
+	s.statsCache.runningCount = running
+	s.statsCache.lastFetch = time.Now()
+
+	return count, running, nil
 }
 
 func NewServer(database *db.DB, env string, waMgr *wa.Manager, workCtrl WorkController) (*Server, error) {
@@ -190,6 +229,7 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.Handle("POST /worker/ticket", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerTicketPOST, "worker")))
 	mux.Handle("GET /worker/api/notifications", s.RequireRole(s.HandleWorkerNotificationsAPI, "worker"))
 	mux.Handle("GET /worker/api/tickets", s.RequireRole(s.HandleWorkerTicketsAPI, "worker"))
+	mux.Handle("GET /worker/api/stats", s.RequireRole(s.HandleWorkerAPIStats, "worker"))
 	mux.Handle("POST /worker/notifications/read", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerNotificationsReadAllPOST, "worker")))
 	mux.Handle("POST /worker/notifications/{id}/read", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerNotificationReadOnePOST, "worker")))
 

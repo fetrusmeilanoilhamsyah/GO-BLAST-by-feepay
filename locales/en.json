@@ -244,6 +244,7 @@
   "admin.dashboard_title": "Dashboard & Operational Reports",
   "admin.status_overall": "Overall Number Statuses",
   "admin.status_tersedia": "Available",
+  "admin.status_tertahan": "On Hold",
   "admin.status_dikirim": "Sending",
   "admin.status_terkirim": "Sent",
   "admin.status_gagal": "Failed",

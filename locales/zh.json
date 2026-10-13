@@ -244,6 +244,7 @@
   "admin.dashboard_title": "运营仪表盘与综合报表",
   "admin.status_overall": "全系统号码状态总览",
   "admin.status_tersedia": "可用",
+  "admin.status_tertahan": "暂缓",
   "admin.status_dikirim": "发送中",
   "admin.status_terkirim": "已送达",
   "admin.status_gagal": "失败",

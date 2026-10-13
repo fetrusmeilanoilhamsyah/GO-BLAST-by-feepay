@@ -56,11 +56,11 @@
             <div class="stat-card">
                 <div>
                     <div class="stat-label">{{ call .T "worker.available_numbers_aggregate" }}</div>
-                    <div class="stat-value" style="color: var(--color-primary);">
+                    <div class="stat-value" id="stat-available-numbers" style="color: var(--color-primary);">
                         {{.AvailableNumbersFormatted}}
                     </div>
                 </div>
-                <div class="stat-sub">Nomor antrean sistem</div>
+                <div class="stat-sub"><span id="stat-running-global">{{.RunningAccountsGlobal}}</span> akun bekerja sistem</div>
             </div>
 
             <!-- B. Rate Upah Blast (Pengaturan Admin) -->
@@ -91,7 +91,7 @@
             <div class="stat-card">
                 <div>
                     <div class="stat-label">{{ call .T "worker.earned_today" }}</div>
-                    <div class="stat-value">
+                    <div class="stat-value" id="stat-earned-today">
                         Rp {{.EarnedTodayIDRFormatted}}
                     </div>
                 </div>
@@ -384,4 +384,23 @@
         </div>
     </main>
 </div>
+<script>
+setInterval(function() {
+    fetch('/worker/api/stats')
+        .then(function(res) {
+            if (!res.ok) throw new Error('Network error');
+            return res.json();
+        })
+        .then(function(data) {
+            if (!data) return;
+            var elAvail = document.getElementById('stat-available-numbers');
+            if (elAvail) elAvail.textContent = data.database_tersedia_formatted || data.database_tersedia;
+            var elEarned = document.getElementById('stat-earned-today');
+            if (elEarned) elEarned.textContent = data.pendapatan_hari_ini_formatted || ('Rp ' + data.pendapatan_hari_ini);
+            var elGlobal = document.getElementById('stat-running-global');
+            if (elGlobal) elGlobal.textContent = data.akun_bekerja_global;
+        })
+        .catch(function(err) {});
+}, 5000);
+</script>
 {{end}}

@@ -55,6 +55,12 @@ func (m *mockWorkController) IsRunning(accountID int64) bool {
 	return m.running[accountID]
 }
 
+func (m *mockWorkController) RunningCount() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return len(m.running)
+}
+
 func TestWorkerPanelFlows(t *testing.T) {
 	root := findProjectRoot(t)
 	_ = i18n.Load(root + "/locales")

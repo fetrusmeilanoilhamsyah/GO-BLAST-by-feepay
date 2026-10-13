@@ -4,11 +4,17 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type DB struct {
 	Pool *pgxpool.Pool
+}
+
+// QueryRow mengeksekusi query baris tunggal pada database pool.
+func (d *DB) QueryRow(ctx context.Context, sql string, args ...any) pgx.Row {
+	return d.Pool.QueryRow(ctx, sql, args...)
 }
 
 func Connect(ctx context.Context, databaseURL string) (*DB, error) {

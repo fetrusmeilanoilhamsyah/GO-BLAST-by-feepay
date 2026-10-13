@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"goblast/internal/campaign"
 	"goblast/internal/i18n"
 )
 
@@ -60,34 +61,43 @@ func (s *Server) HandleWorkerAccounts(w http.ResponseWriter, r *http.Request) {
 	errMsg := r.URL.Query().Get("error")
 
 	var availableNumbers int64
-	_ = s.DB.Pool.QueryRow(r.Context(), "SELECT COUNT(*) FROM campaign_numbers WHERE status = 'tersedia'").Scan(&availableNumbers)
+	if count, err := campaign.ClaimableCount(r.Context(), s.DB.Pool); err == nil {
+		availableNumbers = int64(count)
+	}
+
+	var runningAccountsGlobal int
+	if s.WorkCtrl != nil {
+		runningAccountsGlobal = s.WorkCtrl.RunningCount()
+	}
 
 	var connectedAccounts int64
 	_ = s.DB.Pool.QueryRow(r.Context(), "SELECT COUNT(*) FROM wa_accounts WHERE worker_id = $1 AND status = 'terhubung'", user.ID).Scan(&connectedAccounts)
 
 	data := struct {
 		CSLinks
-		Lang              string
-		Title             string
-		Theme             string
-		CSRFToken         string
-		ActiveNav         string
-		User              UserSession
-		Accounts          []WAAccountView
-		AvailableNumbers  int64
-		ConnectedAccounts int64
-		Error             string
-		T                 func(string) string
+		Lang                  string
+		Title                 string
+		Theme                 string
+		CSRFToken             string
+		ActiveNav             string
+		User                  UserSession
+		Accounts              []WAAccountView
+		AvailableNumbers      int64
+		RunningAccountsGlobal int
+		ConnectedAccounts     int64
+		Error                 string
+		T                     func(string) string
 	}{
-		CSLinks:           s.csLinks(),
-		Lang:              lang,
-		Title:             i18n.T(lang, "wa.accounts_title"),
-		Theme:             getTheme(r),
-		CSRFToken:         getCSRF(r),
-		ActiveNav:         "accounts",
-		User:              user,
-		Accounts:          accounts,
-		AvailableNumbers:  availableNumbers,
+		CSLinks:               s.csLinks(),
+		Lang:                  lang,
+		Title:                 i18n.T(lang, "wa.accounts_title"),
+		Theme:                 getTheme(r),
+		CSRFToken:             getCSRF(r),
+		ActiveNav:             "accounts",
+		User:                  user,
+		Accounts:              accounts,
+		AvailableNumbers:      availableNumbers,
+		RunningAccountsGlobal: runningAccountsGlobal,
 		ConnectedAccounts: connectedAccounts,
 		Error:             errMsg,
 		T: func(key string) string {
