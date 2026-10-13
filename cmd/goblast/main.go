@@ -73,6 +73,7 @@ func main() {
 		os.Exit(1)
 	}
 	srv.EncryptionKey = cfg.EncryptionKey
+	srv.EncryptionKeyPrev = cfg.EncryptionKeyPrev
 	srv.CSWhatsAppURL = cfg.CSWhatsAppURL
 	srv.CSTelegramURL = cfg.CSTelegramURL
 	srv.ChannelTelegramURL = cfg.ChannelTelegramURL

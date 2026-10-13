@@ -315,6 +315,10 @@ func TestWorkerPanelFlows(t *testing.T) {
 				t.Errorf("Expected wallet save success redirect, got code %d, loc %s", wRR.Code, wRR.Header().Get("Location"))
 			}
 
+			// Selesaikan penarikan sebelumnya (agar tidak pending) dan reset withdraw_locked_until
+			_, _ = pool.Exec(context.Background(), "UPDATE withdrawals SET status = 'selesai' WHERE user_id = $1", workerID)
+			_, _ = pool.Exec(context.Background(), "UPDATE users SET withdraw_locked_until = NULL WHERE id = $1", workerID)
+
 			// Lakukan penarikan instan 20,000 hanya dengan memilih nominal
 			form := url.Values{
 				"amount": {"20000"},
@@ -973,18 +977,18 @@ func TestWorkerPanelFlows(t *testing.T) {
 			}
 		}
 
-		// 2. Credit 45,000 IDR to convWorker
+		// 2. Credit 105,000 IDR to convWorker
 		_, err = pool.Exec(context.Background(), `
 			INSERT INTO ledger_entries (user_id, kind, currency, amount, note)
-			VALUES ($1, 'upah', 'IDR', 45000, 'Upah konversi')
+			VALUES ($1, 'upah', 'IDR', 105000, 'Upah konversi')
 		`, convWorkerID)
 		if err != nil {
 			t.Fatalf("Failed to credit IDR: %v", err)
 		}
 
-		// Convert 30,000 IDR at rate 15,000 -> should yield 2,000,000 micro-USDT (2 USDT)
+		// Convert 90,000 IDR at rate 15,000 -> should yield 6,000,000 micro-USDT (6 USDT)
 		{
-			form := url.Values{"amount_idr": {"30000"}, "request_token": {"token_valid_conv"}}
+			form := url.Values{"amount_idr": {"90000"}, "request_token": {"token_valid_conv"}}
 			req := httptest.NewRequest("POST", "/worker/convert", strings.NewReader(form.Encode()))
 			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 			req = withConvWorker(req)
@@ -1002,18 +1006,18 @@ func TestWorkerPanelFlows(t *testing.T) {
 				t.Errorf("Expected remaining IDR balance 15000, got %d", balIDR)
 			}
 
-			// Verify USDT balance is 2,000,000 micro-USDT
+			// Verify USDT balance is 6,000,000 micro-USDT
 			var balUSDT int64
 			_ = pool.QueryRow(context.Background(), "SELECT user_balance($1, 'USDT')", convWorkerID).Scan(&balUSDT)
-			if balUSDT != 2000000 {
-				t.Errorf("Expected USDT balance 2000000, got %d", balUSDT)
+			if balUSDT != 6000000 {
+				t.Errorf("Expected USDT balance 6000000, got %d", balUSDT)
 			}
 		}
 
-		// 3. Test USDT Withdrawal: withdraw 1 USDT (entered as "1")
+		// 3. Test USDT Withdrawal: withdraw 5 USDT (entered as "5")
 		{
 			form := url.Values{
-				"amount":      {"1"},
+				"amount":      {"5"},
 				"method":      {"usdt_bep20"},
 				"destination": {"0x1234567890abcdef1234567890abcdef12345678"},
 			}
@@ -1034,7 +1038,7 @@ func TestWorkerPanelFlows(t *testing.T) {
 				t.Errorf("Expected remaining USDT balance 1000000, got %d", balUSDT)
 			}
 
-			// Verify withdrawal row in DB has currency='USDT' and amount=1000000
+			// Verify withdrawal row in DB has currency='USDT' and amount=5000000
 			var wAmount int64
 			var wCurr, wMethod string
 			err = pool.QueryRow(context.Background(), `
@@ -1046,8 +1050,8 @@ func TestWorkerPanelFlows(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Failed to query withdrawal row: %v", err)
 			}
-			if wAmount != 1000000 || wCurr != "USDT" || wMethod != "usdt_bep20" {
-				t.Errorf("Expected withdrawal amount=1000000, currency=USDT, method=usdt_bep20; got %d %s %s", wAmount, wCurr, wMethod)
+			if wAmount != 5000000 || wCurr != "USDT" || wMethod != "usdt_bep20" {
+				t.Errorf("Expected withdrawal amount=5000000, currency=USDT, method=usdt_bep20; got %d %s %s", wAmount, wCurr, wMethod)
 			}
 		}
 

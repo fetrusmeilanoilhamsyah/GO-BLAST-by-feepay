@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"goblast/internal/auth"
-	"goblast/internal/withdraw"
 
 	"golang.org/x/time/rate"
 )
@@ -32,7 +31,8 @@ type UserSession struct {
 	Language          string
 	PayoutMethod      string
 	PayoutAccountName string
-	PayoutDestMasked  string
+	PayoutDestMasked   string
+	MustChangePassword bool
 }
 
 // MaskDestination menyamarkan nomor rekening, nomor e-wallet, atau alamat crypto untuk privasi dan keamanan di UI.
@@ -175,12 +175,12 @@ func (s *Server) RequireRole(next http.HandlerFunc, roles ...string) http.Handle
 
 		err = s.DB.Pool.QueryRow(context.Background(), `
 			SELECT u.id, u.role, COALESCE(u.email, ''), COALESCE(u.username, ''), COALESCE(u.display_name, u.username, ''), u.language,
-			       u.payout_method, u.payout_dest_encrypted, u.payout_account_name, ws.expires_at
+			       u.payout_method, u.payout_dest_encrypted, u.payout_account_name, ws.expires_at, COALESCE(u.must_change_password, FALSE)
 			FROM web_sessions ws
 			JOIN users u ON u.id = ws.user_id
 			WHERE ws.token_hash = $1
 		`, hash).Scan(&user.ID, &user.Role, &user.Email, &user.Username, &user.DisplayName, &user.Language,
-			&payoutMethod, &payoutDestEncrypted, &payoutAccName, &expiresAt)
+			&payoutMethod, &payoutDestEncrypted, &payoutAccName, &expiresAt, &user.MustChangePassword)
 
 		if payoutMethod != nil {
 			user.PayoutMethod = *payoutMethod
@@ -189,7 +189,7 @@ func (s *Server) RequireRole(next http.HandlerFunc, roles ...string) http.Handle
 			user.PayoutAccountName = *payoutAccName
 		}
 		if payoutDestEncrypted != nil && *payoutDestEncrypted != "" {
-			if dec, err := withdraw.DecryptDestination(*payoutDestEncrypted, s.EncryptionKey); err == nil {
+			if dec, err := s.DecryptDestination(*payoutDestEncrypted); err == nil {
 				user.PayoutDestMasked = MaskDestination(dec, user.PayoutMethod)
 			}
 		}
@@ -227,6 +227,13 @@ func (s *Server) RequireRole(next http.HandlerFunc, roles ...string) http.Handle
 		if user.Role == "worker" && s.IsMaintenanceMode(r.Context()) {
 			http.Redirect(w, r, "/maintenance", http.StatusSeeOther)
 			return
+		}
+
+		if user.Role == "worker" && user.MustChangePassword {
+			if r.URL.Path != "/worker" && r.URL.Path != "/worker/security" && r.URL.Path != "/logout" {
+				http.Redirect(w, r, "/worker?error=Kata+sandi+Anda+telah+direset+oleh+admin.+Silakan+ganti+kata+sandi+Anda+terlebih+dahulu.", http.StatusSeeOther)
+				return
+			}
 		}
 
 		// Update last seen

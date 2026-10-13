@@ -24,6 +24,9 @@ Menyimpan data pengguna (admin dan pekerja).
 - Kolom `currency` **dihapus pada migrasi 0016** — semua pekerja menerima upah dan bonus referral dalam mata uang tunggal Rupiah (IDR).
 - `referral_code`: Kode referral unik.
 - `referred_by`: Merujuk ke `users(id)` orang yang mengajak (nullable).
+- `withdraw_locked_until`: Waktu penahanan penarikan (TIMESTAMPTZ, nullable, **ditambahkan migrasi 0017**). Diisi saat pekerja mengubah rekening/dompet atau saat admin mereset kata sandi (berlaku 24 jam).
+- `payout_dest_hash`: Hash deterministik HMAC-SHA256 dari rekening/alamat wallet tujuan penarikan pekerja (TEXT, nullable, **ditambahkan migrasi 0017**). Digunakan untuk deteksi multi-akun dan pencarian admin tanpa mendekripsi data.
+- `must_change_password`: Boolean penanda wajib ganti kata sandi setelah admin mereset kata sandi pekerja (BOOLEAN NOT NULL DEFAULT FALSE, **ditambahkan migrasi 0017**). Sesi lama dicabut dan rute pekerja dialihkan paksa ke ubah kata sandi.
 
 ### `web_sessions`
 Menyimpan sesi login dari web.
@@ -116,7 +119,10 @@ Riwayat isi ulang saldo oleh admin.
 ### `withdrawals`
 Penarikan saldo oleh pekerja.
 - `method`: `dana`, `seabank`, `bank`, `usdt_bep20`.
-- `destination_encrypted`: Tujuan transfer terenkripsi.
+- `destination_encrypted`: Tujuan transfer terenkripsi AES-256-GCM dengan prefiks versi (`v1:k1:` / `v1:k0:`).
+- `request_token`: Token acak form untuk mencegah penarikan ganda / idempotensi (`TEXT NOT NULL`, **ditambahkan migrasi 0017**).
+- `payout_reference`: Nomor referensi transfer bank atau TXID blockchain penarikan USDT yang wajib diisi admin saat menyetujui (`TEXT`, nullable, **ditambahkan migrasi 0017**).
+- `reject_reason`: Alasan penolakan penarikan yang wajib diisi admin saat menolak (`TEXT`, nullable, **ditambahkan migrasi 0017**).
 
 ### `audit_logs`
 Catatan aktivitas (audit trail).
@@ -125,6 +131,7 @@ Catatan aktivitas (audit trail).
 - `check_referred_by_not_self`: Pada `users`, memastikan pengguna tidak bisa memakai kode referral milik sendiri.
 - `unique_campaign_phone`: Pada `campaign_numbers`, memastikan nomor telepon (E.164) hanya ada satu per kampanye, mencegah pengiriman ganda di level database.
 - `CHECK` pada `currency` dan `status` di banyak tabel: Menjamin integritas data agar selalu valid sesuai DOC_KONSEP.
+- `idx_withdrawals_user_token`: Indeks unik pada `withdrawals(user_id, request_token)` menjamin pengajuan penarikan dengan token yang sama bersifat idempoten (migrasi 0017).
 - `idx_currency_conversions_user_token`: Indeks unik pada `currency_conversions(user_id, request_token)` menjamin permintaan konversi dengan token yang sama bersifat idempoten (migrasi 0016).
 - `idx_ledger_entries_upah_unique`: Indeks unik parsial di `ledger_entries` memastikan satu `campaign_number_id` hanya bisa membayar upah maksimal satu kali.
 - `trg_prevent_ledger_update_delete`: Trigger di `ledger_entries` menolak semua perintah UPDATE dan DELETE secara ketat (append-only tanpa pengecualian).
@@ -135,6 +142,9 @@ Catatan aktivitas (audit trail).
 - `idx_campaign_numbers_claim`: Indeks parsial di `campaign_numbers (campaign_id, id) WHERE status = 'tersedia'`. Ini mempercepat klaim antrean menggunakan `FOR UPDATE SKIP LOCKED`.
 - `idx_ledger_entries_user_curr_time`: Mempercepat kalkulasi saldo (`user_balance`) dan riwayat.
 - `idx_currency_conversions_user_token`: Menjamin idempotensi konversi IDR ke USDT per pekerja dan per token.
+- `idx_withdrawals_user_token`: Menjamin idempotensi penarikan per pekerja dan per token (migrasi 0017).
+- `idx_withdrawals_user_pending`: Indeks parsial `withdrawals(user_id) WHERE status = 'menunggu'` untuk validasi batas maksimal 1 antrean penarikan pending (migrasi 0017).
+- `idx_users_payout_dest_hash`: Indeks parsial `users(payout_dest_hash) WHERE payout_dest_hash IS NOT NULL` untuk pencarian pekerja berdasarkan nomor rekening/wallet tujuan (migrasi 0017).
 - `idx_audit_logs_created_at`: Mempercepat query riwayat aktivitas.
 - `idx_web_sessions_user_id`: Mempercepat pencarian dan penghapusan semua sesi milik satu pengguna.
 - `idx_wa_accounts_worker_status`: Mempercepat penghitungan dan validasi batas akun aktif per pekerja.

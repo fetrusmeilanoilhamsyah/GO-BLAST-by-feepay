@@ -926,6 +926,9 @@ type WithdrawalItemView struct {
 	AmountFormatted string
 	Method          string
 	Destination     string
+	DestinationMasked string
+	PayoutReference string
+	RejectReason    string
 	Status          string
 	ProcessedAt     *time.Time
 }
@@ -939,16 +942,23 @@ func formatUSDT(n int64) string {
 }
 
 func (s *Server) HandleAdminWithdrawalsGET(w http.ResponseWriter, r *http.Request) {
+	admin, ok := currentUser(r)
+	if !ok || admin.Role != "admin" {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
 	ctx := r.Context()
 	lang := "id"
-	if u, ok := currentUser(r); ok && u.Language != "" {
-		lang = u.Language
+	if admin.Language != "" {
+		lang = admin.Language
 	}
 
 	statusFilter := strings.TrimSpace(r.URL.Query().Get("status"))
 	if statusFilter == "" {
 		statusFilter = "menunggu"
 	}
+	viewIDStr := strings.TrimSpace(r.URL.Query().Get("view_id"))
+	viewID, _ := strconv.ParseInt(viewIDStr, 10, 64)
 
 	// Pending totals
 	var pendingIDRTotal, pendingIDRCount int64
@@ -972,7 +982,7 @@ func (s *Server) HandleAdminWithdrawalsGET(w http.ResponseWriter, r *http.Reques
 	if statusFilter == "semua" {
 		query = `
 			SELECT w.id, w.currency, w.amount, w.method, w.destination_encrypted, w.status, w.requested_at, w.processed_at,
-			       COALESCE(u.username, u.email), u.email
+			       COALESCE(u.username, u.email), u.email, COALESCE(w.payout_reference, ''), COALESCE(w.reject_reason, '')
 			FROM withdrawals w
 			JOIN users u ON u.id = w.user_id
 			ORDER BY w.id DESC
@@ -981,7 +991,7 @@ func (s *Server) HandleAdminWithdrawalsGET(w http.ResponseWriter, r *http.Reques
 	} else {
 		query = `
 			SELECT w.id, w.currency, w.amount, w.method, w.destination_encrypted, w.status, w.requested_at, w.processed_at,
-			       COALESCE(u.username, u.email), u.email
+			       COALESCE(u.username, u.email), u.email, COALESCE(w.payout_reference, ''), COALESCE(w.reject_reason, '')
 			FROM withdrawals w
 			JOIN users u ON u.id = w.user_id
 			WHERE w.status = $1
@@ -999,18 +1009,31 @@ func (s *Server) HandleAdminWithdrawalsGET(w http.ResponseWriter, r *http.Reques
 			var it WithdrawalItemView
 			var destEnc string
 			var rawAmount int64
-			if err := rows.Scan(&it.ID, &it.Currency, &rawAmount, &it.Method, &destEnc, &it.Status, &it.RequestedAt, &it.ProcessedAt, &it.WorkerUsername, &it.WorkerEmail); err == nil {
+			if err := rows.Scan(&it.ID, &it.Currency, &rawAmount, &it.Method, &destEnc, &it.Status, &it.RequestedAt, &it.ProcessedAt, &it.WorkerUsername, &it.WorkerEmail, &it.PayoutReference, &it.RejectReason); err == nil {
 				if it.Currency == "IDR" {
 					it.AmountFormatted = formatIDR(rawAmount)
 				} else {
 					it.AmountFormatted = formatUSDT(rawAmount)
 				}
 
-				dest, decErr := withdraw.DecryptDestination(destEnc, s.EncryptionKey)
-				if decErr != nil {
-					it.Destination = "(gagal dekripsi)"
+				// Dekripsi hanya jika admin membuka detail spesifik (viewID)
+				if viewID > 0 && it.ID == viewID {
+					dest, decErr := s.DecryptDestination(destEnc)
+					if decErr != nil {
+						it.Destination = "tujuan tidak terbaca, minta pekerja mengisi ulang"
+					} else {
+						it.Destination = dest
+					}
+					it.DestinationMasked = it.Destination
+					s.logAudit(&admin.ID, "view_destination", "withdrawals", strconv.FormatInt(it.ID, 10), "admin opened withdrawal detail")
 				} else {
-					it.Destination = dest
+					// Di daftar antrean umum, tujuan disamarkan
+					if dec, decErr := s.DecryptDestination(destEnc); decErr == nil {
+						it.DestinationMasked = MaskDestination(dec, it.Method)
+					} else {
+						it.DestinationMasked = "tujuan tidak terbaca, minta pekerja mengisi ulang"
+					}
+					it.Destination = it.DestinationMasked
 				}
 
 				items = append(items, it)
@@ -1056,6 +1079,42 @@ func (s *Server) HandleAdminWithdrawalsGET(w http.ResponseWriter, r *http.Reques
 	s.Tmpl["admin_withdrawals.html"].ExecuteTemplate(w, "base.html", viewData)
 }
 
+func (s *Server) HandleAdminWithdrawalViewDestinationPOST(w http.ResponseWriter, r *http.Request) {
+	admin, ok := currentUser(r)
+	if !ok || admin.Role != "admin" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	idStr := r.PathValue("id")
+	withdrawalID, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		http.Error(w, "ID penarikan tidak valid", http.StatusBadRequest)
+		return
+	}
+
+	ctx := r.Context()
+	var destEnc string
+	err = s.DB.Pool.QueryRow(ctx, "SELECT destination_encrypted FROM withdrawals WHERE id = $1", withdrawalID).Scan(&destEnc)
+	if err != nil {
+		http.Error(w, "Data penarikan tidak ditemukan", http.StatusNotFound)
+		return
+	}
+
+	dest, decErr := s.DecryptDestination(destEnc)
+	if decErr != nil {
+		dest = "tujuan tidak terbaca, minta pekerja mengisi ulang"
+	}
+
+	s.logAudit(&admin.ID, "view_destination", "withdrawals", idStr, "admin revealed withdrawal destination")
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":      "ok",
+		"destination": dest,
+	})
+}
+
 func (s *Server) HandleAdminWithdrawalApprovePOST(w http.ResponseWriter, r *http.Request) {
 	admin, ok := currentUser(r)
 	if !ok || admin.Role != "admin" {
@@ -1069,6 +1128,8 @@ func (s *Server) HandleAdminWithdrawalApprovePOST(w http.ResponseWriter, r *http
 		http.Redirect(w, r, "/admin/withdrawals?err=ID+penarikan+tidak+valid", http.StatusSeeOther)
 		return
 	}
+
+	payoutRef := strings.TrimSpace(r.FormValue("payout_reference"))
 
 	ctx := r.Context()
 	var status, currency string
@@ -1084,13 +1145,31 @@ func (s *Server) HandleAdminWithdrawalApprovePOST(w http.ResponseWriter, r *http
 		return
 	}
 
-	_, err = s.DB.Pool.Exec(ctx, "UPDATE withdrawals SET status = 'selesai', processed_at = CURRENT_TIMESTAMP WHERE id = $1", withdrawalID)
+	if currency == "USDT" && payoutRef == "" {
+		http.Redirect(w, r, "/admin/withdrawals?err=Bukti+transfer+/+TXID+(payout_reference)+wajib+diisi+untuk+penarikan+USDT", http.StatusSeeOther)
+		return
+	}
+
+	var payoutRefPtr *string
+	if payoutRef != "" {
+		payoutRefPtr = &payoutRef
+	}
+
+	_, err = s.DB.Pool.Exec(ctx, `
+		UPDATE withdrawals 
+		SET status = 'selesai', payout_reference = $1, processed_at = CURRENT_TIMESTAMP 
+		WHERE id = $2
+	`, payoutRefPtr, withdrawalID)
 	if err != nil {
 		http.Redirect(w, r, "/admin/withdrawals?err=Gagal+menyetujui+penarikan: "+err.Error(), http.StatusSeeOther)
 		return
 	}
 
-	s.logAudit(&admin.ID, "withdrawal_approve", "withdrawals", idStr, fmt.Sprintf("approved %d %s", amount, currency))
+	meta := fmt.Sprintf("approved %d %s", amount, currency)
+	if payoutRef != "" {
+		meta += fmt.Sprintf(" (ref: %s)", payoutRef)
+	}
+	s.logAudit(&admin.ID, "withdrawal_approve", "withdrawals", idStr, meta)
 	http.Redirect(w, r, "/admin/withdrawals?msg=Penarikan+#"+idStr+"+berhasil+disetujui", http.StatusSeeOther)
 }
 
@@ -1105,6 +1184,12 @@ func (s *Server) HandleAdminWithdrawalRejectPOST(w http.ResponseWriter, r *http.
 	withdrawalID, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
 		http.Redirect(w, r, "/admin/withdrawals?err=ID+penarikan+tidak+valid", http.StatusSeeOther)
+		return
+	}
+
+	rejectReason := strings.TrimSpace(r.FormValue("reject_reason"))
+	if rejectReason == "" {
+		http.Redirect(w, r, "/admin/withdrawals?err=Alasan+penolakan+(reject_reason)+wajib+diisi", http.StatusSeeOther)
 		return
 	}
 
@@ -1129,15 +1214,19 @@ func (s *Server) HandleAdminWithdrawalRejectPOST(w http.ResponseWriter, r *http.
 		return
 	}
 
-	// 1. Ubah status jadi ditolak
-	_, err = tx.Exec(ctx, "UPDATE withdrawals SET status = 'ditolak', processed_at = CURRENT_TIMESTAMP WHERE id = $1", withdrawalID)
+	// 1. Ubah status jadi ditolak dan simpan reject_reason
+	_, err = tx.Exec(ctx, `
+		UPDATE withdrawals 
+		SET status = 'ditolak', reject_reason = $1, processed_at = CURRENT_TIMESTAMP 
+		WHERE id = $2
+	`, rejectReason, withdrawalID)
 	if err != nil {
 		http.Redirect(w, r, "/admin/withdrawals?err=Gagal+mengubah+status+penarikan", http.StatusSeeOther)
 		return
 	}
 
 	// 2. Refund saldo pekerja di ledger_entries (kind = 'koreksi')
-	refundNote := fmt.Sprintf("Pengembalian dana penarikan #%d ditolak", withdrawalID)
+	refundNote := fmt.Sprintf("Pengembalian dana penarikan #%d ditolak: %s", withdrawalID, rejectReason)
 	_, err = tx.Exec(ctx, `
 		INSERT INTO ledger_entries (user_id, kind, currency, amount, note)
 		VALUES ($1, 'koreksi', $2, $3, $4)
@@ -1147,12 +1236,30 @@ func (s *Server) HandleAdminWithdrawalRejectPOST(w http.ResponseWriter, r *http.
 		return
 	}
 
+	// 3. Masukkan notifikasi ke pekerja di tabel notifications
+	var formattedAmount string
+	if currency == "IDR" {
+		formattedAmount = "Rp " + formatIDR(amount)
+	} else {
+		formattedAmount = formatUSDT(amount) + " USDT"
+	}
+	notifTitle := "Penarikan Dana Ditolak"
+	notifMsg := fmt.Sprintf("Pengajuan penarikan #%d sebesar %s ditolak. Alasan: %s. Saldo telah dikembalikan ke akun Anda.", withdrawalID, formattedAmount, rejectReason)
+	_, err = tx.Exec(ctx, `
+		INSERT INTO notifications (user_id, title, message, kind, ref_id)
+		VALUES ($1, $2, $3, 'system', $4)
+	`, userID, notifTitle, notifMsg, withdrawalID)
+	if err != nil {
+		http.Redirect(w, r, "/admin/withdrawals?err=Gagal+membuat+notifikasi: "+err.Error(), http.StatusSeeOther)
+		return
+	}
+
 	if err := tx.Commit(ctx); err != nil {
 		http.Redirect(w, r, "/admin/withdrawals?err=Gagal+menyelesaikan+transaksi+penolakan", http.StatusSeeOther)
 		return
 	}
 
-	s.logAudit(&admin.ID, "withdrawal_reject", "withdrawals", idStr, fmt.Sprintf("rejected %d %s (refunded)", amount, currency))
+	s.logAudit(&admin.ID, "withdrawal_reject", "withdrawals", idStr, fmt.Sprintf("rejected: %s", rejectReason))
 	http.Redirect(w, r, "/admin/withdrawals?msg=Penarikan+#"+idStr+"+ditolak+dan+saldo+telah+dikembalikan", http.StatusSeeOther)
 }
 
@@ -1184,6 +1291,9 @@ func (s *Server) HandleAdminWorkers(w http.ResponseWriter, r *http.Request) {
 	var query string
 	var args []interface{}
 	if q != "" {
+		normQ := withdraw.NormalizeDestination(q)
+		destHash := withdraw.HashDestination(normQ, s.EncryptionKey)
+
 		query = `
 			SELECT u.id, COALESCE(u.username, u.email), COALESCE(u.email, '-'), u.status,
 			       (SELECT COUNT(*) FROM wa_accounts WHERE worker_id = u.id) AS account_count,
@@ -1192,10 +1302,10 @@ func (s *Server) HandleAdminWorkers(w http.ResponseWriter, r *http.Request) {
 			       user_balance(u.id, 'IDR') AS balance_idr,
 			       user_balance(u.id, 'USDT') AS balance_usdt
 			FROM users u
-			WHERE u.role = 'worker' AND (u.username ILIKE $1 OR u.email ILIKE $1)
+			WHERE u.role = 'worker' AND (u.username ILIKE $1 OR u.email ILIKE $1 OR u.payout_dest_hash = $2)
 			ORDER BY u.id DESC
 		`
-		args = append(args, "%"+q+"%")
+		args = append(args, "%"+q+"%", destHash)
 	} else {
 		query = `
 			SELECT u.id, COALESCE(u.username, u.email), COALESCE(u.email, '-'), u.status,
@@ -1801,7 +1911,7 @@ func (s *Server) RunHealthChecks(ctx context.Context) []HealthCheckItem {
 			Status:  "gagal",
 			Message: fmt.Sprintf("Migrasi versi %d belum selesai diterapkan", migrationVer),
 		})
-	} else if migrationVer < 16 {
+	} else if migrationVer < 17 {
 		results = append(results, HealthCheckItem{
 			Key:     "migration_version",
 			Name:    "Versi Migrasi Skema",
@@ -2461,12 +2571,12 @@ func (s *Server) HandleAdminWorkerDetailGET(w http.ResponseWriter, r *http.Reque
 		pAccName = *payoutAccName
 	}
 	if payoutDestEnc != nil && *payoutDestEnc != "" {
-		dec, decErr := withdraw.DecryptDestination(*payoutDestEnc, s.EncryptionKey)
+		dec, decErr := s.DecryptDestination(*payoutDestEnc)
 		if decErr == nil {
 			pDestDecrypted = dec
 			pDestMasked = MaskDestination(dec, pMethod)
 		} else {
-			pDestDecrypted = "(kunci enkripsi berbeda / tidak dapat didekripsi)"
+			pDestDecrypted = "tujuan tidak terbaca, minta pekerja mengisi ulang"
 			pDestMasked = "(enkripsi lama)"
 		}
 	}
@@ -2630,8 +2740,14 @@ func (s *Server) HandleAdminWorkerResetPasswordPOST(w http.ResponseWriter, r *ht
 		return
 	}
 
-	// 4. Update kata sandi pengguna
-	_, err = s.DB.Pool.Exec(ctx, "UPDATE users SET password_hash = $1 WHERE id = $2", hash, workerID)
+	// 4. Update kata sandi pengguna, set must_change_password = true, withdraw_locked_until = now() + 24h
+	_, err = s.DB.Pool.Exec(ctx, `
+		UPDATE users 
+		SET password_hash = $1, 
+		    must_change_password = TRUE, 
+		    withdraw_locked_until = NOW() + make_interval(hours => $2) 
+		WHERE id = $3
+	`, hash, config.WithdrawLockAfterChangeHours, workerID)
 	if err != nil {
 		http.Redirect(w, r, fmt.Sprintf("/admin/workers/%d?err=Gagal+memperbarui+kata+sandi: %s", workerID, url.QueryEscape(err.Error())), http.StatusSeeOther)
 		return
@@ -2642,8 +2758,10 @@ func (s *Server) HandleAdminWorkerResetPasswordPOST(w http.ResponseWriter, r *ht
 
 	// 6. Catat audit log
 	metaJSON, _ := json.Marshal(map[string]interface{}{
-		"worker_id": workerID,
-		"username":  username,
+		"worker_id":     workerID,
+		"username":      username,
+		"forced_change": true,
+		"locked_hours":  config.WithdrawLockAfterChangeHours,
 	})
 	_, _ = s.DB.Pool.Exec(ctx, `
 		INSERT INTO audit_logs (actor_id, action, entity, entity_id, meta, ip)

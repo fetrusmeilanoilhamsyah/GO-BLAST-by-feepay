@@ -75,6 +75,13 @@
             </div>
 
             <!-- INFORMASI & FORM PENARIKAN -->
+            {{if .IsWithdrawLocked}}
+            <div style="background-color: var(--color-surface-muted); color: var(--color-warning); border-left: 4px solid var(--color-warning); padding: 14px 18px; margin-bottom: 20px; border-radius: 6px; font-size: 14px; line-height: 1.5;">
+                <div style="font-weight: 700; margin-bottom: 4px;">Penahanan Pengamanan Akun</div>
+                {{.WithdrawLockedMessage}}
+            </div>
+            {{end}}
+
             {{if .User.PayoutMethod}}
             <!-- KARTU REKENING TUJUAN TERSIMPAN -->
             <div class="card" style="margin: 0 0 24px 0; padding: 20px; border-left: 4px solid var(--color-primary);">
@@ -120,14 +127,15 @@
                 <h3 style="margin-top: 0; margin-bottom: 8px; font-size: 18px;">{{ call .T "worker.withdraw_form_title" }}</h3>
                 <p style="margin: 0 0 16px 0; font-size: 13px; color: var(--color-muted);">
                     {{if eq .User.PayoutMethod "usdt_bep20"}}
-                    Pilih nominal USDT untuk ditarik ke wallet BEP20 Anda.
+                    Pilih nominal USDT untuk ditarik ke wallet BEP20 Anda (minimal {{.MinWithdrawUSDTFormatted}} USDT).
                     {{else}}
-                    Pilih salah satu nominal cepat di bawah atau ketik manual jumlah yang diinginkan.
+                    Pilih salah satu nominal cepat di bawah atau ketik manual jumlah yang diinginkan (minimal Rp {{.MinWithdrawIDRFormatted}}).
                     {{end}}
                 </p>
 
                 <form method="POST" action="/worker/withdrawals" id="form-fast-withdraw">
                     <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+                    <input type="hidden" name="request_token" value="{{.WithdrawRequestToken}}">
 
                     <!-- CHIPS PRESET NOMINAL -->
                     <div style="margin-bottom: 16px;">
@@ -136,9 +144,7 @@
                         </label>
                         <div class="chip-grid">
                             {{if eq .User.PayoutMethod "usdt_bep20"}}
-                            <button type="button" class="chip-btn" onclick="setWithdrawAmount('1', this)">1 USDT</button>
-                            <button type="button" class="chip-btn" onclick="setWithdrawAmount('2', this)">2 USDT</button>
-                            <button type="button" class="chip-btn" onclick="setWithdrawAmount('5', this)">5 USDT</button>
+                            <button type="button" class="chip-btn" onclick="setWithdrawAmount('5', this)">5 USDT (Min)</button>
                             <button type="button" class="chip-btn" onclick="setWithdrawAmount('10', this)">10 USDT</button>
                             <button type="button" class="chip-btn" onclick="setWithdrawAmount('20', this)">20 USDT</button>
                             <button type="button" class="chip-btn" onclick="setWithdrawAmount('50', this)">50 USDT</button>
@@ -171,9 +177,9 @@
                             {{end}}
                         </label>
                         {{if eq .User.PayoutMethod "usdt_bep20"}}
-                        <input type="text" id="withdraw-amount" name="amount" class="input" required placeholder="Contoh: 10 atau 2.5">
+                        <input type="text" id="withdraw-amount" name="amount" class="input" required placeholder="Contoh: 10 atau 5.5">
                         {{else}}
-                        <input type="number" id="withdraw-amount" name="amount" class="input" min="1" max="{{.BalanceIDR}}" required placeholder="Pilih nominal di atas atau ketik manual">
+                        <input type="number" id="withdraw-amount" name="amount" class="input" min="10000" max="{{.BalanceIDR}}" required placeholder="Pilih nominal di atas atau ketik manual">
                         {{end}}
                     </div>
 
@@ -181,7 +187,7 @@
                         {{ call .T "worker.withdraw_notice" }}
                     </div>
 
-                    <button type="submit" class="btn btn-primary" style="padding: 12px 24px; font-weight: bold; cursor: pointer;">
+                    <button type="submit" class="btn btn-primary" {{if .IsWithdrawLocked}}disabled style="opacity: 0.6; cursor: not-allowed; padding: 12px 24px; font-weight: bold;"{{else}}style="padding: 12px 24px; font-weight: bold; cursor: pointer;"{{end}}>
                         {{ call .T "worker.withdraw_submit" }}
                     </button>
                 </form>

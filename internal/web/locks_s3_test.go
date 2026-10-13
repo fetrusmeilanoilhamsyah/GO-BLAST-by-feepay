@@ -403,6 +403,51 @@ func TestHealthChecks_AllNine_OkAndFail(t *testing.T) {
 	_ = srv.updateSettingWithAudit(ctx, adminID, "rate_idr_to_usdt", 15000, "127.0.0.1")
 	_ = srv.updateSettingWithAudit(ctx, adminID, "rate_idr_to_usdt_updated_at", time.Now().Format(time.RFC3339), "127.0.0.1")
 
+	// Bersihkan nomor menggantung residu dari pengujian sebelumnya
+	_, _ = database.Pool.Exec(ctx, "UPDATE campaign_numbers SET status = 'gagal' WHERE status = 'dikirim' AND claimed_at < now() - interval '450 seconds'")
+
+	// Pastikan keadaan awal buku besar seimbang untuk health check
+	var sCount, wCount int64
+	_ = database.Pool.QueryRow(ctx, "SELECT COUNT(*) FROM campaign_numbers WHERE status = 'terkirim'").Scan(&sCount)
+	_ = database.Pool.QueryRow(ctx, "SELECT COUNT(*) FROM ledger_entries WHERE kind = 'upah'").Scan(&wCount)
+	if sCount < wCount {
+		var cID, bID int64
+		err := database.Pool.QueryRow(ctx,
+			`INSERT INTO campaigns (name, status, button_mode, body, elements, created_by)
+			 VALUES ('Sync Camp', 'berjalan', 'kartu_link', 'Halo', '{}', $1) RETURNING id`, adminID,
+		).Scan(&cID)
+		if err != nil {
+			t.Fatalf("sync camp err: %v", err)
+		}
+		err = database.Pool.QueryRow(ctx,
+			`INSERT INTO number_batches (campaign_id, filename, uploaded_by, total, accepted)
+			 VALUES ($1, 'sync.csv', $2, $3, $3) RETURNING id`, cID, adminID, int(wCount-sCount),
+		).Scan(&bID)
+		if err != nil {
+			t.Fatalf("sync batch err: %v", err)
+		}
+		for i := 0; i < int(wCount-sCount); i++ {
+			phone := fmt.Sprintf("62899%08d%d", time.Now().UnixNano()%1000000, i)
+			_, err = database.Pool.Exec(ctx,
+				`INSERT INTO campaign_numbers (campaign_id, batch_id, phone_e164, country_code, status)
+				 VALUES ($1, $2, $3, '62', 'terkirim')`, cID, bID, phone,
+			)
+			if err != nil {
+				t.Fatalf("sync number err: %v", err)
+			}
+		}
+	} else if sCount > wCount {
+		for i := 0; i < int(sCount-wCount); i++ {
+			_, err := database.Pool.Exec(ctx,
+				`INSERT INTO ledger_entries (user_id, amount, currency, kind, description)
+				 VALUES ($1, 100, 'IDR', 'upah', 'sync upah test')`, adminID,
+			)
+			if err != nil {
+				t.Fatalf("sync wage err: %v", err)
+			}
+		}
+	}
+
 	// ==================== KEADAAN AWAL / OK ====================
 	checks := srv.RunHealthChecks(ctx)
 	checkMap := make(map[string]HealthCheckItem)
@@ -524,8 +569,8 @@ func TestHealthChecks_AllNine_OkAndFail(t *testing.T) {
 	// ==================== KEADAAN PERINGATAN 4: Penarikan Menunggu > 24 Jam ====================
 	var oldWID int64
 	err = database.Pool.QueryRow(ctx,
-		`INSERT INTO withdrawals (user_id, currency, amount, method, destination_encrypted, status, requested_at)
-		 VALUES ($1, 'IDR', 50000, 'dana', 'enc', 'menunggu', now() - interval '26 hours')
+		`INSERT INTO withdrawals (user_id, currency, amount, method, destination_encrypted, request_token, status, requested_at)
+		 VALUES ($1, 'IDR', 50000, 'dana', 'enc', 'tok_overdue_s3', 'menunggu', now() - interval '26 hours')
 		 RETURNING id`, workerID,
 	).Scan(&oldWID)
 	if err != nil {

@@ -16,6 +16,7 @@ import (
 	"goblast/internal/db"
 	"goblast/internal/i18n"
 	"goblast/internal/wa"
+	"goblast/internal/withdraw"
 )
 
 // WorkController antarmuka kontrol kerja pengiriman pesan.
@@ -59,12 +60,18 @@ type Server struct {
 	Env                string
 	WaManager          *wa.Manager
 	EncryptionKey      []byte
+	EncryptionKeyPrev  []byte
 	WorkCtrl           WorkController
 	CSWhatsAppURL      string
 	CSTelegramURL      string
 	ChannelTelegramURL string
 	statsCache         globalStatsCache
 	lockCache          systemLockCache
+}
+
+// DecryptDestination mendekripsi tujuan penarikan dengan kunci aktif dan kunci rotasi sebelumnya.
+func (s *Server) DecryptDestination(ciphertext string) (string, error) {
+	return withdraw.DecryptDestinationWithPrev(ciphertext, s.EncryptionKey, s.EncryptionKeyPrev)
 }
 
 func (s *Server) getGlobalStats(ctx context.Context) (int, int, error) {
@@ -329,6 +336,7 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.Handle("POST /admin/wallet", s.CSRFMiddleware(s.RequireRole(s.HandleAdminWalletTopupPOST, "admin")))
 	mux.Handle("POST /admin/wallet/topup", s.CSRFMiddleware(s.RequireRole(s.HandleAdminWalletTopupPOST, "admin")))
 	mux.Handle("GET /admin/withdrawals", s.CSRFMiddleware(s.RequireRole(s.HandleAdminWithdrawalsGET, "admin")))
+	mux.Handle("POST /admin/withdrawals/{id}/view-destination", s.CSRFMiddleware(s.RequireRole(s.HandleAdminWithdrawalViewDestinationPOST, "admin")))
 	mux.Handle("POST /admin/withdrawals/{id}/approve", s.CSRFMiddleware(s.RequireRole(s.HandleAdminWithdrawalApprovePOST, "admin")))
 	mux.Handle("POST /admin/withdrawals/{id}/reject", s.CSRFMiddleware(s.RequireRole(s.HandleAdminWithdrawalRejectPOST, "admin")))
 	mux.Handle("GET /admin/workers", s.CSRFMiddleware(s.RequireRole(s.HandleAdminWorkers, "admin")))

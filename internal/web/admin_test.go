@@ -675,8 +675,8 @@ func TestAdminWithdrawalsApproveAndReject(t *testing.T) {
 	// Create withdrawal 1 (100,000 IDR)
 	var w1ID int64
 	err = pool.QueryRow(ctx, `
-		INSERT INTO withdrawals (user_id, currency, amount, method, destination_encrypted, status)
-		VALUES ($1, 'IDR', 100000, 'bca', $2, 'menunggu')
+		INSERT INTO withdrawals (user_id, currency, amount, method, destination_encrypted, request_token, status)
+		VALUES ($1, 'IDR', 100000, 'bca', $2, 'admin_test_tok_1', 'menunggu')
 		RETURNING id
 	`, workerID, encDest).Scan(&w1ID)
 	if err != nil {
@@ -690,8 +690,8 @@ func TestAdminWithdrawalsApproveAndReject(t *testing.T) {
 	// Create withdrawal 2 (50,000 IDR)
 	var w2ID int64
 	err = pool.QueryRow(ctx, `
-		INSERT INTO withdrawals (user_id, currency, amount, method, destination_encrypted, status)
-		VALUES ($1, 'IDR', 50000, 'bca', $2, 'menunggu')
+		INSERT INTO withdrawals (user_id, currency, amount, method, destination_encrypted, request_token, status)
+		VALUES ($1, 'IDR', 50000, 'bca', $2, 'admin_test_tok_2', 'menunggu')
 		RETURNING id
 	`, workerID, encDest).Scan(&w2ID)
 	if err != nil {
@@ -736,7 +736,9 @@ func TestAdminWithdrawalsApproveAndReject(t *testing.T) {
 	}
 
 	// 3. Reject withdrawal 2 (must refund 50,000)
-	reqReject := httptest.NewRequest("POST", fmt.Sprintf("/admin/withdrawals/%d/reject", w2ID), nil)
+	rejectForm := url.Values{"reject_reason": {"Data rekening salah"}}
+	reqReject := httptest.NewRequest("POST", fmt.Sprintf("/admin/withdrawals/%d/reject", w2ID), strings.NewReader(rejectForm.Encode()))
+	reqReject.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	reqReject.SetPathValue("id", fmt.Sprintf("%d", w2ID))
 	reqReject = reqReject.WithContext(ctxAdmin)
 	rrReject := httptest.NewRecorder()

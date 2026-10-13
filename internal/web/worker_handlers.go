@@ -637,6 +637,24 @@ func (s *Server) HandleWorkerWithdrawalsGET(w http.ResponseWriter, r *http.Reque
 	}
 
 	convertRequestToken, _, _ := auth.GenerateSessionToken()
+	withdrawRequestToken, _, _ := auth.GenerateSessionToken()
+
+	var withdrawLockedUntil *time.Time
+	_ = s.DB.Pool.QueryRow(ctx, "SELECT withdraw_locked_until FROM users WHERE id = $1", user.ID).Scan(&withdrawLockedUntil)
+
+	isWithdrawLocked := false
+	var withdrawLockedMessage string
+	if withdrawLockedUntil != nil && withdrawLockedUntil.After(time.Now()) {
+		isWithdrawLocked = true
+		remainingDuration := time.Until(*withdrawLockedUntil)
+		hours := int(remainingDuration.Hours())
+		mins := int(remainingDuration.Minutes()) % 60
+		if hours > 0 {
+			withdrawLockedMessage = fmt.Sprintf("Penarikan dana sedang ditahan sementara demi keamanan akun setelah perubahan rekening/kata sandi (sisa waktu: %d jam %d menit)", hours, mins)
+		} else {
+			withdrawLockedMessage = fmt.Sprintf("Penarikan dana sedang ditahan sementara demi keamanan akun setelah perubahan rekening/kata sandi (sisa waktu: %d menit)", mins)
+		}
+	}
 
 	data := struct {
 		CSLinks
@@ -655,6 +673,11 @@ func (s *Server) HandleWorkerWithdrawalsGET(w http.ResponseWriter, r *http.Reque
 		RateIDRtoUSDTDisplay    string
 		ConvertRequestToken     string
 		MinConvertIDRFormatted  string
+		WithdrawRequestToken    string
+		IsWithdrawLocked        bool
+		WithdrawLockedMessage   string
+		MinWithdrawIDRFormatted string
+		MinWithdrawUSDTFormatted string
 		Withdrawals             []WorkerWithdrawalView
 		Error                   string
 		Success                 string
@@ -676,6 +699,11 @@ func (s *Server) HandleWorkerWithdrawalsGET(w http.ResponseWriter, r *http.Reque
 		RateIDRtoUSDTDisplay:    money.FormatIDR(rateIDRtoUSDT),
 		ConvertRequestToken:     convertRequestToken,
 		MinConvertIDRFormatted:  money.FormatIDR(config.MinConvertIDR),
+		WithdrawRequestToken:    withdrawRequestToken,
+		IsWithdrawLocked:        isWithdrawLocked,
+		WithdrawLockedMessage:   withdrawLockedMessage,
+		MinWithdrawIDRFormatted: money.FormatIDR(config.MinWithdrawIDR),
+		MinWithdrawUSDTFormatted: money.FormatUSDT(config.MinWithdrawUSDTMicro),
 		Withdrawals:             list,
 		Error:                   errMsg,
 		Success:                 successMsg,
@@ -704,9 +732,15 @@ func (s *Server) HandleWorkerWithdrawalsPOST(w http.ResponseWriter, r *http.Requ
 	method := strings.ToLower(strings.TrimSpace(r.FormValue("method")))
 	dest := strings.TrimSpace(r.FormValue("destination"))
 	accountName := strings.TrimSpace(r.FormValue("account_name"))
+	requestToken := strings.TrimSpace(r.FormValue("request_token"))
+	if requestToken == "" {
+		rnd, _, _ := auth.GenerateSessionToken()
+		requestToken = rnd
+	}
 
 	var payoutMethod string
 	var encryptedDest string
+	var directDestHash string
 
 	// Jika dest diisi langsung di form (backward compatible / tes)
 	if dest != "" {
@@ -733,13 +767,7 @@ func (s *Server) HandleWorkerWithdrawalsPOST(w http.ResponseWriter, r *http.Requ
 		}
 		payoutMethod = method
 		encryptedDest = enc
-
-		// Simpan ke profil user agar selanjutnya tidak perlu isi ulang
-		_, _ = s.DB.Pool.Exec(ctx, `
-			UPDATE users
-			SET payout_method = $1, payout_dest_encrypted = $2, payout_account_name = $3
-			WHERE id = $4
-		`, method, enc, accountName, user.ID)
+		directDestHash = withdraw.HashDestination(withdraw.NormalizeDestination(dest), s.EncryptionKey)
 	} else {
 		// Gunakan rekening yang sudah tersimpan di akun user
 		var dbMethod, dbDestEnc, dbAccName *string
@@ -765,6 +793,10 @@ func (s *Server) HandleWorkerWithdrawalsPOST(w http.ResponseWriter, r *http.Requ
 			http.Redirect(w, r, "/worker/withdrawals?error=Nominal+penarikan+tidak+valid", http.StatusSeeOther)
 			return
 		}
+		if parsed < config.MinWithdrawUSDTMicro {
+			http.Redirect(w, r, fmt.Sprintf("/worker/withdrawals?error=Jumlah+minimal+penarikan+USDT+adalah+%s+USDT", money.FormatUSDT(config.MinWithdrawUSDTMicro)), http.StatusSeeOther)
+			return
+		}
 		amount = parsed
 	} else {
 		currency = "IDR"
@@ -773,18 +805,14 @@ func (s *Server) HandleWorkerWithdrawalsPOST(w http.ResponseWriter, r *http.Requ
 			http.Redirect(w, r, "/worker/withdrawals?error=Nominal+penarikan+tidak+valid", http.StatusSeeOther)
 			return
 		}
+		if parsed < config.MinWithdrawIDR {
+			http.Redirect(w, r, fmt.Sprintf("/worker/withdrawals?error=Jumlah+minimal+penarikan+adalah+Rp+%s", money.FormatIDR(config.MinWithdrawIDR)), http.StatusSeeOther)
+			return
+		}
 		amount = parsed
 	}
 
-	// Cek saldo sesuai mata uang penarikan
-	var currentBalance int64
-	_ = s.DB.Pool.QueryRow(ctx, "SELECT user_balance($1, $2)", user.ID, currency).Scan(&currentBalance)
-	if currentBalance < amount {
-		http.Redirect(w, r, "/worker/withdrawals?error=Saldo+Anda+tidak+mencukupi+untuk+penarikan+ini", http.StatusSeeOther)
-		return
-	}
-
-	// Transaksi atomik: Insert ke withdrawals dan kurangi saldo di ledger_entries
+	// Transaksi atomik tunggal
 	tx, err := s.DB.Pool.Begin(ctx)
 	if err != nil {
 		http.Redirect(w, r, "/worker/withdrawals?error=Terjadi+kesalahan+sistem", http.StatusSeeOther)
@@ -792,18 +820,75 @@ func (s *Server) HandleWorkerWithdrawalsPOST(w http.ResponseWriter, r *http.Requ
 	}
 	defer tx.Rollback(ctx)
 
+	// 1. Kunci baris user (FOR UPDATE) dan periksa penahanan penarikan
+	var lockedUserID int64
+	var withdrawLockedUntil *time.Time
+	err = tx.QueryRow(ctx, "SELECT id, withdraw_locked_until FROM users WHERE id = $1 FOR UPDATE", user.ID).Scan(&lockedUserID, &withdrawLockedUntil)
+	if err != nil {
+		http.Redirect(w, r, "/worker/withdrawals?error=Terjadi+kesalahan+sistem", http.StatusSeeOther)
+		return
+	}
+	if withdrawLockedUntil != nil && withdrawLockedUntil.After(time.Now()) {
+		_ = tx.Rollback(ctx)
+		http.Redirect(w, r, "/worker/withdrawals?error=Penarikan+dana+sedang+ditahan+sementara+demi+keamanan+akun+setelah+perubahan+rekening+atau+kata+sandi", http.StatusSeeOther)
+		return
+	}
+
+	// 2. Cek token ganda idempoten
+	var existingID int64
+	errExist := tx.QueryRow(ctx, `
+		SELECT id FROM withdrawals WHERE user_id = $1 AND request_token = $2
+	`, user.ID, requestToken).Scan(&existingID)
+	if errExist == nil {
+		_ = tx.Rollback(ctx)
+		http.Redirect(w, r, "/worker/withdrawals?success=1", http.StatusSeeOther)
+		return
+	}
+
+	// 3. Cek jumlah permintaan menunggu (MaxPendingWithdrawals = 1)
+	var pendingCount int
+	err = tx.QueryRow(ctx, "SELECT COUNT(*) FROM withdrawals WHERE user_id = $1 AND status = 'menunggu'", user.ID).Scan(&pendingCount)
+	if err != nil {
+		http.Redirect(w, r, "/worker/withdrawals?error=Terjadi+kesalahan+sistem", http.StatusSeeOther)
+		return
+	}
+	if pendingCount >= config.MaxPendingWithdrawals {
+		_ = tx.Rollback(ctx)
+		http.Redirect(w, r, "/worker/withdrawals?error=Anda+masih+memiliki+pengajuan+penarikan+yang+sedang+menunggu+diproses.+Harap+tunggu+hingga+selesai.", http.StatusSeeOther)
+		return
+	}
+
+	// 4. Cek saldo sesuai mata uang di dalam transaksi
+	var currentBalance int64
+	err = tx.QueryRow(ctx, "SELECT user_balance($1, $2)", user.ID, currency).Scan(&currentBalance)
+	if err != nil || currentBalance < amount {
+		_ = tx.Rollback(ctx)
+		http.Redirect(w, r, "/worker/withdrawals?error=Saldo+Anda+tidak+mencukupi+untuk+penarikan+ini", http.StatusSeeOther)
+		return
+	}
+
+	// 5. Update rekening pengguna jika diisi langsung di form
+	if dest != "" {
+		_, _ = tx.Exec(ctx, `
+			UPDATE users
+			SET payout_method = $1, payout_dest_encrypted = $2, payout_account_name = $3, payout_dest_hash = $4
+			WHERE id = $5
+		`, payoutMethod, encryptedDest, accountName, directDestHash, user.ID)
+	}
+
+	// 6. Insert ke withdrawals
 	var withdrawalID int64
 	err = tx.QueryRow(ctx, `
-		INSERT INTO withdrawals (user_id, currency, amount, method, destination_encrypted, status)
-		VALUES ($1, $2, $3, $4, $5, 'menunggu')
+		INSERT INTO withdrawals (user_id, currency, amount, method, destination_encrypted, request_token, status)
+		VALUES ($1, $2, $3, $4, $5, $6, 'menunggu')
 		RETURNING id
-	`, user.ID, currency, amount, payoutMethod, encryptedDest).Scan(&withdrawalID)
+	`, user.ID, currency, amount, payoutMethod, encryptedDest, requestToken).Scan(&withdrawalID)
 	if err != nil {
 		http.Redirect(w, r, "/worker/withdrawals?error=Gagal+membuat+pengajuan+penarikan", http.StatusSeeOther)
 		return
 	}
 
-	// Catat di buku besar (nominal negatif)
+	// 7. Catat di buku besar (nominal negatif)
 	note := fmt.Sprintf("Pengajuan penarikan #%d", withdrawalID)
 	_, err = tx.Exec(ctx, `
 		INSERT INTO ledger_entries (user_id, kind, currency, amount, note)
@@ -1027,17 +1112,21 @@ func (s *Server) HandleWorkerWalletPOST(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	normDest := withdraw.NormalizeDestination(destination)
+	destHash := withdraw.HashDestination(normDest, s.EncryptionKey)
+
 	_, err = s.DB.Pool.Exec(r.Context(), `
 		UPDATE users
-		SET payout_method = $1, payout_dest_encrypted = $2, payout_account_name = $3
-		WHERE id = $4
-	`, method, encryptedDest, accountName, user.ID)
+		SET payout_method = $1, payout_dest_encrypted = $2, payout_account_name = $3, payout_dest_hash = $4,
+		    withdraw_locked_until = NOW() + make_interval(hours => $5)
+		WHERE id = $6
+	`, method, encryptedDest, accountName, destHash, config.WithdrawLockAfterChangeHours, user.ID)
 	if err != nil {
 		http.Redirect(w, r, target+sep+"error=Gagal+menyimpan+pengaturan+rekening", http.StatusSeeOther)
 		return
 	}
 
-	s.logAudit(&user.ID, "update_payout_settings", "users", strconv.FormatInt(user.ID, 10), fmt.Sprintf("method: %s", method))
+	s.logAudit(&user.ID, "update_payout_settings", "users", strconv.FormatInt(user.ID, 10), fmt.Sprintf("method: %s (penarikan ditahan %d jam)", method, config.WithdrawLockAfterChangeHours))
 	http.Redirect(w, r, target+sep+"success=Rekening+tujuan+penarikan+berhasil+disimpan", http.StatusSeeOther)
 }
 
@@ -1215,7 +1304,7 @@ func (s *Server) HandleWorkerSecurityPOST(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	_, _ = s.DB.Pool.Exec(r.Context(), "UPDATE users SET password_hash = $1 WHERE id = $2", newHash, user.ID)
+	_, _ = s.DB.Pool.Exec(r.Context(), "UPDATE users SET password_hash = $1, must_change_password = FALSE WHERE id = $2", newHash, user.ID)
 	s.logAudit(&user.ID, "change_password", "users", strconv.FormatInt(user.ID, 10), "password updated")
 	http.Redirect(w, r, target+sep+"success=Kata+sandi+berhasil+diperbarui", http.StatusSeeOther)
 }

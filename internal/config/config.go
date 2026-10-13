@@ -14,6 +14,7 @@ type Config struct {
 	DatabaseURL        string
 	SessionSecret      string
 	EncryptionKey      []byte
+	EncryptionKeyPrev  []byte
 	CSWhatsAppURL      string
 	CSTelegramURL      string
 	ChannelTelegramURL string
@@ -65,6 +66,18 @@ func Load() (*Config, error) {
 		return nil, errors.New("ENCRYPTION_KEY must be exactly 32 bytes when decoded")
 	}
 	cfg.EncryptionKey = key
+
+	encKeyPrevStr := os.Getenv("ENCRYPTION_KEY_PREV")
+	if encKeyPrevStr != "" {
+		keyPrev, err := base64.StdEncoding.DecodeString(encKeyPrevStr)
+		if err != nil {
+			return nil, errors.New("ENCRYPTION_KEY_PREV is not a valid base64 string")
+		}
+		if len(keyPrev) != 32 {
+			return nil, errors.New("ENCRYPTION_KEY_PREV must be exactly 32 bytes when decoded")
+		}
+		cfg.EncryptionKeyPrev = keyPrev
+	}
 
 	if cfg.AppEnv == "prod" {
 		if cfg.DatabaseURL == "" {

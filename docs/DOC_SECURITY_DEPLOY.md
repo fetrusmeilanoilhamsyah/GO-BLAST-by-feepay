@@ -21,11 +21,21 @@ Panduan dan aturan mengenai keamanan aplikasi dan prosedur deploy sistem GO BLAS
 - Batasi rute login dan pendaftaran. Batas laju: login 5 percobaan per 15 menit per kombinasi IP dan email, pendaftaran 10 per jam per IP.
 - Batasi rute publik lainnya ke angka yang wajar (misal 100 per IP per menit).
 
-### A5. Enkripsi data
-- Enkripsi alamat tujuan penarikan pekerja dan kunci sesi WhatsApp jika disimpan di database.
-- Gunakan algoritma AES-256-GCM.
-- Ambil kunci enkripsi dari variabel lingkungan `ENCRYPTION_KEY`.
-- Sediakan cara rotasi kunci (mendukung pembacaan kunci lama saat menulis ulang data dengan kunci baru).
+### A5. Enkripsi data dan rotasi kunci
+- Enkripsi alamat tujuan penarikan pekerja dan data sensitif menggunakan algoritma AES-256-GCM.
+- Format ciphertext terenkripsi menyertakan penanda versi:
+  - `v1:k1:<base64>`: Terenkripsi dengan kunci aktif saat ini (`ENCRYPTION_KEY`).
+  - `v1:k0:<base64>`: Terenkripsi dengan kunci rotasi sebelumnya (`ENCRYPTION_KEY_PREV`).
+  - Fallback aman: Mendukung ciphertext legacy tanpa prefiks atau format sejenis.
+- Ambil kunci enkripsi dari variabel lingkungan `ENCRYPTION_KEY` (wajib, 32 byte base64).
+- Dukungan rotasi kunci dua generasi (`ENCRYPTION_KEY` dan `ENCRYPTION_KEY_PREV`):
+  1. Pasang kunci lama ke variabel `ENCRYPTION_KEY_PREV`.
+  2. Generate 32 byte acak baru dan pasang ke `ENCRYPTION_KEY`.
+  3. Aplikasi otomatis membaca/mendekripsi data lama dengan k1, fallback ke k0 jika gagal, dan selalu menulis/mengenkripsi data baru menggunakan k1.
+  4. Seluruh log aplikasi dilarang keras mencetak plaintext, ciphertext utuh, maupun kunci enkripsi.
+- Pemisahan cadangan kunci dari database:
+  - Kunci enkripsi pada berkas `.env` TIDAK BOLEH disimpan bersama cadangan database (`pg_dump`).
+  - Jika cadangan database dicuri atau bocor, data rekening dan tujuan penarikan pekerja tetap tidak dapat didekripsi tanpa berkas kunci terpisah. Simpan salinan darurat berkas `.env` di brankas password / secret manager terisolasi.
 
 ### A6. Kontrol akses
 - Periksa tabel peran (admin, pekerja, publik) terhadap tiap kelompok rute di level server.
@@ -93,6 +103,7 @@ Panduan dan aturan mengenai keamanan aplikasi dan prosedur deploy sistem GO BLAS
 | `DATABASE_URL` | String koneksi psql | `postgres://<username>:<password>@localhost:5432/goblast` | Wajib |
 | `SESSION_SECRET` | Rahasia cookie sesi | `(base64 dari 32 byte)` | Wajib |
 | `ENCRYPTION_KEY` | Kunci enkripsi | `(base64 dari 32 byte)` | Wajib |
+| `ENCRYPTION_KEY_PREV` | Kunci enkripsi versi sebelumnya (rotasi kunci) | `(base64 dari 32 byte)` | Opsional |
 
 ### B5. Migrasi
 - Jalankan migrasi (misal `go run ./cmd/goblast migrate up`) menggunakan folder db/migrations sebelum memulai versi biner baru.
