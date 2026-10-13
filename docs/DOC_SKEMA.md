@@ -25,15 +25,6 @@ Menyimpan data pengguna (admin dan pekerja).
 - `referral_code`: Kode referral unik.
 - `referred_by`: Merujuk ke `users(id)` orang yang mengajak (nullable).
 
-### `notifications`
-Notifikasi sistem untuk pekerja (lonceng di panel pekerja). Ditambahkan migrasi 0015.
-- `user_id`: Penerima notifikasi (pekerja).
-- `title`: Judul singkat notifikasi.
-- `message`: Isi notifikasi.
-- `kind`: Jenis — `broadcast` (dari admin), `ticket_reply` (balasan tiket), `system` (sistem).
-- `ref_id`: ID referensi ke entitas asal (opsional, misal ID tiket).
-- `read_at`: NULL = belum dibaca. Diisi saat dibaca.
-
 ### `web_sessions`
 Menyimpan sesi login dari web.
 - `token_hash`: Hash dari token sesi untuk keamanan.
@@ -80,6 +71,35 @@ Buku besar untuk saldo pekerja (append-only).
 - `rate_snapshot`: Rate yang berlaku saat itu (BIGINT, IDR: rupiah, USDT: sepersejuta USDT).
 - `reverses_entry_id`: Merujuk ke entri yang dikoreksi.
 
+### `support_tickets`
+Tiket laporan/bantuan dari pekerja ke admin. Ditambahkan migrasi 0012.
+- `user_id`: Pekerja pengirim tiket.
+- `category`: Kategori laporan (misal: `koneksi`, `pembayaran`, `lainnya`).
+- `message`: Isi laporan.
+- `status`: `open` atau `resolved`.
+- `admin_notes`: Catatan internal admin.
+- `reply_message`: Pesan balasan dari admin ke pekerja (**ditambahkan migrasi 0015**).
+- `replied_by`: Admin yang membalas, merujuk ke `users(id)` ON DELETE SET NULL (**migrasi 0015**).
+- `replied_at`: Waktu balasan dikirim (**migrasi 0015**).
+- `resolved_at`: Waktu tiket diselesaikan.
+
+### `broadcasts`
+Pengumuman yang dibuat admin. Ditambahkan migrasi 0012.
+- `title`: Judul pengumuman.
+- `message`: Isi pengumuman.
+- `badge`: Jenis visual — `info`, `warning`, `success`, atau nilai lain.
+- `is_active`: Boolean, hanya broadcast aktif yang disebar ke notifikasi pekerja.
+- `created_by`: Admin pembuat, merujuk ke `users(id)` ON DELETE SET NULL.
+
+### `notifications`
+Notifikasi sistem untuk pekerja (lonceng di panel pekerja). **Ditambahkan migrasi 0015.**
+- `user_id`: Penerima notifikasi (pekerja).
+- `title`: Judul singkat notifikasi.
+- `message`: Isi notifikasi.
+- `kind`: Jenis — `broadcast` (dari admin), `ticket_reply` (balasan tiket), `system` (sistem).
+- `ref_id`: ID referensi ke entitas asal (opsional, misal ID tiket).
+- `read_at`: NULL = belum dibaca. Diisi saat dibaca.
+
 ### `wallet_entries`
 Riwayat isi ulang saldo oleh admin.
 
@@ -109,4 +129,7 @@ Catatan aktivitas (audit trail).
 - `idx_wa_accounts_status`: Mempercepat pemantauan status seluruh akun dan total batas sesi aktif sistem.
 - `idx_campaign_numbers_sent_at`: (Migrasi 0011) Mempercepat query laporan tren harian 14 hari di dashboard admin (`sent_at >= $1`).
 - `idx_wallet_entries_currency`: (Migrasi 0011) Mempercepat kalkulasi saldo dompet admin per mata uang (`currency, created_at`) dan riwayat isi ulang.
-
+- `idx_support_tickets_status`: (Migrasi 0012) Mempercepat filter tiket berdasarkan status.
+- `idx_support_tickets_user_id`: (Migrasi 0012) Mempercepat query tiket per pekerja.
+- `idx_notifications_user_unread`: (Migrasi 0015) Indeks parsial `(user_id, created_at DESC) WHERE read_at IS NULL` — mempercepat query notifikasi belum dibaca di lonceng pekerja.
+- `idx_notifications_user_id`: (Migrasi 0015) Mempercepat query semua notifikasi per pekerja.

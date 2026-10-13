@@ -243,3 +243,52 @@ Referral, penanda klik, dan hal lain di luar daftar ini menyusul setelah fase 1 
 - **Font:** mengikuti tampilan referensi go.dev dengan daftar font sistem di `docs/DOC_AI_SLOP.md` bagian 12.
 - **Maskot:** gopher kecil di panel pekerja dan admin. Aturan lisensi dan atribusi ada di `docs/DOC_AI_SLOP.md` bagian 12.
 - **Catatan nama:** nama memakai kata "GO". Pemilik proyek memeriksa aturan merek dagang Go (go.dev/brand) sebelum nama ini dipakai di halaman publik.
+
+## 18. Keadaan kode saat ini
+
+Bagian ini mencatat fitur yang sudah ada di kode tetapi belum atau belum sepenuhnya tertulis di bagian-bagian sebelumnya. Diperbarui di Tahap S0 berdasarkan pembacaan langsung kode.
+
+### Sistem notifikasi lonceng per pekerja
+
+Tabel `notifications` (migrasi 0015) menampung tiga jenis notifikasi: `broadcast` (dari admin), `ticket_reply` (balasan tiket CS), dan `system`. Pekerja melihat notifikasi lewat ikon lonceng di navbar yang di-polling setiap 30 detik. Endpoint: `GET /worker/api/notifications`, `POST /worker/notifications/read`, `POST /worker/notifications/{id}/read`. File utama: `internal/web/worker_handlers.go` (handler notifikasi), `web/templates/worker_nav.html` (komponen lonceng).
+
+### Balasan tiket CS oleh admin
+
+Admin dapat menulis pesan balasan saat menyelesaikan tiket di `/admin/tickets`. Balasan disimpan di kolom `reply_message`, `replied_by`, `replied_at` pada tabel `support_tickets` (ditambahkan migrasi 0015) dan sekaligus membuat entri di `notifications` untuk pekerja pengirim tiket. Pekerja bisa membaca balasan dari modal bantuan dan dari lonceng notifikasi. File utama: `internal/web/admin_handlers.go` (HandleAdminTicketResolvePOST).
+
+### Reset kata sandi pekerja oleh admin
+
+Admin dapat mereset kata sandi pekerja dari halaman detail pekerja `/admin/workers/{id}`. Sistem menghasilkan kata sandi sementara acak, menghash-nya dengan argon2id, dan menampilkan kata sandi sementara sekali saja di halaman agar admin bisa menyampaikannya ke pekerja. Sesi aktif pekerja dihapus sekaligus saat reset. File utama: `internal/web/admin_handlers.go` (HandleAdminWorkerResetPasswordPOST).
+
+### Mode pemeliharaan
+
+Admin dapat mengaktifkan `maintenance_mode` lewat `/admin/maintenance`. Saat aktif, middleware mengalihkan semua permintaan pekerja (kecuali logout) ke halaman `/maintenance`. Admin tetap dapat mengakses panel. Engine pengiriman tidak dihentikan secara otomatis saat mode ini aktif (ini adalah penyimpangan yang dicatat; lihat DOC_PROGRES bagian Penyimpangan). Nilai disimpan di tabel `settings`. File utama: `internal/web/admin_handlers.go`, `internal/web/middleware.go`.
+
+### Konversi IDR ke USDT oleh pekerja
+
+Pekerja dapat mengonversi saldo IDR ke USDT lewat `POST /worker/convert`. Konversi menggunakan formula `(amount_idr × 1.000.000) / rate_idr_to_usdt`, dikerjakan dalam transaksi atomik dengan penguncian baris `users` (`FOR UPDATE`), dan dicatat sebagai dua entri buku besar berjenis `koreksi` (satu negatif IDR, satu positif USDT). Kurs `rate_idr_to_usdt` diatur admin di panel pengaturan. File utama: `internal/web/worker_handlers.go` (HandleWorkerConvertPOST).
+
+### Email opsional
+
+Sejak migrasi 0015, kolom `email` pada tabel `users` menjadi nullable. Pekerja boleh mendaftar tanpa mengisi email; login bisa dilakukan hanya dengan username. Admin selalu punya email. Seluruh query yang membaca email menggunakan `COALESCE` untuk menghindari error scan NULL. File utama: `db/migrations/0015_email_optional_notifications.sql`, `internal/web/auth_handlers.go`, `internal/web/middleware.go`.
+
+### Nonaktifkan pekerja
+
+Admin dapat menonaktifkan akun pekerja dari daftar pekerja (`/admin/workers`). Saat dinonaktifkan, kolom `status` pada `users` diubah ke `'inactive'`, semua sesi web pekerja dihapus, dan semua sesi WhatsApp pekerja diputus lewat WaManager. File utama: `internal/web/admin_handlers.go` (HandleAdminWorkerDisablePOST, HandleAdminWorkerEnablePOST).
+
+### Variabel `{nama}` dalam template pesan
+
+Template pesan mendukung variabel `{nama}` yang diisi dengan `recipient_name` dari tabel `campaign_numbers` saat pesan disusun. Jika `recipient_name` kosong, variabel diganti dengan string kosong (fallback aman, tidak ada teks rusak). Logika substitusi ada di engine saat `buildCampaignMessage`. File utama: `internal/engine/engine.go`.
+
+### Kontak CS dari variabel lingkungan
+
+URL kontak CS (WhatsApp, Telegram, Channel Telegram) dibaca dari variabel lingkungan `CS_WHATSAPP_URL`, `CS_TELEGRAM_URL`, `CHANNEL_TELEGRAM_URL` di `internal/config/config.go`, diteruskan ke `Server`, dan disematkan ke template pekerja. Ada nilai fallback hardcode aman jika variabel kosong. File utama: `internal/config/config.go`, `internal/web/worker_handlers.go` (csLinks()).
+
+### Panel detail pekerja untuk admin
+
+Halaman `/admin/workers/{id}` menampilkan profil lengkap pekerja, saldo IDR dan USDT, rekening tujuan penarikan (didekripsi), daftar akun WhatsApp, 10 penarikan terbaru, dan 20 entri buku besar terbaru. Admin dapat mereset kata sandi dan memutus semua sesi WhatsApp dari halaman ini. File utama: `internal/web/admin_handlers.go` (HandleAdminWorkerDetailGET, HandleAdminWorkerDetailDisconnectAllPOST).
+
+### Sistem broadcast pengumuman admin
+
+Admin membuat pengumuman di `/admin/broadcasts`. Saat disimpan atau diaktifkan (`is_active = true`), sistem menyebarkan notifikasi ke tabel `notifications` semua pekerja aktif secara atomik (`INSERT ... SELECT ... WHERE NOT EXISTS`). Auto-sync juga berjalan saat pekerja membuka endpoint notifikasi. File utama: `internal/web/admin_handlers.go` (HandleAdminBroadcastsGET, HandleAdminBroadcastNewPOST), `db/migrations/0012_support_and_broadcasts.sql`.
+

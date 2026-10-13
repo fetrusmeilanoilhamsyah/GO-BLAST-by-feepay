@@ -61,6 +61,12 @@ Daftar resmi. Agen hanya boleh mengubah kolom Status, dan hanya untuk tahap yang
 | 10 | Mesin kirim: klaim nomor, kecepatan, buku besar | Sebagian |
 | 11 | Panel pekerja | Selesai |
 | 12 | Panel admin: laporan, pengaturan, dompet | Selesai |
+| S0 | Sinkronkan dokumen dengan kode | Selesai |
+| S1 | Mata uang final dan konversi USDT yang aman | Belum |
+| S2 | Satu definisi database tersedia | Belum |
+| S3 | Pusat kendali: kunci granular dan pemeriksaan kesehatan | Belum |
+| S4 | Pengaman penarikan | Belum |
+| S5 | Pengaturan disederhanakan dan akun pekerja | Belum |
 | 13 | Halaman publik | Belum |
 | 14 | Penarikan manual | Belum |
 | 15 | Review keamanan dan uji beban | Belum |
@@ -94,6 +100,7 @@ Terbaru di atas. Agen menambah baris di sini setiap ada keputusan baru, dari pem
 
 | Tanggal | Keputusan | Alasan | Oleh |
 |---|---|---|---|
+| 2026-10-13 | Satu mata uang untuk upah dan referral (rupiah/IDR); USDT hanya lewat konversi eksplisit pekerja; batas harian tanpa batas (0); percobaan ulang (`max_attempts`, `max_consecutive_failures`, `claim_timeout_seconds`) menjadi konstanta backend; maksimal akun per pekerja tetap pengaturan admin; kontak CS dari variabel lingkungan (`CS_WHATSAPP_URL`, `CS_TELEGRAM_URL`, `CHANNEL_TELEGRAM_URL`) | Menyederhanakan model mata uang agar tidak ada pekerja dengan saldo yang salah denominasi; memindahkan parameter teknis dari form admin ke konstanta agar tidak disalahgunakan | pemilik |
 | 2026-10-13 | Dual Layout Responsif Mobile & Desktop Seluruh Tabel Panel Admin | Seluruh tabel panel admin (Dashboard, Kampanye, Pekerja, Detail Pekerja, Penarikan, Dompet/Kas, Tiket CS, Broadcast, dan Pemeliharaan/Debug) diubah menjadi dual layout (`desktop-only` tabel penuh lebar berkolom lengkap dan `mobile-only admin-card-list` kartu kompak rapi simetris). Memisahkan aturan `.mobile-only { display: block !important; }` dari `.admin-topbar` agar kartu tidak terkompres menjadi inline-flex di perangkat seluler | pemilik dan agen |
 | 2026-10-13 | Balasan Tiket CS Admin (`reply_message`) Terintegrasi ke Notifikasi & Modal Bantuan Pekerja | Admin dapat menulis pesan balasan di `/admin/tickets` saat menyelesaikan laporan. Pesan balasan langsung tersimpan di `support_tickets` (`reply_message`, `replied_by`, `replied_at`) dan dikirimkan otomatis ke `notifications` pekerja (`kind = 'ticket_reply'`). Pekerja dapat memantau riwayat laporan dan membaca pesan balasan admin langsung dari modal bantuan CS (`GET /worker/api/tickets`) serta dari lonceng notifikasi | pemilik dan agen |
 | 2026-10-13 | Sinkronisasi Otomatis Broadcast Global ke Notifikasi Pekerja | Broadcast admin yang diaktifkan (`is_active = true`) maupun di-toggle aktif otomatis dikirimkan ke tabel `notifications` seluruh pekerja aktif via query batch atomik (`INSERT ... SELECT ... WHERE NOT EXISTS`). Selain itu, endpoint `GET /worker/api/notifications` menjalankan auto-sync untuk broadcast aktif sehingga pekerja baru maupun pekerja yang belum menerima broadcast langsung mendapatkan notifikasi di lonceng tanpa duplikasi | pemilik dan agen |
@@ -141,6 +148,16 @@ Terbaru di atas. Agen menambah baris di sini setiap ada keputusan baru, dari pem
 | 2026-10-10 | Tombol harus tampil rapi, tidak boleh link polos: `tombol_asli` atau `kartu_link` | Tampilan pesan penting bagi pemilik | pemilik |
 | 2026-10-10 | Backend Go, database PostgreSQL, antarmuka server-rendered | Hemat memori untuk sesi yang hidup terus, cocok untuk VPS bersama | pemilik |
 | 2026-10-10 | Satu program, bukan microservices | Dikerjakan sendirian, beban kecil, klaim nomor dan buku besar butuh transaksi database tunggal | disepakati di rapat |
+
+## Penyimpangan yang diketahui
+
+Perbedaan antara DOC_KONSEP dan kode aktual. Dicatat di Tahap S0 dan akan diselesaikan di tahap S1–S5.
+
+- **(a) Tiga angka untuk upah dan referral:** `rate_wage` dan `rate_referral` masing-masing menyimpan nilai IDR dan USDT secara terpisah, ditambah `rate_idr_to_usdt` sebagai kurs konversi — jadi ada tiga angka yang bisa tidak konsisten satu sama lain. DOC_KONSEP bagian 9 menyebutkan dua mata uang diatur terpisah, tapi tidak mencakup keberadaan kurs konversi sebagai angka ketiga yang terpisah. (Akan diselesaikan S1.)
+- **(b) Hitungan nomor tersedia tidak konsisten antar lokasi:** `wa_handlers.go` baris 63 (`HandleWorkerAccounts`) menghitung `COUNT(*) FROM campaign_numbers WHERE status = 'tersedia'` tanpa memfilter status kampanye. Sebaliknya, `worker_handlers.go` `HandleWorkerHome` baris 235–240 dan engine memfilter `AND c.status = 'berjalan'`. Akibatnya halaman `/worker/accounts` menampilkan angka lebih besar dari `/worker`. (Akan diselesaikan S2.)
+- **(c) Mode pemeliharaan hanya memblokir halaman pekerja, tidak menghentikan engine:** Ketika `maintenance_mode = true`, middleware mengalihkan pekerja ke `/maintenance`, tetapi engine yang sedang berjalan (goroutine pengiriman) tidak dihentikan dan tetap mengirim pesan. DOC_KONSEP tidak mendefinisikan perilaku engine saat mode pemeliharaan aktif. (Akan diselesaikan S3.)
+- **(d) Form pengaturan admin masih memuat kunci yang akan menjadi konstanta backend:** `HandleAdminSettingsPOST` menerima dan menyimpan `max_attempts`, `max_consecutive_failures`, dan `claim_timeout_seconds` dari form HTML, meskipun keputusan pemilik (S0) menetapkan ketiganya menjadi konstanta backend. Nilainya masih tersimpan di tabel `settings` dan dibaca dari form. (Akan diselesaikan S5.)
+- **(e) Paket `withdraw` hanya punya satu fungsi tes:** `withdraw_test.go` hanya memiliki `TestWithdrawEncryption` yang menguji enkripsi/dekripsi AES-256-GCM. Tidak ada tes untuk skenario penarikan atomik, saldo negatif, atau race condition. (Akan diselesaikan S4.)
 
 ## Catatan temuan
 
