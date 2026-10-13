@@ -18,9 +18,14 @@ Dokumen ini menjelaskan struktur database dan relasi antar tabel untuk aplikasi 
 
 ### `users`
 Menyimpan data pengguna (admin dan pekerja).
+- `username`: Nama pengguna unik (3-20 karakter, huruf kecil, angka, underscore `_`). Wajib diisi saat pendaftaran pekerja (**migrasi 0018**).
 - `email`: Unik dan huruf kecil. **Nullable sejak migrasi 0015** — email opsional saat pendaftaran pekerja. Admin selalu punya email.
 - `password_hash`: Kata sandi yang di-hash.
 - `role`: `admin` atau `worker`.
+- `status`: Status akun (`active`, `suspended`, atau `frozen`). Nilai `'frozen'` ditambahkan pada **migrasi 0018** untuk pembekuan akun pekerja dengan penghentian sesi WhatsApp dan penolakan login/penarikan.
+- `freeze_reason`: Alasan pembekuan akun oleh admin (TEXT, nullable, **ditambahkan migrasi 0018**).
+- `terms_accepted_at`: Waktu pengguna menyetujui Syarat & Ketentuan saat pendaftaran (TIMESTAMPTZ, nullable, **ditambahkan migrasi 0018**).
+- `terms_version`: Versi Syarat & Ketentuan yang disetujui (TEXT, nullable, misal 'v1.0', **ditambahkan migrasi 0018**).
 - Kolom `currency` **dihapus pada migrasi 0016** — semua pekerja menerima upah dan bonus referral dalam mata uang tunggal Rupiah (IDR).
 - `referral_code`: Kode referral unik.
 - `referred_by`: Merujuk ke `users(id)` orang yang mengajak (nullable).
@@ -35,9 +40,10 @@ Menyimpan sesi login dari web.
 
 ### `settings`
 Menyimpan pengaturan aplikasi yang diubah melalui panel admin.
-- `key`: Kunci pengaturan (contoh: `default_country_code`, `rate_wage`, `rate_referral`, `rate_idr_to_usdt`, `rate_idr_to_usdt_updated_at`).
+- `key`: Kunci pengaturan.
 - `value`: Nilai JSONB.
 - Sejak migrasi 0016, pengaturan upah `rate_wage` dan referral `rate_referral` disimpan sebagai bilangan bulat IDR tunggal (bukan map {IDR, USDT}). Kurs `rate_idr_to_usdt` adalah bilangan bulat (1 USDT = berapa rupiah), dan `rate_idr_to_usdt_updated_at` menyimpan waktu ISO-8601/RFC3339 kapan kurs terakhir diperbarui.
+- Pada **migrasi 0018**, form `/admin/settings` disederhanakan menjadi 4 isian bisnis utama: `rate_wage`, `rate_referral`, `rate_idr_to_usdt`, dan `max_accounts_per_worker`. Kunci teknis backend terdahulu (`speed_delays`, `daily_limits`, `max_attempts`, `max_consecutive_failures`, `claim_timeout_seconds`, `max_active_sessions`, `default_country_code`) dihapus dari tabel dan dipindahkan ke konstanta Go di `internal/config/limits.go` serta variabel lingkungan `MAX_ACTIVE_SESSIONS`. Kunci saklar darurat `lock_withdrawals`, `lock_linking`, dan `lock_engine` tetap dikelola di halaman pemeliharaan.
 
 ### `campaigns`
 Kampanye pengiriman pesan.

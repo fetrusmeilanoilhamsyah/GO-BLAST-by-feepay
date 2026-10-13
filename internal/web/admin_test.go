@@ -97,116 +97,17 @@ func TestAdminSettingsValidationRejected(t *testing.T) {
 	validForm := func() url.Values {
 		v := url.Values{}
 		v.Set("csrf_token", "test-csrf")
-		v.Set("speed_delay_fast", "2")
-		v.Set("speed_delay_medium", "5")
-		v.Set("speed_delay_slow", "15")
-		v.Set("speed_delay_over_slow", "30")
-		v.Set("daily_limit_fast", "1000")
-		v.Set("daily_limit_medium", "500")
-		v.Set("daily_limit_slow", "200")
-		v.Set("daily_limit_over_slow", "100")
-		v.Set("max_attempts", "3")
-		v.Set("max_consecutive_failures", "5")
-		v.Set("claim_timeout_seconds", "300")
-		v.Set("max_accounts_per_worker", "5")
-		v.Set("max_active_sessions", "50")
-		v.Set("default_country_code", "62")
 		v.Set("rate_wage_idr", "50")
-		v.Set("rate_wage_usdt", "3000")
 		v.Set("rate_referral_idr", "10")
-		v.Set("rate_referral_usdt", "500")
+		v.Set("rate_idr_to_usdt", "15000")
+		v.Set("max_accounts_per_worker", "5")
 		return v
 	}
 
 	testCases := []struct {
-		name      string
-		mutate    func(v url.Values)
-		errSubstr string
+		name   string
+		mutate func(v url.Values)
 	}{
-		{
-			name: "speed_delays too low (0)",
-			mutate: func(v url.Values) {
-				v.Set("speed_delay_fast", "0")
-			},
-		},
-		{
-			name: "speed_delays too high (601)",
-			mutate: func(v url.Values) {
-				v.Set("speed_delay_medium", "601")
-			},
-		},
-		{
-			name: "daily_limits empty",
-			mutate: func(v url.Values) {
-				v.Set("daily_limit_fast", "")
-			},
-		},
-		{
-			name: "daily_limits negative (-1)",
-			mutate: func(v url.Values) {
-				v.Set("daily_limit_slow", "-1")
-			},
-		},
-		{
-			name: "max_attempts too low (0)",
-			mutate: func(v url.Values) {
-				v.Set("max_attempts", "0")
-			},
-		},
-		{
-			name: "max_attempts too high (11)",
-			mutate: func(v url.Values) {
-				v.Set("max_attempts", "11")
-			},
-		},
-		{
-			name: "max_consecutive_failures too low (0)",
-			mutate: func(v url.Values) {
-				v.Set("max_consecutive_failures", "0")
-			},
-		},
-		{
-			name: "max_consecutive_failures too high (51)",
-			mutate: func(v url.Values) {
-				v.Set("max_consecutive_failures", "51")
-			},
-		},
-		{
-			name: "claim_timeout_seconds too low (60)",
-			mutate: func(v url.Values) {
-				v.Set("claim_timeout_seconds", "60")
-			},
-		},
-		{
-			name: "claim_timeout_seconds too high (3601)",
-			mutate: func(v url.Values) {
-				v.Set("claim_timeout_seconds", "3601")
-			},
-		},
-		{
-			name: "max_accounts_per_worker too high (51)",
-			mutate: func(v url.Values) {
-				v.Set("max_accounts_per_worker", "51")
-			},
-		},
-		{
-			name: "max_active_sessions too high (501)",
-			mutate: func(v url.Values) {
-				v.Set("max_active_sessions", "501")
-			},
-		},
-		{
-			name: "default_country_code invalid (99999)",
-			mutate: func(v url.Values) {
-				v.Set("default_country_code", "99999")
-			},
-		},
-		{
-			name: "default_country_code letters",
-			mutate: func(v url.Values) {
-				v.Set("default_country_code", "xyz")
-			},
-		},
 		{
 			name: "rate_wage empty",
 			mutate: func(v url.Values) {
@@ -220,9 +121,51 @@ func TestAdminSettingsValidationRejected(t *testing.T) {
 			},
 		},
 		{
+			name: "rate_wage negative",
+			mutate: func(v url.Values) {
+				v.Set("rate_wage_idr", "-10")
+			},
+		},
+		{
 			name: "rate_referral negative",
 			mutate: func(v url.Values) {
 				v.Set("rate_referral_idr", "-5")
+			},
+		},
+		{
+			name: "rate_idr_to_usdt empty",
+			mutate: func(v url.Values) {
+				v.Set("rate_idr_to_usdt", "")
+			},
+		},
+		{
+			name: "rate_idr_to_usdt 0",
+			mutate: func(v url.Values) {
+				v.Set("rate_idr_to_usdt", "0")
+			},
+		},
+		{
+			name: "rate_idr_to_usdt negative",
+			mutate: func(v url.Values) {
+				v.Set("rate_idr_to_usdt", "-15000")
+			},
+		},
+		{
+			name: "max_accounts_per_worker empty",
+			mutate: func(v url.Values) {
+				v.Set("max_accounts_per_worker", "")
+			},
+		},
+		{
+			name: "max_accounts_per_worker too low (0)",
+			mutate: func(v url.Values) {
+				v.Set("max_accounts_per_worker", "0")
+			},
+		},
+		{
+			name: "max_accounts_per_worker too high (51)",
+			mutate: func(v url.Values) {
+				v.Set("max_accounts_per_worker", "51")
 			},
 		},
 	}
@@ -265,24 +208,10 @@ func TestAdminRateChangeDoesNotAlterOldLedger(t *testing.T) {
 	// Submit settings update changing rate_wage to IDR 120, USDT 4500
 	form := url.Values{}
 	form.Set("csrf_token", "test-csrf")
-	form.Set("speed_delay_fast", "1")
-	form.Set("speed_delay_medium", "5")
-	form.Set("speed_delay_slow", "15")
-	form.Set("speed_delay_over_slow", "30")
-	form.Set("daily_limit_fast", "1000")
-	form.Set("daily_limit_medium", "500")
-	form.Set("daily_limit_slow", "200")
-	form.Set("daily_limit_over_slow", "100")
-	form.Set("max_attempts", "3")
-	form.Set("max_consecutive_failures", "5")
-	form.Set("claim_timeout_seconds", "300")
-	form.Set("max_accounts_per_worker", "5")
-	form.Set("max_active_sessions", "50")
-	form.Set("default_country_code", "62")
 	form.Set("rate_wage_idr", "120")
-	form.Set("rate_wage_usdt", "4500")
 	form.Set("rate_referral_idr", "10")
-	form.Set("rate_referral_usdt", "500")
+	form.Set("rate_idr_to_usdt", "15000")
+	form.Set("max_accounts_per_worker", "5")
 
 	req := httptest.NewRequest("POST", "/admin/settings", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -314,24 +243,12 @@ func TestAdminRateChangeDoesNotAlterOldLedger(t *testing.T) {
 func TestAdminSettingsAuditLogRecordedOldAndNew(t *testing.T) {
 	srv, pool, adminID, _ := setupAdminTest(t)
 
-	// Step 1: Set initial claim_timeout_seconds = 250
+	// Step 1: Set initial max_accounts_per_worker = 5
 	form1 := url.Values{}
-	form1.Set("speed_delay_fast", "1")
-	form1.Set("speed_delay_medium", "5")
-	form1.Set("speed_delay_slow", "15")
-	form1.Set("speed_delay_over_slow", "30")
-	form1.Set("daily_limit_fast", "1000")
-	form1.Set("daily_limit_medium", "500")
-	form1.Set("daily_limit_slow", "200")
-	form1.Set("daily_limit_over_slow", "100")
-	form1.Set("max_attempts", "3")
-	form1.Set("max_consecutive_failures", "5")
-	form1.Set("claim_timeout_seconds", "250")
-	form1.Set("max_accounts_per_worker", "5")
-	form1.Set("max_active_sessions", "50")
-	form1.Set("default_country_code", "62")
 	form1.Set("rate_wage_idr", "50")
-	form1.Set("rate_wage_usdt", "3000")
+	form1.Set("rate_referral_idr", "10")
+	form1.Set("rate_idr_to_usdt", "15000")
+	form1.Set("max_accounts_per_worker", "5")
 
 	req1 := httptest.NewRequest("POST", "/admin/settings", strings.NewReader(form1.Encode()))
 	req1.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -343,9 +260,12 @@ func TestAdminSettingsAuditLogRecordedOldAndNew(t *testing.T) {
 		t.Fatalf("Step 1 settings save failed: %d", rr1.Code)
 	}
 
-	// Step 2: Change claim_timeout_seconds = 450
-	form2 := form1
-	form2.Set("claim_timeout_seconds", "450")
+	// Step 2: Change max_accounts_per_worker = 10
+	form2 := url.Values{}
+	form2.Set("rate_wage_idr", "50")
+	form2.Set("rate_referral_idr", "10")
+	form2.Set("rate_idr_to_usdt", "15000")
+	form2.Set("max_accounts_per_worker", "10")
 
 	req2 := httptest.NewRequest("POST", "/admin/settings", strings.NewReader(form2.Encode()))
 	req2.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -357,14 +277,14 @@ func TestAdminSettingsAuditLogRecordedOldAndNew(t *testing.T) {
 		t.Fatalf("Step 2 settings save failed: %d", rr2.Code)
 	}
 
-	// Check audit log for claim_timeout_seconds
+	// Check audit log for max_accounts_per_worker
 	var metaJSON string
 	var actorID int64
 	var action string
 	err := pool.QueryRow(context.Background(), `
 		SELECT actor_id, action, meta::text 
 		FROM audit_logs 
-		WHERE entity = 'settings' AND entity_id = 'claim_timeout_seconds'
+		WHERE entity = 'settings' AND entity_id = 'max_accounts_per_worker'
 		ORDER BY id DESC LIMIT 1
 	`).Scan(&actorID, &action, &metaJSON)
 	if err != nil {
@@ -385,11 +305,11 @@ func TestAdminSettingsAuditLogRecordedOldAndNew(t *testing.T) {
 
 	oldVal, okOld := meta["old"].(float64)
 	newVal, okNew := meta["new"].(float64)
-	if !okOld || int(oldVal) != 250 {
-		t.Errorf("Expected meta.old == 250, got %+v", meta["old"])
+	if !okOld || int(oldVal) != 5 {
+		t.Errorf("Expected meta.old == 5, got %+v", meta["old"])
 	}
-	if !okNew || int(newVal) != 450 {
-		t.Errorf("Expected meta.new == 450, got %+v", meta["new"])
+	if !okNew || int(newVal) != 10 {
+		t.Errorf("Expected meta.new == 10, got %+v", meta["new"])
 	}
 }
 
@@ -472,17 +392,23 @@ func TestOpenDecisionKeysRenderedEmptyWithoutDefaults(t *testing.T) {
 
 	body := rr.Body.String()
 
-	// Verify open decision inputs have empty value and "wajib diisi"
+	// Verify open decision inputs have empty value
 	checks := []string{
-		`id="rate_wage_idr" name="rate_wage_idr" class="input" min="1" value="" placeholder="wajib diisi"`,
-		`id="daily_limit_fast" name="daily_limit_fast" class="input" min="0" value="" placeholder="wajib diisi"`,
-		`id="max_accounts_per_worker" name="max_accounts_per_worker" class="input" min="1" max="50" value="" placeholder="wajib diisi"`,
-		`id="max_active_sessions" name="max_active_sessions" class="input" min="1" max="500" value="" placeholder="wajib diisi"`,
+		`id="rate_wage_idr" name="rate_wage_idr" class="input" min="1" value=""`,
+		`id="max_accounts_per_worker" name="max_accounts_per_worker" class="input" min="1" max="50" value=""`,
 	}
 
 	for _, snippet := range checks {
 		if !strings.Contains(body, snippet) {
 			t.Errorf("Expected snippet not found in rendered settings HTML:\n%s\nBody: %s", snippet, body)
+		}
+	}
+
+	// Pastikan field backend lama yang dihapus TIDAK muncul di HTML
+	removedFields := []string{"daily_limit_fast", "max_active_sessions", "speed_delay_fast", "default_country_code"}
+	for _, f := range removedFields {
+		if strings.Contains(body, f) {
+			t.Errorf("Field %s should have been removed from settings HTML but was found", f)
 		}
 	}
 }

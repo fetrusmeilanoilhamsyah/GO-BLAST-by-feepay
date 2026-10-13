@@ -28,15 +28,27 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		var id int64
 		var role, hash, lang string
 		// Email bisa NULL (opsional saat daftar), query cocok via username atau email
+		var userStatus string
 		err := s.DB.Pool.QueryRow(context.Background(), `
-			SELECT id, role, password_hash, language 
+			SELECT id, role, password_hash, language, status 
 			FROM users 
-			WHERE (email IS NOT NULL AND LOWER(email) = LOWER($1) OR LOWER(username) = LOWER($1)) AND status = 'active'
-		`, identifier).Scan(&id, &role, &hash, &lang)
+			WHERE (email IS NOT NULL AND LOWER(email) = LOWER($1) OR LOWER(username) = LOWER($1))
+		`, identifier).Scan(&id, &role, &hash, &lang, &userStatus)
 
 		if err != nil {
-			s.logAudit(nil, "login_failed", "users", identifier, "invalid identifier or inactive")
+			s.logAudit(nil, "login_failed", "users", identifier, "invalid identifier")
 			s.renderLogin(w, r, "Username/Email atau kata sandi salah")
+			return
+		}
+
+		if userStatus == "frozen" {
+			s.logAudit(&id, "login_rejected", "users", identifier, "account frozen")
+			s.renderLogin(w, r, "Akun Anda sedang dibekukan oleh administrator")
+			return
+		}
+		if userStatus != "active" {
+			s.logAudit(&id, "login_rejected", "users", identifier, "account inactive")
+			s.renderLogin(w, r, "Akun Anda tidak aktif")
 			return
 		}
 
@@ -135,24 +147,26 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		lang := r.FormValue("language")
 		lang = validateLang(lang)
 		referralCode := strings.TrimSpace(r.FormValue("referral_code"))
+		agreeTerms := r.FormValue("agree_terms")
 
 		if username == "" {
-			if email != "" {
-				parts := strings.Split(email, "@")
-				if len(parts) > 0 {
-					username = strings.ToLower(parts[0])
-				}
-			}
+			s.renderRegister(w, r, "Username wajib diisi")
+			return
 		}
 
-		matched, _ := regexp.MatchString(`^[a-zA-Z0-9_]{3,30}$`, username)
+		matched, _ := regexp.MatchString(`^[a-z0-9_]{3,20}$`, username)
 		if !matched {
-			s.renderRegister(w, r, "Username harus 3-30 karakter (hanya huruf, angka, dan underscore)")
+			s.renderRegister(w, r, "Username harus 3-20 karakter (huruf kecil a-z, angka 0-9, dan garis bawah)")
 			return
 		}
 
 		if len(password) < 10 {
 			s.renderRegister(w, r, "Kata sandi minimal 10 karakter")
+			return
+		}
+
+		if agreeTerms != "true" && agreeTerms != "1" && agreeTerms != "on" {
+			s.renderRegister(w, r, i18n.T(lang, "auth.terms_required"))
 			return
 		}
 
@@ -184,8 +198,8 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		}
 
 		_, err = s.DB.Pool.Exec(context.Background(), `
-			INSERT INTO users (email, username, password_hash, role, display_name, language, referral_code, referred_by)
-			VALUES ($1, $2, $3, 'worker', $4, $5, $6, $7)
+			INSERT INTO users (email, username, password_hash, role, display_name, language, referral_code, referred_by, terms_accepted_at, terms_version)
+			VALUES ($1, $2, $3, 'worker', $4, $5, $6, $7, CURRENT_TIMESTAMP, 'v1.0')
 		`, emailVal, username, hash, displayName, lang, newRefCode, referredBy)
 
 		if err != nil {

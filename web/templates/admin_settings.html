@@ -16,6 +16,12 @@
         </div>
     </div>
 
+    <!-- Peringatan i18n Tanpa Batas Harian -->
+    <div style="background-color: var(--color-surface-muted); border: 1px solid var(--color-warning); color: var(--color-warning); padding: 12px 16px; border-radius: 8px; margin-bottom: 20px; font-size: 13px; display: flex; align-items: center; gap: 10px;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+        <span>{{ call .T "admin.settings_daily_limit_warning" }}</span>
+    </div>
+
     {{if .Error}}
     <div style="background-color: var(--color-surface-muted); border: 1px solid var(--color-danger); color: var(--color-danger); padding: 12px 16px; border-radius: 8px; margin-bottom: 20px; font-size: 14px;">
         {{.Error}}
@@ -66,70 +72,13 @@
             </div>
         </div>
 
-        <!-- 3. Jeda Kecepatan (speed_delays) -->
+        <!-- 4. Maksimal Akun WhatsApp per Pekerja -->
         <div class="card" style="margin: 0;">
-            <h2 style="font-size: 16px; font-weight: 700; margin-top: 0; margin-bottom: 6px; color: var(--color-text);">{{ call .T "admin.speed_delays" }}</h2>
-            <p style="font-size: 12px; color: var(--color-muted); margin-bottom: 16px;">Jeda waktu kirim antar pesan dalam satuan detik (1 - 600).</p>
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px;">
-                <div class="field">
-                    <label for="speed_delay_fast">Fast (detik)</label>
-                    <input type="number" id="speed_delay_fast" name="speed_delay_fast" class="input" min="1" max="600" value="{{index .Settings.SpeedDelays "fast"}}" required>
-                </div>
-                <div class="field">
-                    <label for="speed_delay_medium">Medium (detik)</label>
-                    <input type="number" id="speed_delay_medium" name="speed_delay_medium" class="input" min="1" max="600" value="{{index .Settings.SpeedDelays "medium"}}" required>
-                </div>
-                <div class="field">
-                    <label for="speed_delay_slow">Slow (detik)</label>
-                    <input type="number" id="speed_delay_slow" name="speed_delay_slow" class="input" min="1" max="600" value="{{index .Settings.SpeedDelays "slow"}}" required>
-                </div>
-                <div class="field">
-                    <label for="speed_delay_over_slow">Over Slow (detik)</label>
-                    <input type="number" id="speed_delay_over_slow" name="speed_delay_over_slow" class="input" min="1" max="600" value="{{index .Settings.SpeedDelays "over_slow"}}" required>
-                </div>
-            </div>
-        </div>
-
-        <!-- 4. Batas Harian Akun (daily_limits) -->
-        <div class="card" style="margin: 0;">
-            <h2 style="font-size: 16px; font-weight: 700; margin-top: 0; margin-bottom: 6px; color: var(--color-text);">{{ call .T "admin.daily_limits" }} <span class="badge badge-warning" style="font-size: 11px;">{{ call .T "admin.required_label" }}</span></h2>
-            <p style="font-size: 12px; color: var(--color-muted); margin-bottom: 16px;">Maksimal pesan per hari per akun WhatsApp (isi 0 atau angka besar untuk tanpa batas).</p>
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px;">
-                <div class="field">
-                    <label for="daily_limit_fast">Fast (0 = tanpa batas)</label>
-                    <input type="number" id="daily_limit_fast" name="daily_limit_fast" class="input" min="0" {{if index .Settings.DailyLimits "fast"}}value="{{index .Settings.DailyLimits "fast"}}"{{else}}value="" placeholder="wajib diisi"{{end}} required>
-                </div>
-                <div class="field">
-                    <label for="daily_limit_medium">Medium (0 = tanpa batas)</label>
-                    <input type="number" id="daily_limit_medium" name="daily_limit_medium" class="input" min="0" {{if index .Settings.DailyLimits "medium"}}value="{{index .Settings.DailyLimits "medium"}}"{{else}}value="" placeholder="wajib diisi"{{end}} required>
-                </div>
-                <div class="field">
-                    <label for="daily_limit_slow">Slow (0 = tanpa batas)</label>
-                    <input type="number" id="daily_limit_slow" name="daily_limit_slow" class="input" min="0" {{if index .Settings.DailyLimits "slow"}}value="{{index .Settings.DailyLimits "slow"}}"{{else}}value="" placeholder="wajib diisi"{{end}} required>
-                </div>
-                <div class="field">
-                    <label for="daily_limit_over_slow">Over Slow (0 = tanpa batas)</label>
-                    <input type="number" id="daily_limit_over_slow" name="daily_limit_over_slow" class="input" min="0" {{if index .Settings.DailyLimits "over_slow"}}value="{{index .Settings.DailyLimits "over_slow"}}"{{else}}value="" placeholder="wajib diisi"{{end}} required>
-                </div>
-            </div>
-        </div>
-
-        <!-- 5. Batas & Parameter Akun -->
-        <div class="card" style="margin: 0;">
-            <h2 style="font-size: 16px; font-weight: 700; margin-top: 0; margin-bottom: 16px; color: var(--color-text);">Batas & Parameter Akun</h2>
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px;">
-                <div class="field">
-                    <label for="max_accounts_per_worker">{{ call .T "admin.max_accounts_per_worker" }} <span class="badge badge-warning" style="font-size: 11px;">{{ call .T "admin.required_label" }}</span></label>
-                    <input type="number" id="max_accounts_per_worker" name="max_accounts_per_worker" class="input" min="1" max="50" {{if .Settings.MaxAccountsPerWorker}}value="{{.Settings.MaxAccountsPerWorker}}"{{else}}value="" placeholder="wajib diisi"{{end}} required>
-                </div>
-                <div class="field">
-                    <label for="max_active_sessions">{{ call .T "admin.max_active_sessions" }} <span class="badge badge-warning" style="font-size: 11px;">{{ call .T "admin.required_label" }}</span></label>
-                    <input type="number" id="max_active_sessions" name="max_active_sessions" class="input" min="1" max="500" {{if .Settings.MaxActiveSessions}}value="{{.Settings.MaxActiveSessions}}"{{else}}value="" placeholder="wajib diisi"{{end}} required>
-                </div>
-                <div class="field">
-                    <label for="default_country_code">{{ call .T "admin.default_country_code" }}</label>
-                    <input type="text" id="default_country_code" name="default_country_code" class="input" value="{{.Settings.DefaultCountryCode}}" required>
-                </div>
+            <h2 style="font-size: 16px; font-weight: 700; margin-top: 0; margin-bottom: 6px; color: var(--color-text);">{{ call .T "admin.max_accounts_per_worker" }} <span class="badge badge-warning" style="font-size: 11px;">{{ call .T "admin.required_label" }}</span></h2>
+            <p style="font-size: 12px; color: var(--color-muted); margin-bottom: 16px;">Batas maksimal akun WhatsApp aktif yang diizinkan untuk setiap pekerja (1 - 50 akun).</p>
+            <div class="field">
+                <label for="max_accounts_per_worker">Maksimal Akun (1 - 50)</label>
+                <input type="number" id="max_accounts_per_worker" name="max_accounts_per_worker" class="input" min="1" max="50" {{if .Settings.MaxAccountsPerWorker}}value="{{.Settings.MaxAccountsPerWorker}}"{{else}}value="" placeholder="wajib diisi (1 - 50)"{{end}} required>
             </div>
         </div>
 
@@ -148,17 +97,7 @@ function fillRecommendedSettings() {
     document.getElementById('rate_wage_idr').value = '25';
     document.getElementById('rate_idr_to_usdt').value = '15000';
     document.getElementById('rate_referral_idr').value = '5';
-    document.getElementById('speed_delay_fast').value = '5';
-    document.getElementById('speed_delay_medium').value = '15';
-    document.getElementById('speed_delay_slow').value = '30';
-    document.getElementById('speed_delay_over_slow').value = '60';
-    document.getElementById('daily_limit_fast').value = '0';
-    document.getElementById('daily_limit_medium').value = '0';
-    document.getElementById('daily_limit_slow').value = '0';
-    document.getElementById('daily_limit_over_slow').value = '0';
-    document.getElementById('max_accounts_per_worker').value = '10';
-    document.getElementById('max_active_sessions').value = '100';
-    document.getElementById('default_country_code').value = '62';
+    document.getElementById('max_accounts_per_worker').value = '5';
 }
 </script>
 {{end}}

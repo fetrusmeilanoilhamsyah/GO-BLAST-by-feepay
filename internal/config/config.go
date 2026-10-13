@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"os"
+	"strconv"
 
 	"github.com/joho/godotenv"
 )
@@ -18,6 +19,7 @@ type Config struct {
 	CSWhatsAppURL      string
 	CSTelegramURL      string
 	ChannelTelegramURL string
+	MaxActiveSessions  int
 }
 
 func Load() (*Config, error) {
@@ -79,13 +81,27 @@ func Load() (*Config, error) {
 		cfg.EncryptionKeyPrev = keyPrev
 	}
 
-	if cfg.AppEnv == "prod" {
+	if cfg.AppEnv == "prod" || cfg.AppEnv == "production" {
 		if cfg.DatabaseURL == "" {
 			return nil, errors.New("DATABASE_URL is required in prod")
 		}
 		if cfg.SessionSecret == "" {
 			return nil, errors.New("SESSION_SECRET is required in prod")
 		}
+	}
+
+	maxActiveStr := os.Getenv("MAX_ACTIVE_SESSIONS")
+	if maxActiveStr != "" {
+		val, err := strconv.Atoi(maxActiveStr)
+		if err != nil || val <= 0 {
+			return nil, errors.New("MAX_ACTIVE_SESSIONS must be a positive integer")
+		}
+		cfg.MaxActiveSessions = val
+	} else {
+		if cfg.AppEnv == "prod" || cfg.AppEnv == "production" {
+			return nil, errors.New("MAX_ACTIVE_SESSIONS is required in production")
+		}
+		cfg.MaxActiveSessions = 50
 	}
 
 	return cfg, nil

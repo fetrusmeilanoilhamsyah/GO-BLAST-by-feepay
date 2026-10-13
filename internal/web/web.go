@@ -342,6 +342,8 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.Handle("GET /admin/workers", s.CSRFMiddleware(s.RequireRole(s.HandleAdminWorkers, "admin")))
 	mux.Handle("GET /admin/workers/{id}", s.CSRFMiddleware(s.RequireRole(s.HandleAdminWorkerDetailGET, "admin")))
 	mux.Handle("POST /admin/workers/{id}/reset-password", s.CSRFMiddleware(s.RequireRole(s.HandleAdminWorkerResetPasswordPOST, "admin")))
+	mux.Handle("POST /admin/workers/{id}/freeze", s.CSRFMiddleware(s.RequireRole(s.HandleAdminWorkerFreezePOST, "admin")))
+	mux.Handle("POST /admin/workers/{id}/unfreeze", s.CSRFMiddleware(s.RequireRole(s.HandleAdminWorkerUnfreezePOST, "admin")))
 	mux.Handle("POST /admin/workers/{id}/disable", s.CSRFMiddleware(s.RequireRole(s.HandleAdminWorkerDisablePOST, "admin")))
 	mux.Handle("POST /admin/workers/{id}/enable", s.CSRFMiddleware(s.RequireRole(s.HandleAdminWorkerEnablePOST, "admin")))
 	mux.Handle("GET /admin/tickets", s.CSRFMiddleware(s.RequireRole(s.HandleAdminTicketsGET, "admin")))

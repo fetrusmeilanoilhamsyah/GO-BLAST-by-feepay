@@ -404,7 +404,7 @@ func TestHealthChecks_AllNine_OkAndFail(t *testing.T) {
 	_ = srv.updateSettingWithAudit(ctx, adminID, "rate_idr_to_usdt_updated_at", time.Now().Format(time.RFC3339), "127.0.0.1")
 
 	// Bersihkan nomor menggantung residu dari pengujian sebelumnya
-	_, _ = database.Pool.Exec(ctx, "UPDATE campaign_numbers SET status = 'gagal' WHERE status = 'dikirim' AND claimed_at < now() - interval '450 seconds'")
+	_, _ = database.Pool.Exec(ctx, "UPDATE campaign_numbers SET status = 'gagal' WHERE status = 'dikirim'")
 
 	// Pastikan keadaan awal buku besar seimbang untuk health check
 	var sCount, wCount int64

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"goblast/internal/campaign"
+	"goblast/internal/config"
 	"goblast/internal/i18n"
 )
 
@@ -120,12 +121,7 @@ func (s *Server) HandleAdminCampaignNumbersPreview(w http.ResponseWriter, r *htt
 		filename = "pasted.txt"
 	}
 
-	defaultCC := "62"
-	var ccRaw string
-	err = s.DB.Pool.QueryRow(r.Context(), "SELECT value#>>'{}' FROM settings WHERE key = 'default_country_code'").Scan(&ccRaw)
-	if err == nil && strings.TrimSpace(ccRaw) != "" {
-		defaultCC = strings.Trim(strings.TrimSpace(ccRaw), `"`)
-	}
+	defaultCC := config.DefaultCountryCode
 
 	preview, err := campaign.ProcessPreview(r.Context(), s.DB.Pool, campaignID, rawData, filename, defaultCC)
 	if err != nil {

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"goblast/internal/campaign"
+	"goblast/internal/config"
 	"goblast/internal/db"
 	"goblast/internal/wa"
 )
@@ -172,8 +173,8 @@ func (e *Engine) CleanStaleNumbers(ctx context.Context) (int64, error) {
 		return 0, nil
 	}
 
-	timeoutSec, ok, err := e.settings.GetInt(ctx, "claim_timeout_seconds")
-	if err != nil || !ok || timeoutSec <= int(SendTimeout.Seconds()) {
+	timeoutSec := config.ClaimTimeoutSeconds
+	if timeoutSec <= int(SendTimeout.Seconds()) {
 		timeoutSec = DefaultClaimTimeoutSeconds
 	}
 
@@ -352,17 +353,9 @@ func (e *Engine) runWorker(ctx context.Context, accountID, workerID int64) {
 			return
 		}
 
-		// 1. Ambil pengaturan penting (daily_limits, max_attempts, rate_wage)
-		// Jika salah satu belum diisi admin, mesin tidak mengirim apa pun dan mencatat alasannya.
-		var dailyLimits map[string]int
-		okDaily, err := e.settings.GetJSON(ctx, "daily_limits", &dailyLimits)
-		if err != nil || !okDaily || len(dailyLimits) == 0 {
-			e.setAccountStopReason(ctx, accountID, "pengaturan daily_limits belum diisi admin (keputusan terbuka #2)")
-			return
-		}
-
-		maxAttempts, okAttempts, err := e.settings.GetInt(ctx, "max_attempts")
-		if err != nil || !okAttempts || maxAttempts <= 0 {
+		// 1. Ambil pengaturan penting (max_attempts, rate_wage)
+		maxAttempts := config.MaxAttempts
+		if maxAttempts <= 0 {
 			maxAttempts = DefaultMaxAttempts
 		}
 
@@ -383,12 +376,8 @@ func (e *Engine) runWorker(ctx context.Context, accountID, workerID int64) {
 			return
 		}
 
-		// 2. Cek batas harian akun (dihitung dari awal hari zona Asia/Jakarta)
-		dailyLimit, hasLimit := dailyLimits[speed]
-		if !hasLimit {
-			dailyLimit, hasLimit = dailyLimits["medium"]
-		}
-		if hasLimit && dailyLimit > 0 {
+		// 2. Cek batas harian akun (jika DailyLimitPerAccount > 0; 0 berarti tanpa batas)
+		if config.DailyLimitPerAccount > 0 {
 			var sentToday int
 			startOfDayJakarta := GetJakartaStartOfDay()
 			err = e.db.Pool.QueryRow(ctx,
@@ -396,10 +385,10 @@ func (e *Engine) runWorker(ctx context.Context, accountID, workerID int64) {
 				 WHERE claimed_account_id = $1 AND status = 'terkirim' AND sent_at >= $2`,
 				accountID, startOfDayJakarta,
 			).Scan(&sentToday)
-			if err == nil && sentToday >= dailyLimit {
+			if err == nil && sentToday >= config.DailyLimitPerAccount {
 				// Setelah batas tercapai, akun tidak berhenti permanen:
 				// goroutine menunggu sampai awal hari berikutnya lalu lanjut.
-				e.setAccountStopReason(ctx, accountID, fmt.Sprintf("batas harian tercapai (%d/%d), menunggu hari berikutnya", sentToday, dailyLimit))
+				e.setAccountStopReason(ctx, accountID, fmt.Sprintf("batas harian tercapai (%d/%d), menunggu hari berikutnya", sentToday, config.DailyLimitPerAccount))
 				waitDur := getJakartaNextDayWaitDuration()
 				select {
 				case <-ctx.Done():
@@ -504,8 +493,8 @@ func (e *Engine) runWorker(ctx context.Context, accountID, workerID int64) {
 			}
 
 			// Cek max_consecutive_failures
-			maxFail, okFail, _ := e.settings.GetInt(ctx, "max_consecutive_failures")
-			if !okFail || maxFail <= 0 {
+			maxFail := config.MaxConsecutiveFailures
+			if maxFail <= 0 {
 				maxFail = DefaultMaxConsecutiveFailures
 			}
 			if consecutiveFailures >= maxFail {
@@ -754,35 +743,40 @@ func (e *Engine) checkAllRunningCampaigns(ctx context.Context) {
 	}
 }
 
-// calculateSpeedDelay menghitung jeda kecepatan dari settings kunci speed_delays ditambah variasi acak ±20%.
-func (e *Engine) calculateSpeedDelay(ctx context.Context, speed string) time.Duration {
-	var delays map[string]int
-	ok, err := e.settings.GetJSON(ctx, "speed_delays", &delays)
-	baseSec := 5 // Bawaan medium: 5 detik
-	if err == nil && ok && delays != nil {
-		if sec, found := delays[speed]; found && sec > 0 {
-			baseSec = sec
-		}
-	} else {
+// CalculateSpeedDelay menghitung jeda kecepatan dari konstanta config.SpeedDelays ditambah variasi acak ±config.JitterPercent%.
+func CalculateSpeedDelay(speed string) time.Duration {
+	baseDur, ok := config.SpeedDelays[speed]
+	if !ok || baseDur <= 0 {
 		switch speed {
 		case "fast":
-			baseSec = 1
+			baseDur = 1 * time.Second
 		case "medium":
-			baseSec = 5
+			baseDur = 5 * time.Second
 		case "slow":
-			baseSec = 15
+			baseDur = 15 * time.Second
 		case "over_slow":
-			baseSec = 30
+			baseDur = 30 * time.Second
+		default:
+			baseDur = 5 * time.Second
 		}
 	}
 
-	// Variasi acak ±20% (antara 0.80 sampai 1.20)
-	jitter := 0.8 + rand.Float64()*0.4
-	delaySec := float64(baseSec) * jitter
+	jitterPct := float64(config.JitterPercent) / 100.0
+	// Variasi acak antara (1 - jitterPct) sampai (1 + jitterPct)
+	minMult := 1.0 - jitterPct
+	maxMult := 1.0 + jitterPct
+	mult := minMult + rand.Float64()*(maxMult-minMult)
+
+	delaySec := baseDur.Seconds() * mult
 	if delaySec < 0.2 {
 		delaySec = 0.2
 	}
 	return time.Duration(delaySec * float64(time.Second))
+}
+
+// calculateSpeedDelay menghitung jeda kecepatan dari konstanta config.SpeedDelays ditambah variasi acak ±config.JitterPercent%.
+func (e *Engine) calculateSpeedDelay(_ context.Context, speed string) time.Duration {
+	return CalculateSpeedDelay(speed)
 }
 
 func (e *Engine) setAccountStopReason(ctx context.Context, accountID int64, reason string) {

@@ -111,8 +111,10 @@ func TestAuthFlows(t *testing.T) {
 		csrf, _ := getCSRFToken(ts, client, ts.URL+"/register")
 
 		form := url.Values{}
+		form.Add("username", "shortpass")
 		form.Add("email", "short@example.com")
 		form.Add("password", "short") // < 10 chars
+		form.Add("agree_terms", "true")
 		form.Add("language", "en")
 
 		req, _ := http.NewRequest("POST", ts.URL+"/register", strings.NewReader(form.Encode()))
@@ -141,8 +143,10 @@ func TestAuthFlows(t *testing.T) {
 		csrf, _ := getCSRFToken(ts, client, ts.URL+"/register")
 
 		form := url.Values{}
+		form.Add("username", "worker_auth")
 		form.Add("email", "worker@example.com")
 		form.Add("password", "ValidPassw0rd")
+		form.Add("agree_terms", "true")
 		form.Add("language", "id")
 
 		req, _ := http.NewRequest("POST", ts.URL+"/register", strings.NewReader(form.Encode()))
@@ -158,7 +162,7 @@ func TestAuthFlows(t *testing.T) {
 
 		// Login
 		form = url.Values{}
-		form.Add("email", "worker@example.com")
+		form.Add("identifier", "worker_auth")
 		form.Add("password", "ValidPassw0rd")
 
 		req, _ = http.NewRequest("POST", ts.URL+"/login", strings.NewReader(form.Encode()))

@@ -178,7 +178,7 @@ func (s *Server) RequireRole(next http.HandlerFunc, roles ...string) http.Handle
 			       u.payout_method, u.payout_dest_encrypted, u.payout_account_name, ws.expires_at, COALESCE(u.must_change_password, FALSE)
 			FROM web_sessions ws
 			JOIN users u ON u.id = ws.user_id
-			WHERE ws.token_hash = $1
+			WHERE ws.token_hash = $1 AND u.status = 'active'
 		`, hash).Scan(&user.ID, &user.Role, &user.Email, &user.Username, &user.DisplayName, &user.Language,
 			&payoutMethod, &payoutDestEncrypted, &payoutAccName, &expiresAt, &user.MustChangePassword)
 

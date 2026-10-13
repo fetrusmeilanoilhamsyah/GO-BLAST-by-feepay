@@ -820,12 +820,18 @@ func (s *Server) HandleWorkerWithdrawalsPOST(w http.ResponseWriter, r *http.Requ
 	}
 	defer tx.Rollback(ctx)
 
-	// 1. Kunci baris user (FOR UPDATE) dan periksa penahanan penarikan
+	// 1. Kunci baris user (FOR UPDATE) dan periksa status & penahanan penarikan
 	var lockedUserID int64
+	var userStatus string
 	var withdrawLockedUntil *time.Time
-	err = tx.QueryRow(ctx, "SELECT id, withdraw_locked_until FROM users WHERE id = $1 FOR UPDATE", user.ID).Scan(&lockedUserID, &withdrawLockedUntil)
+	err = tx.QueryRow(ctx, "SELECT id, status, withdraw_locked_until FROM users WHERE id = $1 FOR UPDATE", user.ID).Scan(&lockedUserID, &userStatus, &withdrawLockedUntil)
 	if err != nil {
 		http.Redirect(w, r, "/worker/withdrawals?error=Terjadi+kesalahan+sistem", http.StatusSeeOther)
+		return
+	}
+	if userStatus != "active" {
+		_ = tx.Rollback(ctx)
+		http.Redirect(w, r, "/worker/withdrawals?error=Akun+Anda+sedang+dibekukan+atau+tidak+aktif", http.StatusSeeOther)
 		return
 	}
 	if withdrawLockedUntil != nil && withdrawLockedUntil.After(time.Now()) {
@@ -983,9 +989,15 @@ func (s *Server) HandleWorkerConvertPOST(w http.ResponseWriter, r *http.Request)
 
 	// 1. Kunci baris user (FOR UPDATE)
 	var lockedUserID int64
-	err = tx.QueryRow(ctx, "SELECT id FROM users WHERE id = $1 FOR UPDATE", user.ID).Scan(&lockedUserID)
+	var userStatus string
+	err = tx.QueryRow(ctx, "SELECT id, status FROM users WHERE id = $1 FOR UPDATE", user.ID).Scan(&lockedUserID, &userStatus)
 	if err != nil {
 		http.Redirect(w, r, "/worker/withdrawals?error=Terjadi+kesalahan+sistem", http.StatusSeeOther)
+		return
+	}
+	if userStatus != "active" {
+		_ = tx.Rollback(ctx)
+		http.Redirect(w, r, "/worker/withdrawals?error=Akun+Anda+sedang+dibekukan+atau+tidak+aktif", http.StatusSeeOther)
 		return
 	}
 

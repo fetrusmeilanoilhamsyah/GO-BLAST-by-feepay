@@ -108,14 +108,14 @@ func (m *Manager) Connect(ctx context.Context, accountID, workerID int64) (<-cha
 	}
 	m.mu.RUnlock()
 
-	// --- Cek batas dari settings ---
+	// --- Cek batas dari settings & config ---
 	maxPerWorker, okPerWorker, err := m.settings.GetInt(ctx, "max_accounts_per_worker")
 	if err != nil || !okPerWorker || maxPerWorker <= 0 {
-		maxPerWorker = 5
+		return nil, nil, fmt.Errorf("pengaturan max_accounts_per_worker belum diatur oleh admin")
 	}
-	maxActive, okActive, err := m.settings.GetInt(ctx, "max_active_sessions")
-	if err != nil || !okActive || maxActive <= 0 {
-		maxActive = 50
+	maxActive := 50
+	if m.cfg != nil && m.cfg.MaxActiveSessions > 0 {
+		maxActive = m.cfg.MaxActiveSessions
 	}
 
 	// Hitung sesi aktif milik workerID (selain akun ini sendiri)

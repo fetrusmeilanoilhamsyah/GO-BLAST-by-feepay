@@ -19,8 +19,8 @@
                 <h1 style="font-size: 22px; font-weight: 800; color: var(--color-text); margin: 0; letter-spacing: -0.02em;">
                     Detail Pekerja: {{.Worker.Username}}
                 </h1>
-                <span class="badge {{if eq .Worker.Status "active"}}badge-success{{else}}badge-danger{{end}}" style="font-size: 11px;">
-                    {{.Worker.Status}}
+                <span class="badge {{if eq .Worker.Status "active"}}badge-success{{else if eq .Worker.Status "frozen"}}badge-danger{{else}}badge-muted{{end}}" style="font-size: 11px;">
+                    {{if eq .Worker.Status "frozen"}}Dibekukan{{else if eq .Worker.Status "active"}}Aktif{{else}}{{.Worker.Status}}{{end}}
                 </span>
             </div>
             <p style="font-size: 13px; color: var(--color-muted); margin: 4px 0 0 0;">
@@ -29,26 +29,38 @@
         </div>
 
         <div style="display: flex; gap: 8px;">
-            {{if eq .Worker.Status "active"}}
-            <form method="POST" action="/admin/workers/{{.Worker.ID}}/disable" style="margin: 0;" onsubmit="return confirm('Nonaktifkan akun pekerja ini?');">
+            {{if eq .Worker.Status "frozen"}}
+            <form method="POST" action="/admin/workers/{{.Worker.ID}}/unfreeze" style="margin: 0;" onsubmit="return confirm('Buka pembekuan akun pekerja ini?');">
                 <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-                <button type="submit" class="btn btn-secondary" style="padding: 6px 14px; font-size: 12px; color: var(--color-danger); border-color: var(--color-danger); cursor: pointer; border-radius: 6px;">
-                    Nonaktifkan Akun
+                <button type="submit" class="btn btn-primary" style="padding: 6px 14px; font-size: 12px; cursor: pointer; border-radius: 6px;">
+                    {{call $.T "admin.action_unfreeze"}}
                 </button>
             </form>
             {{else}}
-            <form method="POST" action="/admin/workers/{{.Worker.ID}}/enable" style="margin: 0;">
-                <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-                <button type="submit" class="btn btn-primary" style="padding: 6px 14px; font-size: 12px; cursor: pointer; border-radius: 6px;">
-                    Aktifkan Akun
-                </button>
-            </form>
+            <button type="button" class="btn btn-secondary" onclick="openFreezeModal()" style="padding: 6px 14px; font-size: 12px; color: var(--color-danger); border-color: var(--color-danger); cursor: pointer; border-radius: 6px;">
+                {{call $.T "admin.action_freeze"}}
+            </button>
             {{end}}
             <a href="/admin/workers" class="btn btn-secondary" style="padding: 6px 14px; font-size: 12px; text-decoration: none; border-radius: 6px;">
                 Kembali
             </a>
         </div>
     </div>
+
+    {{if eq .Worker.Status "frozen"}}
+    <!-- Banner Akun Dibekukan -->
+    <div class="card" style="margin-bottom: 24px; padding: 18px 20px; border: 1px solid var(--color-danger); border-radius: 10px; background: var(--color-surface-muted);">
+        <div style="font-size: 14px; font-weight: 700; color: var(--color-danger); margin-bottom: 6px;">
+            Akun Pekerja Ini Sedang Dibekukan
+        </div>
+        <p style="font-size: 13px; color: var(--color-text); margin: 0 0 6px 0;">
+            <strong>Alasan:</strong> {{if .Worker.FreezeReason}}{{.Worker.FreezeReason}}{{else}}Tidak ada alasan dicantumkan{{end}}
+        </p>
+        <div style="font-size: 12px; color: var(--color-muted);">
+            Seluruh sesi WhatsApp telah dihentikan, sesi login dihapus, dan akses masuk serta penarikan ditolak. Buku besar tidak diubah.
+        </div>
+    </div>
+    {{end}}
 
     {{if .ResetPasswordNotice}}
     <!-- Banner Password Baru -->
@@ -461,6 +473,48 @@
         </div>
     </div>
     </div>
+
+    <!-- Modal Bekukan Akun -->
+    <div id="freezeModal" class="modal-overlay" style="display: none; align-items: center; justify-content: center;">
+        <div class="modal-dialog card" style="max-width: 440px; width: 90%; margin: 20px auto; padding: 24px;">
+            <h3 style="font-size: 16px; font-weight: 700; color: var(--color-text); margin-top: 0; margin-bottom: 8px;">
+                {{call $.T "admin.freeze_worker_modal_title"}}
+            </h3>
+            <p style="font-size: 12px; color: var(--color-muted); margin-bottom: 16px; line-height: 1.4;">
+                {{call $.T "admin.freeze_reason_hint"}}
+            </p>
+            <form method="POST" action="/admin/workers/{{.Worker.ID}}/freeze">
+                <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+                <div class="field" style="margin-bottom: 16px;">
+                    <label for="freeze_reason" style="font-size: 12px; font-weight: 600; color: var(--color-text); margin-bottom: 6px; display: block;">
+                        {{call $.T "admin.freeze_reason"}} <span style="color: var(--color-danger);">*</span>
+                    </label>
+                    <textarea id="freeze_reason" name="freeze_reason" class="input" rows="3" required placeholder="Tuliskan alasan pembekuan akun..." style="font-size: 13px; width: 100%; box-sizing: border-box;"></textarea>
+                </div>
+                <div style="display: flex; justify-content: flex-end; gap: 8px;">
+                    <button type="button" class="btn btn-secondary" onclick="closeFreezeModal()" style="padding: 8px 16px; font-size: 13px; cursor: pointer;">
+                        Batal
+                    </button>
+                    <button type="submit" class="btn btn-secondary" style="padding: 8px 16px; font-size: 13px; color: var(--color-danger); border-color: var(--color-danger); cursor: pointer; font-weight: 600;">
+                        {{call $.T "admin.action_freeze"}}
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+    <script>
+    function openFreezeModal() {
+        var m = document.getElementById('freezeModal');
+        if (m) m.style.display = 'flex';
+    }
+    function closeFreezeModal() {
+        var m = document.getElementById('freezeModal');
+        if (m) m.style.display = 'none';
+    }
+    window.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') closeFreezeModal();
+    });
+    </script>
     </main>
 </div>
 {{end}}

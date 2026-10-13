@@ -15,11 +15,9 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/nyaruka/phonenumbers"
 	"goblast/internal/auth"
 	"goblast/internal/campaign"
 	"goblast/internal/config"
-	"goblast/internal/engine"
 	"goblast/internal/i18n"
 	"goblast/internal/money"
 	"goblast/internal/withdraw"
@@ -267,19 +265,12 @@ func (s *Server) fetchDashboardData(ctx context.Context) (*DashboardData, error)
 // --- Settings Handler ---
 
 type SettingsViewData struct {
-	SpeedDelays            map[string]int
-	DailyLimits            map[string]*int
-	MaxAttempts            *int
-	MaxConsecutiveFailures *int
-	ClaimTimeoutSeconds    int
 	MaxAccountsPerWorker   *int
-	MaxActiveSessions      *int
-	DefaultCountryCode     string
 	RateWageIDR            *int64
 	RateReferralIDR        *int64
-	RateIDRtoUSDT           *int64
-	RateIDRtoUSDTDisplay    string
-	RateIDRtoUSDTUpdatedAt  string
+	RateIDRtoUSDT          *int64
+	RateIDRtoUSDTDisplay   string
+	RateIDRtoUSDTUpdatedAt string
 }
 
 func (s *Server) HandleAdminSettingsGET(w http.ResponseWriter, r *http.Request) {
@@ -357,124 +348,7 @@ func (s *Server) HandleAdminSettingsPOST(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// 1. Validate speed_delays (1 to 600)
-	speedDelays := make(map[string]int)
-	for _, k := range []string{"fast", "medium", "slow", "over_slow"} {
-		valStr := strings.TrimSpace(r.FormValue("speed_delay_" + k))
-		val, convErr := strconv.Atoi(valStr)
-		if convErr != nil || val < 1 || val > 600 {
-			s.renderSettingsError(w, r, fmt.Sprintf("speed_delays (%s) harus antara 1 sampai 600 detik", k))
-			return
-		}
-		speedDelays[k] = val
-	}
-
-	// 2. Validate daily_limits (0 to 10000000, 0 = unlimited)
-	dailyLimits := make(map[string]int)
-	for _, k := range []string{"fast", "medium", "slow", "over_slow"} {
-		valStr := strings.TrimSpace(r.FormValue("daily_limit_" + k))
-		if valStr == "" {
-			s.renderSettingsError(w, r, fmt.Sprintf("daily_limits (%s) wajib diisi", k))
-			return
-		}
-		val, convErr := strconv.Atoi(valStr)
-		if convErr != nil || val < 0 || val > 10000000 {
-			s.renderSettingsError(w, r, fmt.Sprintf("daily_limits (%s) harus antara 0 (tanpa batas) sampai 10.000.000 pesan per hari", k))
-			return
-		}
-		dailyLimits[k] = val
-	}
-
-	// 3. Validate max_attempts (opsional dari form, default 3 dari backend)
-	maxAttempts := engine.DefaultMaxAttempts
-	maxAttemptsStr := strings.TrimSpace(r.FormValue("max_attempts"))
-	if maxAttemptsStr != "" {
-		convAttempts, convErr := strconv.Atoi(maxAttemptsStr)
-		if convErr != nil || convAttempts < 1 || convAttempts > 10 {
-			s.renderSettingsError(w, r, "max_attempts harus antara 1 sampai 10")
-			return
-		}
-		maxAttempts = convAttempts
-	} else {
-		var existingVal int
-		if err := s.DB.Pool.QueryRow(r.Context(), "SELECT value::int FROM settings WHERE key = 'max_attempts'").Scan(&existingVal); err == nil && existingVal >= 1 && existingVal <= 10 {
-			maxAttempts = existingVal
-		}
-	}
-
-	// 4. Validate max_consecutive_failures (opsional dari form, default 5 dari backend)
-	maxConsecutiveFailures := engine.DefaultMaxConsecutiveFailures
-	maxConsecutiveFailuresStr := strings.TrimSpace(r.FormValue("max_consecutive_failures"))
-	if maxConsecutiveFailuresStr != "" {
-		convFailures, convErr := strconv.Atoi(maxConsecutiveFailuresStr)
-		if convErr != nil || convFailures < 1 || convFailures > 50 {
-			s.renderSettingsError(w, r, "max_consecutive_failures harus antara 1 sampai 50")
-			return
-		}
-		maxConsecutiveFailures = convFailures
-	} else {
-		var existingVal int
-		if err := s.DB.Pool.QueryRow(r.Context(), "SELECT value::int FROM settings WHERE key = 'max_consecutive_failures'").Scan(&existingVal); err == nil && existingVal >= 1 && existingVal <= 50 {
-			maxConsecutiveFailures = existingVal
-		}
-	}
-
-	// 5. Validate claim_timeout_seconds (opsional dari form, default 300 dari backend)
-	claimTimeout := engine.DefaultClaimTimeoutSeconds
-	engineSendTimeoutSec := int(engine.SendTimeout.Seconds())
-	claimTimeoutStr := strings.TrimSpace(r.FormValue("claim_timeout_seconds"))
-	if claimTimeoutStr != "" {
-		convTimeout, convErr := strconv.Atoi(claimTimeoutStr)
-		if convErr != nil || convTimeout < 120 || convTimeout > 3600 || convTimeout <= engineSendTimeoutSec {
-			s.renderSettingsError(w, r, fmt.Sprintf("claim_timeout_seconds harus antara 120 sampai 3600 dan lebih besar dari timeout engine (%d detik)", engineSendTimeoutSec))
-			return
-		}
-		claimTimeout = convTimeout
-	} else {
-		var existingVal int
-		if err := s.DB.Pool.QueryRow(r.Context(), "SELECT value::int FROM settings WHERE key = 'claim_timeout_seconds'").Scan(&existingVal); err == nil && existingVal >= 120 && existingVal <= 3600 && existingVal > engineSendTimeoutSec {
-			claimTimeout = existingVal
-		}
-	}
-
-	// 6. Validate max_accounts_per_worker (1 to 50, required)
-	maxAccountsStr := strings.TrimSpace(r.FormValue("max_accounts_per_worker"))
-	if maxAccountsStr == "" {
-		s.renderSettingsError(w, r, "max_accounts_per_worker wajib diisi")
-		return
-	}
-	maxAccounts, convErr := strconv.Atoi(maxAccountsStr)
-	if convErr != nil || maxAccounts < 1 || maxAccounts > 50 {
-		s.renderSettingsError(w, r, "max_accounts_per_worker harus antara 1 sampai 50")
-		return
-	}
-
-	// 7. Validate max_active_sessions (1 to 500, required)
-	maxSessionsStr := strings.TrimSpace(r.FormValue("max_active_sessions"))
-	if maxSessionsStr == "" {
-		s.renderSettingsError(w, r, "max_active_sessions wajib diisi")
-		return
-	}
-	maxSessions, convErr := strconv.Atoi(maxSessionsStr)
-	if convErr != nil || maxSessions < 1 || maxSessions > 500 {
-		s.renderSettingsError(w, r, "max_active_sessions harus antara 1 sampai 500")
-		return
-	}
-
-	// 8. Validate default_country_code (recognized by phonenumbers)
-	defaultCC := strings.TrimSpace(r.FormValue("default_country_code"))
-	ccInt, convErr := strconv.Atoi(defaultCC)
-	if convErr != nil || ccInt <= 0 {
-		s.renderSettingsError(w, r, "default_country_code harus berupa angka kode negara yang valid")
-		return
-	}
-	region := phonenumbers.GetRegionCodeForCountryCode(ccInt)
-	if region == "ZZ" || region == "" {
-		s.renderSettingsError(w, r, "default_country_code tidak dikenal oleh pustaka phonenumbers")
-		return
-	}
-
-	// 9. Validate rate_wage (IDR > 0, required)
+	// 1. Validate rate_wage (IDR > 0, required)
 	rateWageIDRStr := strings.TrimSpace(r.FormValue("rate_wage_idr"))
 	if rateWageIDRStr == "" {
 		s.renderSettingsError(w, r, "rate_wage wajib diisi (rupiah)")
@@ -486,7 +360,7 @@ func (s *Server) HandleAdminSettingsPOST(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// 10. Validate rate_referral (IDR >= 0)
+	// 2. Validate rate_referral (IDR >= 0)
 	rateRefIDRStr := strings.TrimSpace(r.FormValue("rate_referral_idr"))
 	var rateRefIDR int64
 	if rateRefIDRStr != "" {
@@ -498,16 +372,28 @@ func (s *Server) HandleAdminSettingsPOST(w http.ResponseWriter, r *http.Request)
 		}
 	}
 
-	// 11. Validate rate_idr_to_usdt (IDR per 1 USDT, > 0)
+	// 3. Validate rate_idr_to_usdt (IDR per 1 USDT, > 0)
 	rateIDRtoUSDTStr := strings.TrimSpace(r.FormValue("rate_idr_to_usdt"))
-	var rateIDRtoUSDT int64 = 15000
-	if rateIDRtoUSDTStr != "" {
-		var convErr error
-		rateIDRtoUSDT, convErr = strconv.ParseInt(rateIDRtoUSDTStr, 10, 64)
-		if convErr != nil || rateIDRtoUSDT <= 0 {
-			s.renderSettingsError(w, r, "rate_idr_to_usdt harus bernilai lebih dari 0 (contoh: 15000)")
-			return
-		}
+	if rateIDRtoUSDTStr == "" {
+		s.renderSettingsError(w, r, "rate_idr_to_usdt wajib diisi")
+		return
+	}
+	rateIDRtoUSDT, convErr := strconv.ParseInt(rateIDRtoUSDTStr, 10, 64)
+	if convErr != nil || rateIDRtoUSDT <= 0 {
+		s.renderSettingsError(w, r, "rate_idr_to_usdt harus bernilai lebih dari 0 (contoh: 15000)")
+		return
+	}
+
+	// 4. Validate max_accounts_per_worker (1 to 50, required)
+	maxAccountsStr := strings.TrimSpace(r.FormValue("max_accounts_per_worker"))
+	if maxAccountsStr == "" {
+		s.renderSettingsError(w, r, "max_accounts_per_worker wajib diisi")
+		return
+	}
+	maxAccounts, convErr2 := strconv.Atoi(maxAccountsStr)
+	if convErr2 != nil || maxAccounts < 1 || maxAccounts > 50 {
+		s.renderSettingsError(w, r, "max_accounts_per_worker harus antara 1 sampai 50")
+		return
 	}
 
 	// Waktu perubahan kurs otomatis di rate_idr_to_usdt_updated_at
@@ -525,24 +411,17 @@ func (s *Server) HandleAdminSettingsPOST(w http.ResponseWriter, r *http.Request)
 		kursUpdatedAt = time.Now().Format(time.RFC3339)
 	}
 
-	// Save all settings with audit log
+	// Save the 4 settings with audit log
 	ip := getIP(r)
 	updates := []struct {
 		key   string
 		value interface{}
 	}{
-		{"speed_delays", speedDelays},
-		{"daily_limits", dailyLimits},
-		{"max_attempts", maxAttempts},
-		{"max_consecutive_failures", maxConsecutiveFailures},
-		{"claim_timeout_seconds", claimTimeout},
-		{"max_accounts_per_worker", maxAccounts},
-		{"max_active_sessions", maxSessions},
-		{"default_country_code", defaultCC},
 		{"rate_wage", rateWageIDR},
 		{"rate_referral", rateRefIDR},
 		{"rate_idr_to_usdt", rateIDRtoUSDT},
 		{"rate_idr_to_usdt_updated_at", kursUpdatedAt},
+		{"max_accounts_per_worker", maxAccounts},
 	}
 
 	for _, up := range updates {
@@ -631,13 +510,9 @@ func (s *Server) updateSettingWithAudit(ctx context.Context, adminID int64, key 
 }
 
 func (s *Server) readSettingsFromDB(ctx context.Context) (*SettingsViewData, error) {
-	data := &SettingsViewData{
-		SpeedDelays:        make(map[string]int),
-		DailyLimits:        make(map[string]*int),
-		DefaultCountryCode: "62",
-	}
+	data := &SettingsViewData{}
 
-	rows, err := s.DB.Pool.Query(ctx, "SELECT key, value::text FROM settings")
+	rows, err := s.DB.Pool.Query(ctx, "SELECT key, value::text FROM settings WHERE key IN ('rate_wage', 'rate_referral', 'rate_idr_to_usdt', 'rate_idr_to_usdt_updated_at', 'max_accounts_per_worker')")
 	if err != nil {
 		return nil, err
 	}
@@ -650,47 +525,10 @@ func (s *Server) readSettingsFromDB(ctx context.Context) (*SettingsViewData, err
 		}
 
 		switch key {
-		case "speed_delays":
-			_ = json.Unmarshal([]byte(valStr), &data.SpeedDelays)
-		case "daily_limits":
-			var dl map[string]int
-			if err := json.Unmarshal([]byte(valStr), &dl); err == nil {
-				for k, v := range dl {
-					val := v
-					data.DailyLimits[k] = &val
-				}
-			}
-		case "max_attempts":
-			var v int
-			if err := json.Unmarshal([]byte(valStr), &v); err == nil {
-				data.MaxAttempts = &v
-			}
-		case "max_consecutive_failures":
-			var v int
-			if err := json.Unmarshal([]byte(valStr), &v); err == nil {
-				data.MaxConsecutiveFailures = &v
-			}
-		case "claim_timeout_seconds":
-			var v int
-			if err := json.Unmarshal([]byte(valStr), &v); err == nil {
-				data.ClaimTimeoutSeconds = v
-			}
 		case "max_accounts_per_worker":
 			var v int
 			if err := json.Unmarshal([]byte(valStr), &v); err == nil {
 				data.MaxAccountsPerWorker = &v
-			}
-		case "max_active_sessions":
-			var v int
-			if err := json.Unmarshal([]byte(valStr), &v); err == nil {
-				data.MaxActiveSessions = &v
-			}
-		case "default_country_code":
-			var s string
-			if err := json.Unmarshal([]byte(valStr), &s); err == nil {
-				data.DefaultCountryCode = s
-			} else {
-				data.DefaultCountryCode = strings.Trim(valStr, `"`)
 			}
 		case "rate_wage":
 			var intVal int64
@@ -1911,7 +1749,7 @@ func (s *Server) RunHealthChecks(ctx context.Context) []HealthCheckItem {
 			Status:  "gagal",
 			Message: fmt.Sprintf("Migrasi versi %d belum selesai diterapkan", migrationVer),
 		})
-	} else if migrationVer < 17 {
+	} else if migrationVer < 18 {
 		results = append(results, HealthCheckItem{
 			Key:     "migration_version",
 			Name:    "Versi Migrasi Skema",
@@ -2000,14 +1838,7 @@ func (s *Server) RunHealthChecks(ctx context.Context) []HealthCheckItem {
 	}
 
 	// 5. Nomor menggantung (status dikirim lebih lama dari ClaimTimeoutSeconds)
-	claimTimeout := engine.DefaultClaimTimeoutSeconds
-	var ctJSON string
-	if err := s.DB.Pool.QueryRow(ctx, "SELECT value::text FROM settings WHERE key = 'claim_timeout_seconds'").Scan(&ctJSON); err == nil {
-		var ctVal int
-		if err := json.Unmarshal([]byte(ctJSON), &ctVal); err == nil && ctVal > 0 {
-			claimTimeout = ctVal
-		}
-	}
+	claimTimeout := config.ClaimTimeoutSeconds
 	var staleCount int64
 	errStale := s.DB.Pool.QueryRow(ctx, `
 		SELECT COUNT(*) FROM campaign_numbers
@@ -2477,6 +2308,7 @@ type WorkerDetailInfo struct {
 	Language     string
 	Currency     string
 	ReferralCode string
+	FreezeReason string
 	CreatedAt    string
 }
 
@@ -2531,13 +2363,15 @@ func (s *Server) HandleAdminWorkerDetailGET(w http.ResponseWriter, r *http.Reque
 	err = s.DB.Pool.QueryRow(ctx, `
 		SELECT id, email, COALESCE(username, ''), COALESCE(display_name, ''),
 		       role, status, language, referral_code,
-		       payout_method, payout_account_name, payout_dest_encrypted, created_at
+		       payout_method, payout_account_name, payout_dest_encrypted, created_at,
+		       COALESCE(freeze_reason, '')
 		FROM users
 		WHERE id = $1 AND role = 'worker'
 	`, workerID).Scan(
 		&wInfo.ID, &emailPtr, &wInfo.Username, &wInfo.DisplayName,
 		&wInfo.Role, &wInfo.Status, &wInfo.Language, &wInfo.ReferralCode,
 		&payoutMethod, &payoutAccName, &payoutDestEnc, &createdAt,
+		&wInfo.FreezeReason,
 	)
 	wInfo.Currency = "IDR"
 	if err != nil {
@@ -2780,4 +2614,126 @@ func generateTemporaryPassword() string {
 	}
 	return string(b)
 }
+
+func (s *Server) HandleAdminWorkerFreezePOST(w http.ResponseWriter, r *http.Request) {
+	admin, ok := currentUser(r)
+	if !ok || admin.Role != "admin" {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+
+	idStr := r.PathValue("id")
+	workerID, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		http.Error(w, "ID tidak valid", http.StatusBadRequest)
+		return
+	}
+
+	freezeReason := strings.TrimSpace(r.FormValue("freeze_reason"))
+	if freezeReason == "" {
+		http.Redirect(w, r, fmt.Sprintf("/admin/workers/%d?err=Alasan+pembekuan+akun+wajib+diisi", workerID), http.StatusSeeOther)
+		return
+	}
+
+	ctx := r.Context()
+
+	// 1. Verifikasi pekerja ada
+	var username string
+	err = s.DB.Pool.QueryRow(ctx, "SELECT username FROM users WHERE id = $1 AND role = 'worker'", workerID).Scan(&username)
+	if err != nil {
+		http.Redirect(w, r, "/admin/workers?err=Pekerja+tidak+ditemukan", http.StatusSeeOther)
+		return
+	}
+
+	// 2. Ambil semua akun WhatsApp milik pekerja
+	rows, err := s.DB.Pool.Query(ctx, "SELECT id FROM wa_accounts WHERE worker_id = $1", workerID)
+	var accountIDs []int64
+	if err == nil {
+		for rows.Next() {
+			var accID int64
+			if err := rows.Scan(&accID); err == nil {
+				accountIDs = append(accountIDs, accID)
+			}
+		}
+		rows.Close()
+	}
+
+	// 3. Hentikan engine loop & putuskan koneksi WhatsApp untuk setiap akun
+	for _, accID := range accountIDs {
+		if s.WorkCtrl != nil {
+			s.WorkCtrl.StopAccount(accID)
+		}
+		if s.WaManager != nil {
+			_ = s.WaManager.DisconnectAccount(ctx, accID)
+		}
+		_, _ = s.DB.Pool.Exec(ctx, "UPDATE wa_accounts SET status = 'terputus', stop_reason = 'Akun pekerja dibekukan' WHERE id = $1", accID)
+	}
+
+	// 4. Hapus semua sesi web aktif milik pekerja
+	_, _ = s.DB.Pool.Exec(ctx, "DELETE FROM web_sessions WHERE user_id = $1", workerID)
+
+	// 5. Update user status ke 'frozen' dan simpan freeze_reason
+	_, err = s.DB.Pool.Exec(ctx, "UPDATE users SET status = 'frozen', freeze_reason = $1 WHERE id = $2 AND role = 'worker'", freezeReason, workerID)
+	if err != nil {
+		http.Redirect(w, r, fmt.Sprintf("/admin/workers/%d?err=Gagal+membekukan+akun: %s", workerID, url.QueryEscape(err.Error())), http.StatusSeeOther)
+		return
+	}
+
+	// 6. Catat audit log
+	metaJSON, _ := json.Marshal(map[string]interface{}{
+		"worker_id":        workerID,
+		"username":         username,
+		"freeze_reason":    freezeReason,
+		"stopped_accounts": len(accountIDs),
+	})
+	_, _ = s.DB.Pool.Exec(ctx, `
+		INSERT INTO audit_logs (actor_id, action, entity, entity_id, meta, ip)
+		VALUES ($1, 'worker_freeze', 'users', $2, $3::jsonb, $4)
+	`, admin.ID, idStr, string(metaJSON), getIP(r))
+
+	http.Redirect(w, r, fmt.Sprintf("/admin/workers/%d?msg=Akun+pekerja+berhasil+dibekukan", workerID), http.StatusSeeOther)
+}
+
+func (s *Server) HandleAdminWorkerUnfreezePOST(w http.ResponseWriter, r *http.Request) {
+	admin, ok := currentUser(r)
+	if !ok || admin.Role != "admin" {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+
+	idStr := r.PathValue("id")
+	workerID, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		http.Error(w, "ID tidak valid", http.StatusBadRequest)
+		return
+	}
+
+	ctx := r.Context()
+
+	var username string
+	err = s.DB.Pool.QueryRow(ctx, "SELECT username FROM users WHERE id = $1 AND role = 'worker'", workerID).Scan(&username)
+	if err != nil {
+		http.Redirect(w, r, "/admin/workers?err=Pekerja+tidak+ditemukan", http.StatusSeeOther)
+		return
+	}
+
+	_, err = s.DB.Pool.Exec(ctx, "UPDATE users SET status = 'active', freeze_reason = NULL WHERE id = $1 AND role = 'worker'", workerID)
+	if err != nil {
+		http.Redirect(w, r, fmt.Sprintf("/admin/workers/%d?err=Gagal+mengaktifkan+akun: %s", workerID, url.QueryEscape(err.Error())), http.StatusSeeOther)
+		return
+	}
+
+	metaJSON, _ := json.Marshal(map[string]interface{}{
+		"worker_id": workerID,
+		"username":  username,
+		"action":    "unfreeze",
+	})
+	_, _ = s.DB.Pool.Exec(ctx, `
+		INSERT INTO audit_logs (actor_id, action, entity, entity_id, meta, ip)
+		VALUES ($1, 'worker_unfreeze', 'users', $2, $3::jsonb, $4)
+	`, admin.ID, idStr, string(metaJSON), getIP(r))
+
+	http.Redirect(w, r, fmt.Sprintf("/admin/workers/%d?msg=Pembekuan+akun+pekerja+berhasil+dibuka", workerID), http.StatusSeeOther)
+}
+
 
