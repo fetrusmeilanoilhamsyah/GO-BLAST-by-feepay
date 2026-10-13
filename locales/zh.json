@@ -133,6 +133,8 @@
   "worker.withdraw_notice": "提现由管理员人工处理。申请提交成功后将立即扣减可用余额。",
   "worker.withdraw_no_history": "暂无提现申请记录。",
   "worker.withdraw_success": "提现申请已成功提交，正在排队等待处理。",
+  "worker.withdraw_currency_note": "印尼盾提款使用印尼盾余额，USDT提款在转换后使用USDT余额。",
+  "worker.convert_rate_lock_notice": "按确认键时汇率已锁定。",
   "worker.referral_title": "推荐奖励计划",
   "worker.referral_desc": "邀请好友加入 GO BLAST 共同兼职。好友每成功发送一条消息，您都将获得一份推荐奖励。",
   "worker.referral_code_label": "您的专属推荐码",

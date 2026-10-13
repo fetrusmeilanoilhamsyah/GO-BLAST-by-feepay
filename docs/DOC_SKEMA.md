@@ -21,7 +21,7 @@ Menyimpan data pengguna (admin dan pekerja).
 - `email`: Unik dan huruf kecil. **Nullable sejak migrasi 0015** — email opsional saat pendaftaran pekerja. Admin selalu punya email.
 - `password_hash`: Kata sandi yang di-hash.
 - `role`: `admin` atau `worker`.
-- `currency`: Mata uang preferensi (`IDR` atau `USDT`). Default `IDR`.
+- Kolom `currency` **dihapus pada migrasi 0016** — semua pekerja menerima upah dan bonus referral dalam mata uang tunggal Rupiah (IDR).
 - `referral_code`: Kode referral unik.
 - `referred_by`: Merujuk ke `users(id)` orang yang mengajak (nullable).
 
@@ -32,9 +32,9 @@ Menyimpan sesi login dari web.
 
 ### `settings`
 Menyimpan pengaturan aplikasi yang diubah melalui panel admin.
-- `key`: Kunci pengaturan (contoh: `default_country_code`, `rate_wage`).
+- `key`: Kunci pengaturan (contoh: `default_country_code`, `rate_wage`, `rate_referral`, `rate_idr_to_usdt`, `rate_idr_to_usdt_updated_at`).
 - `value`: Nilai JSONB.
-- Pengaturan upah menggunakan kunci `rate_wage` dengan format JSON `{"IDR": <bilangan bulat rupiah>, "USDT": <bilangan bulat sepersejuta USDT>}`. Nilai 3000 pada USDT bernilai 0.003 USDT (sepersejuta USDT). Tidak ada fallback ke kunci lama.
+- Sejak migrasi 0016, pengaturan upah `rate_wage` dan referral `rate_referral` disimpan sebagai bilangan bulat IDR tunggal (bukan map {IDR, USDT}). Kurs `rate_idr_to_usdt` adalah bilangan bulat (1 USDT = berapa rupiah), dan `rate_idr_to_usdt_updated_at` menyimpan waktu ISO-8601/RFC3339 kapan kurs terakhir diperbarui.
 
 ### `campaigns`
 Kampanye pengiriman pesan.
@@ -66,10 +66,20 @@ Sesi WhatsApp pekerja.
 
 ### `ledger_entries`
 Buku besar untuk saldo pekerja (append-only).
-- `kind`: `upah`, `referral`, `penarikan`, `koreksi`.
-- `amount`: Nilai transaksi (positif untuk pendapatan, negatif untuk penarikan). Bilangan bulat (BIGINT): IDR dalam rupiah utuh, USDT dalam sepersejuta USDT (contoh: 3000 mewakili 0.003 USDT).
+- `kind`: `upah`, `referral`, `penarikan`, `koreksi`, `konversi` (**'konversi' ditambahkan di migrasi 0016**).
+- `amount`: Nilai transaksi (positif untuk pendapatan, negatif untuk penarikan/konversi keluar). Bilangan bulat (BIGINT): IDR dalam rupiah utuh, USDT dalam sepersejuta USDT (contoh: 3000 mewakili 0.003 USDT).
 - `rate_snapshot`: Rate yang berlaku saat itu (BIGINT, IDR: rupiah, USDT: sepersejuta USDT).
+- `conversion_id`: Merujuk ke `currency_conversions(id)` ON DELETE RESTRICT (**ditambahkan migrasi 0016**).
 - `reverses_entry_id`: Merujuk ke entri yang dikoreksi.
+
+### `currency_conversions`
+Tabel pencatatan transaksi penukaran saldo IDR ke USDT (**ditambahkan migrasi 0016**).
+- `user_id`: Pekerja yang melakukan konversi, merujuk ke `users(id)` ON DELETE RESTRICT.
+- `idr_amount`: Nominal rupiah yang ditukar (BIGINT > 0).
+- `usdt_micro`: Nominal sepersejuta USDT yang didapatkan (BIGINT > 0, pembulatan ke bawah murni).
+- `kurs`: Nilai tukar rupiah per 1 USDT saat transaksi (BIGINT > 0).
+- `request_token`: Token acak dari form untuk mencegah konversi ganda (idempoten).
+- `created_at`: Waktu transaksi dibuat.
 
 ### `support_tickets`
 Tiket laporan/bantuan dari pekerja ke admin. Ditambahkan migrasi 0012.
@@ -115,14 +125,16 @@ Catatan aktivitas (audit trail).
 - `check_referred_by_not_self`: Pada `users`, memastikan pengguna tidak bisa memakai kode referral milik sendiri.
 - `unique_campaign_phone`: Pada `campaign_numbers`, memastikan nomor telepon (E.164) hanya ada satu per kampanye, mencegah pengiriman ganda di level database.
 - `CHECK` pada `currency` dan `status` di banyak tabel: Menjamin integritas data agar selalu valid sesuai DOC_KONSEP.
+- `idx_currency_conversions_user_token`: Indeks unik pada `currency_conversions(user_id, request_token)` menjamin permintaan konversi dengan token yang sama bersifat idempoten (migrasi 0016).
 - `idx_ledger_entries_upah_unique`: Indeks unik parsial di `ledger_entries` memastikan satu `campaign_number_id` hanya bisa membayar upah maksimal satu kali.
 - `trg_prevent_ledger_update_delete`: Trigger di `ledger_entries` menolak semua perintah UPDATE dan DELETE secara ketat (append-only tanpa pengecualian).
 - `ledger_entries_campaign_number_id_fkey`: Foreign key pada `campaign_number_id` yang merujuk ke `campaign_numbers(id)` dengan aturan `ON DELETE RESTRICT` (migrasi 0014), memastikan nomor kampanye yang sudah tercatat di buku besar tidak dapat dihapus.
-- `trg_check_withdrawal_balance`: Trigger pada INSERT `ledger_entries` jenis `penarikan` yang mengunci baris `users` (FOR UPDATE) dan memastikan saldo tidak menjadi negatif setelah penarikan.
+- `trg_check_withdrawal_balance`: Trigger pada INSERT `ledger_entries` dengan nominal negatif untuk jenis `penarikan` dan `konversi` (**migrasi 0016**) yang mengunci baris `users` (FOR UPDATE) dan memastikan saldo tidak menjadi negatif setelah penarikan atau konversi.
 
 ## Indeks Penting dan Alasannya
 - `idx_campaign_numbers_claim`: Indeks parsial di `campaign_numbers (campaign_id, id) WHERE status = 'tersedia'`. Ini mempercepat klaim antrean menggunakan `FOR UPDATE SKIP LOCKED`.
 - `idx_ledger_entries_user_curr_time`: Mempercepat kalkulasi saldo (`user_balance`) dan riwayat.
+- `idx_currency_conversions_user_token`: Menjamin idempotensi konversi IDR ke USDT per pekerja dan per token.
 - `idx_audit_logs_created_at`: Mempercepat query riwayat aktivitas.
 - `idx_web_sessions_user_id`: Mempercepat pencarian dan penghapusan semua sesi milik satu pengguna.
 - `idx_wa_accounts_worker_status`: Mempercepat penghitungan dan validasi batas akun aktif per pekerja.

@@ -17,7 +17,7 @@ import (
 
 // WorkController antarmuka kontrol kerja pengiriman pesan.
 type WorkController interface {
-	StartAccount(accountID, workerID int64, currency string)
+	StartAccount(accountID, workerID int64)
 	StopAccount(accountID int64)
 	IsRunning(accountID int64) bool
 }

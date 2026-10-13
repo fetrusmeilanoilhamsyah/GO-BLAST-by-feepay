@@ -51,8 +51,8 @@ func runCreateAdmin(cfg *config.Config) {
 
 	var adminID int64
 	err = database.Pool.QueryRow(context.Background(), `
-		INSERT INTO users (email, username, password_hash, role, display_name, language, currency, referral_code)
-		VALUES ($1, $2, $3, 'admin', 'Admin', 'id', 'IDR', $4) RETURNING id
+		INSERT INTO users (email, username, password_hash, role, display_name, language, referral_code)
+		VALUES ($1, $2, $3, 'admin', 'Admin', 'id', $4) RETURNING id
 	`, email, username, hash, newRefCode).Scan(&adminID)
 
 	if err != nil {

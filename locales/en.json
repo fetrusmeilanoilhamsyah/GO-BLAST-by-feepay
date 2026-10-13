@@ -133,6 +133,8 @@
   "worker.withdraw_notice": "Withdrawals are processed manually by admin. Balance will be deducted immediately upon submission.",
   "worker.withdraw_no_history": "No withdrawal requests yet.",
   "worker.withdraw_success": "Withdrawal request submitted successfully and queued.",
+  "worker.withdraw_currency_note": "IDR withdrawals use IDR balance, USDT withdrawals use USDT balance after converting.",
+  "worker.convert_rate_lock_notice": "Exchange rate is locked when you press confirm.",
   "worker.referral_title": "Referral Program",
   "worker.referral_desc": "Invite friends to work with GO BLAST. You will receive a bonus per message for every message successfully sent by your friends.",
   "worker.referral_code_label": "Your Referral Code",

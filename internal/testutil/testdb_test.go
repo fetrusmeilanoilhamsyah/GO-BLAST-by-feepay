@@ -25,7 +25,7 @@ func TestTestDBSafetyChecks(t *testing.T) {
 	// Test cleanup with ledger entry
 	ctx := context.Background()
 	var uid int64
-	err := pool.QueryRow(ctx, "INSERT INTO users (email, password_hash, role, currency, referral_code, display_name) VALUES ($1, 'h', 'worker', 'IDR', $2, 'U') RETURNING id",
+	err := pool.QueryRow(ctx, "INSERT INTO users (email, password_hash, role, referral_code, display_name) VALUES ($1, 'h', 'worker', $2, 'U') RETURNING id",
 		fmt.Sprintf("test_u_%d@test.com", time.Now().UnixNano()), fmt.Sprintf("REF_%d", time.Now().UnixNano())).Scan(&uid)
 	if err != nil {
 		t.Fatalf("insert user failed: %v", err)

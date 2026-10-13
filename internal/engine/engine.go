@@ -75,7 +75,7 @@ func New(database *db.DB, sender wa.Sender, checker WhatsAppChecker, settings Se
 
 // StartAccount memulai goroutine kirim untuk accountID.
 // Jika sudah berjalan, tidak ada aksi ganda.
-func (e *Engine) StartAccount(accountID, workerID int64, currency string) {
+func (e *Engine) StartAccount(accountID, workerID int64) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
@@ -89,7 +89,7 @@ func (e *Engine) StartAccount(accountID, workerID int64, currency string) {
 	ctx, cancel := context.WithCancel(context.Background())
 	e.workers[accountID] = cancel
 
-	go e.runWorker(ctx, accountID, workerID, currency)
+	go e.runWorker(ctx, accountID, workerID)
 }
 
 // IsRunning memeriksa apakah goroutine pengiriman untuk accountID sedang aktif.
@@ -229,8 +229,33 @@ func getJakartaNextDayWaitDuration() time.Duration {
 	return nextDay.Sub(now)
 }
 
+// getRateWage membaca rate_wage sebagai bilangan bulat rupiah.
+// Mendukung integer JSON langsung, GetInt, dan fallback legacy map {"IDR": ...}.
+func (e *Engine) getRateWage(ctx context.Context) (int64, bool, error) {
+	var val int64
+	okJSON, err := e.settings.GetJSON(ctx, "rate_wage", &val)
+	if err == nil && okJSON && val > 0 {
+		return val, true, nil
+	}
+
+	vInt, okInt, errInt := e.settings.GetInt(ctx, "rate_wage")
+	if errInt == nil && okInt && vInt > 0 {
+		return int64(vInt), true, nil
+	}
+
+	var legacyMap map[string]int64
+	okMap, errMap := e.settings.GetJSON(ctx, "rate_wage", &legacyMap)
+	if errMap == nil && okMap && legacyMap != nil {
+		if idr, exists := legacyMap["IDR"]; exists && idr > 0 {
+			return idr, true, nil
+		}
+	}
+
+	return 0, false, nil
+}
+
 // runWorker adalah siklus kerja utama satu akun WhatsApp.
-func (e *Engine) runWorker(ctx context.Context, accountID, workerID int64, currency string) {
+func (e *Engine) runWorker(ctx context.Context, accountID, workerID int64) {
 	defer func() {
 		e.mu.Lock()
 		delete(e.workers, accountID)
@@ -261,11 +286,11 @@ func (e *Engine) runWorker(ctx context.Context, accountID, workerID int64, curre
 			maxAttempts = DefaultMaxAttempts
 		}
 
-		// Validasi rate_wage: jika rate mata uang pekerja tidak ada atau tidak lebih dari 0,
-		// engine tidak mengirim apa pun dan menulis stop_reason "rate upah belum diisi admin".
-		var rateWage map[string]int64
-		okWage, err := e.settings.GetJSON(ctx, "rate_wage", &rateWage)
-		if err != nil || !okWage || rateWage == nil || rateWage[currency] <= 0 {
+		// Validasi rate_wage: engine membaca rate_wage sebagai bilangan bulat rupiah.
+		// Jika rate_wage kosong atau tidak lebih dari 0, engine tidak mengirim apa pun
+		// dan menulis stop_reason "rate upah belum diisi admin".
+		rateWage, okWage, err := e.getRateWage(ctx)
+		if err != nil || !okWage || rateWage <= 0 {
 			e.setAccountStopReason(ctx, accountID, "rate upah belum diisi admin")
 			return
 		}
@@ -408,7 +433,7 @@ func (e *Engine) runWorker(ctx context.Context, accountID, workerID int64, curre
 			_ = res
 
 			// Catat status 'terkirim' dan buku besar 'upah' dengan WithoutCancel, timeout 10s, dan 3 kali coba ulang
-			if err := e.RecordWithRetry(ctx, claimed.ID, workerID, currency); err != nil {
+			if err := e.RecordWithRetry(ctx, claimed.ID, workerID); err != nil {
 				slog.Error("engine: gagal mencatat buku besar upah", "number_id", claimed.ID, "err", err)
 			}
 			_, _ = e.CheckAndCompleteCampaign(ctx, claimed.CampaignID)
@@ -471,13 +496,13 @@ func (e *Engine) buildCampaignMessage(ctx context.Context, campaignID int64, rec
 // dengan timeout 10 detik, coba ulang 3 kali (jeda 200 ms, 1 detik, 3 detik).
 // Jika tetap gagal, nomor diubah statusnya menjadi 'gagal' dengan last_error "terkirim_tidak_tercatat",
 // dicatat slog.Error beserta ID nomor, dan tidak pernah dikembalikan ke tersedia.
-func (e *Engine) RecordWithRetry(ctx context.Context, numberID, workerID int64, currency string) error {
+func (e *Engine) RecordWithRetry(ctx context.Context, numberID, workerID int64) error {
 	delays := RecordRetryDelays
 	var lastErr error
 
 	for attempt := 0; attempt <= len(delays); attempt++ {
 		recordCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
-		err := e.RecordSuccessAndLedger(recordCtx, numberID, workerID, currency)
+		err := e.RecordSuccessAndLedger(recordCtx, numberID, workerID)
 		cancel()
 
 		if err == nil {
@@ -503,14 +528,12 @@ func (e *Engine) RecordWithRetry(ctx context.Context, numberID, workerID int64, 
 }
 
 // RecordSuccessAndLedger mencatat keberhasilan pengiriman dan entri buku besar upah dalam satu transaksi.
-// Menggunakan nilai rate_wage dari settings tanpa fallback ke kunci lama.
-func (e *Engine) RecordSuccessAndLedger(ctx context.Context, numberID, workerID int64, currency string) error {
-	var rateWage map[string]int64
-	okRate, err := e.settings.GetJSON(ctx, "rate_wage", &rateWage)
-	if err != nil || !okRate || rateWage == nil || rateWage[currency] <= 0 {
+// Selalu menulis ledger_entries dengan currency 'IDR'.
+func (e *Engine) RecordSuccessAndLedger(ctx context.Context, numberID, workerID int64) error {
+	rate, okRate, err := e.getRateWage(ctx)
+	if err != nil || !okRate || rate <= 0 {
 		return fmt.Errorf("rate upah belum diisi admin")
 	}
-	rate := rateWage[currency]
 
 	tx, err := e.db.Pool.Begin(ctx)
 	if err != nil {
@@ -527,12 +550,12 @@ func (e *Engine) RecordSuccessAndLedger(ctx context.Context, numberID, workerID 
 		return fmt.Errorf("update status terkirim: %w", err)
 	}
 
-	// Masukkan buku besar upah (idempoten dengan ON CONFLICT DO NOTHING)
+	// Masukkan buku besar upah (selalu IDR, idempoten dengan ON CONFLICT DO NOTHING)
 	_, err = tx.Exec(ctx,
 		`INSERT INTO ledger_entries (user_id, kind, currency, amount, rate_snapshot, campaign_number_id, note)
-		 VALUES ($1, 'upah', $2, $3, $4, $5, 'upah pesan terkirim')
+		 VALUES ($1, 'upah', 'IDR', $2, $3, $4, 'upah pesan terkirim')
 		 ON CONFLICT (campaign_number_id) WHERE kind = 'upah' DO NOTHING`,
-		workerID, currency, rate, rate, numberID,
+		workerID, rate, rate, numberID,
 	)
 	if err != nil {
 		return fmt.Errorf("insert ledger upah: %w", err)

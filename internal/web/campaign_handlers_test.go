@@ -25,7 +25,7 @@ func TestCampaignHandlers(t *testing.T) {
 	pool := testutil.TestDB(t)
 
 	var userID int64
-	err := pool.QueryRow(context.Background(), "INSERT INTO users (email, password_hash, role, currency, referral_code, display_name) VALUES ($1, 'hash', 'admin', 'IDR', $2, 'Test Admin') RETURNING id", fmt.Sprintf("testcamp%d@test.com", time.Now().UnixNano()), fmt.Sprintf("REFCAMP%d", time.Now().UnixNano())).Scan(&userID)
+	err := pool.QueryRow(context.Background(), "INSERT INTO users (email, password_hash, role, referral_code, display_name) VALUES ($1, 'hash', 'admin', $2, 'Test Admin') RETURNING id", fmt.Sprintf("testcamp%d@test.com", time.Now().UnixNano()), fmt.Sprintf("REFCAMP%d", time.Now().UnixNano())).Scan(&userID)
 	if err != nil {
 		t.Fatal(err)
 	}

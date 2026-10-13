@@ -6,11 +6,11 @@ BEGIN
     END IF;
 END $$;
 
-INSERT INTO users (id, email, password_hash, role, display_name, language, currency, referral_code, status, created_at)
+INSERT INTO users (id, email, password_hash, role, display_name, language, referral_code, status, created_at)
 VALUES 
-(1, 'admin@goblast.test', 'placeholder_hash_admin', 'admin', 'Admin Feepay', 'id', 'IDR', 'ADMIN123', 'active', CURRENT_TIMESTAMP),
-(2, 'worker1@goblast.test', 'placeholder_hash_worker1', 'worker', 'Pekerja Satu', 'id', 'IDR', 'WORKER01', 'active', CURRENT_TIMESTAMP),
-(3, 'worker2@goblast.test', 'placeholder_hash_worker2', 'worker', 'Pekerja Dua', 'en', 'USDT', 'WORKER02', 'active', CURRENT_TIMESTAMP)
+(1, 'admin@goblast.test', 'placeholder_hash_admin', 'admin', 'Admin Feepay', 'id', 'ADMIN123', 'active', CURRENT_TIMESTAMP),
+(2, 'worker1@goblast.test', 'placeholder_hash_worker1', 'worker', 'Pekerja Satu', 'id', 'WORKER01', 'active', CURRENT_TIMESTAMP),
+(3, 'worker2@goblast.test', 'placeholder_hash_worker2', 'worker', 'Pekerja Dua', 'en', 'WORKER02', 'active', CURRENT_TIMESTAMP)
 ON CONFLICT (id) DO NOTHING;
 
 SELECT setval('users_id_seq', (SELECT MAX(id) FROM users));
@@ -47,5 +47,5 @@ INSERT INTO settings (key, value) VALUES
     ('max_consecutive_failures', '5'::jsonb),
     ('max_accounts_per_worker', '5'::jsonb),
     ('max_active_sessions', '50'::jsonb),
-    ('rate_wage', '{"IDR": 50, "USDT": 3000}'::jsonb)
+    ('rate_wage', '50'::jsonb)
 ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;

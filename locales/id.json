@@ -132,6 +132,8 @@
   "worker.withdraw_notice": "Penarikan diproses manual oleh admin. Saldo langsung dipotong saat pengajuan berhasil dibuat.",
   "worker.withdraw_no_history": "Belum ada riwayat pengajuan penarikan.",
   "worker.withdraw_success": "Pengajuan penarikan berhasil dikirim dan masuk antrean.",
+  "worker.withdraw_currency_note": "Penarikan rupiah memakai saldo rupiah, penarikan USDT memakai saldo USDT setelah menukar.",
+  "worker.convert_rate_lock_notice": "Kurs terkunci saat kamu menekan konfirmasi.",
   "worker.referral_title": "Program Referral",
   "worker.referral_desc": "Ajak rekan untuk bekerja bersama GO BLAST. Anda akan mendapatkan bonus per pesan untuk setiap pesan yang berhasil dikirim oleh rekan Anda.",
   "worker.referral_code_label": "Kode Referral Anda",

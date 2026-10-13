@@ -184,8 +184,8 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		}
 
 		_, err = s.DB.Pool.Exec(context.Background(), `
-			INSERT INTO users (email, username, password_hash, role, display_name, language, currency, referral_code, referred_by)
-			VALUES ($1, $2, $3, 'worker', $4, $5, 'IDR', $6, $7)
+			INSERT INTO users (email, username, password_hash, role, display_name, language, referral_code, referred_by)
+			VALUES ($1, $2, $3, 'worker', $4, $5, $6, $7)
 		`, emailVal, username, hash, displayName, lang, newRefCode, referredBy)
 
 		if err != nil {

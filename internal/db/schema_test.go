@@ -165,5 +165,41 @@ func TestSchemaConstraints(t *testing.T) {
 			t.Errorf("Expected name2 = NULL, got %v", name2)
 		}
 	})
+
+	t.Run("f) konversi melebihi saldo IDR ditolak oleh trigger", func(t *testing.T) {
+		// Sisa saldo IDR worker1ID saat ini adalah 50.
+		// Konversi -100 IDR harus ditolak oleh trigger
+		_, err := pool.Exec(ctx, "INSERT INTO ledger_entries (user_id, kind, currency, amount) VALUES ($1, 'konversi', 'IDR', -100)", worker1ID)
+		if err == nil {
+			t.Fatal("expected error on konversi exceeding IDR balance, got nil")
+		}
+	})
+
+	t.Run("g) penarikan melebihi saldo USDT ditolak oleh trigger", func(t *testing.T) {
+		// worker1ID belum punya saldo USDT (0).
+		// Penarikan USDT sebesar 1000 micro-USDT harus ditolak oleh trigger
+		_, err := pool.Exec(ctx, "INSERT INTO ledger_entries (user_id, kind, currency, amount) VALUES ($1, 'penarikan', 'USDT', -1000)", worker1ID)
+		if err == nil {
+			t.Fatal("expected error on USDT withdrawal exceeding USDT balance, got nil")
+		}
+
+		// Berikan saldo USDT 5000 lewat koreksi
+		_, err = pool.Exec(ctx, "INSERT INTO ledger_entries (user_id, kind, currency, amount) VALUES ($1, 'koreksi', 'USDT', 5000)", worker1ID)
+		if err != nil {
+			t.Fatalf("failed to credit USDT: %v", err)
+		}
+
+		// Penarikan USDT 4000 berhasil
+		_, err = pool.Exec(ctx, "INSERT INTO ledger_entries (user_id, kind, currency, amount) VALUES ($1, 'penarikan', 'USDT', -4000)", worker1ID)
+		if err != nil {
+			t.Fatalf("expected success on valid USDT withdrawal, got error: %v", err)
+		}
+
+		// Penarikan USDT 2000 lagi ditolak (saldo tersisa 1000)
+		_, err = pool.Exec(ctx, "INSERT INTO ledger_entries (user_id, kind, currency, amount) VALUES ($1, 'penarikan', 'USDT', -2000)", worker1ID)
+		if err == nil {
+			t.Fatal("expected error on USDT withdrawal exceeding remaining balance, got nil")
+		}
+	})
 }
 

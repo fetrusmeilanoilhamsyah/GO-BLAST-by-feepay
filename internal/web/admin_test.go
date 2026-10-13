@@ -25,7 +25,7 @@ type fakeWorkController struct {
 	stoppedAccounts []int64
 }
 
-func (f *fakeWorkController) StartAccount(accountID, workerID int64, currency string) {}
+func (f *fakeWorkController) StartAccount(accountID, workerID int64) {}
 func (f *fakeWorkController) StopAccount(accountID int64) {
 	f.stoppedAccounts = append(f.stoppedAccounts, accountID)
 }
@@ -46,8 +46,8 @@ func setupAdminTest(t *testing.T) (*Server, *pgxpool.Pool, int64, int64) {
 	nonce := time.Now().UnixNano()
 	var adminID, workerID int64
 	err := pool.QueryRow(context.Background(), `
-		INSERT INTO users (email, username, password_hash, role, currency, referral_code, display_name)
-		VALUES ($1, $2, 'hash', 'admin', 'IDR', $3, 'Admin Test')
+		INSERT INTO users (email, username, password_hash, role, referral_code, display_name)
+		VALUES ($1, $2, 'hash', 'admin', $3, 'Admin Test')
 		RETURNING id
 	`, fmt.Sprintf("admin_%d@test.com", nonce), fmt.Sprintf("admin_%d", nonce), fmt.Sprintf("REFADM%d", nonce)).Scan(&adminID)
 	if err != nil {
@@ -56,8 +56,8 @@ func setupAdminTest(t *testing.T) (*Server, *pgxpool.Pool, int64, int64) {
 
 	// Create worker user
 	err = pool.QueryRow(context.Background(), `
-		INSERT INTO users (email, username, password_hash, role, currency, referral_code, display_name)
-		VALUES ($1, $2, 'hash', 'worker', 'IDR', $3, 'Worker Test')
+		INSERT INTO users (email, username, password_hash, role, referral_code, display_name)
+		VALUES ($1, $2, 'hash', 'worker', $3, 'Worker Test')
 		RETURNING id
 	`, fmt.Sprintf("worker_%d@test.com", nonce), fmt.Sprintf("worker_%d", nonce), fmt.Sprintf("REFWKR%d", nonce)).Scan(&workerID)
 	if err != nil {
@@ -474,7 +474,6 @@ func TestOpenDecisionKeysRenderedEmptyWithoutDefaults(t *testing.T) {
 	// Verify open decision inputs have empty value and "wajib diisi"
 	checks := []string{
 		`id="rate_wage_idr" name="rate_wage_idr" class="input" min="1" value="" placeholder="wajib diisi"`,
-		`id="rate_wage_usdt" name="rate_wage_usdt" class="input" min="1" value="" placeholder="wajib diisi"`,
 		`id="daily_limit_fast" name="daily_limit_fast" class="input" min="0" value="" placeholder="wajib diisi"`,
 		`id="max_accounts_per_worker" name="max_accounts_per_worker" class="input" min="1" max="50" value="" placeholder="wajib diisi"`,
 		`id="max_active_sessions" name="max_active_sessions" class="input" min="1" max="500" value="" placeholder="wajib diisi"`,

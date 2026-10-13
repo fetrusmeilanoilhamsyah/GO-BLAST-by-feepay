@@ -30,7 +30,6 @@ type UserSession struct {
 	Username          string
 	DisplayName       string
 	Language          string
-	Currency          string
 	PayoutMethod      string
 	PayoutAccountName string
 	PayoutDestMasked  string
@@ -175,12 +174,12 @@ func (s *Server) RequireRole(next http.HandlerFunc, roles ...string) http.Handle
 		var payoutMethod, payoutDestEncrypted, payoutAccName *string
 
 		err = s.DB.Pool.QueryRow(context.Background(), `
-			SELECT u.id, u.role, COALESCE(u.email, ''), COALESCE(u.username, ''), COALESCE(u.display_name, u.username, ''), u.language, u.currency,
+			SELECT u.id, u.role, COALESCE(u.email, ''), COALESCE(u.username, ''), COALESCE(u.display_name, u.username, ''), u.language,
 			       u.payout_method, u.payout_dest_encrypted, u.payout_account_name, ws.expires_at
 			FROM web_sessions ws
 			JOIN users u ON u.id = ws.user_id
 			WHERE ws.token_hash = $1
-		`, hash).Scan(&user.ID, &user.Role, &user.Email, &user.Username, &user.DisplayName, &user.Language, &user.Currency,
+		`, hash).Scan(&user.ID, &user.Role, &user.Email, &user.Username, &user.DisplayName, &user.Language,
 			&payoutMethod, &payoutDestEncrypted, &payoutAccName, &expiresAt)
 
 		if payoutMethod != nil {

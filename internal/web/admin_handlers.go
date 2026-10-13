@@ -19,6 +19,7 @@ import (
 	"goblast/internal/auth"
 	"goblast/internal/engine"
 	"goblast/internal/i18n"
+	"goblast/internal/money"
 	"goblast/internal/withdraw"
 )
 
@@ -293,13 +294,10 @@ type SettingsViewData struct {
 	MaxActiveSessions      *int
 	DefaultCountryCode     string
 	RateWageIDR            *int64
-	RateWageUSDT           *int64
-	RateWageUSDTDisplay    string
 	RateReferralIDR        *int64
-	RateReferralUSDT        *int64
-	RateReferralUSDTDisplay string
 	RateIDRtoUSDT           *int64
 	RateIDRtoUSDTDisplay    string
+	RateIDRtoUSDTUpdatedAt  string
 }
 
 func (s *Server) HandleAdminSettingsGET(w http.ResponseWriter, r *http.Request) {
@@ -494,45 +492,28 @@ func (s *Server) HandleAdminSettingsPOST(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// 9. Validate rate_wage (IDR > 0, USDT > 0, required)
+	// 9. Validate rate_wage (IDR > 0, required)
 	rateWageIDRStr := strings.TrimSpace(r.FormValue("rate_wage_idr"))
-	rateWageUSDTStr := strings.TrimSpace(r.FormValue("rate_wage_usdt"))
-	if rateWageIDRStr == "" || rateWageUSDTStr == "" {
-		s.renderSettingsError(w, r, "rate_wage wajib diisi (IDR dan USDT)")
+	if rateWageIDRStr == "" {
+		s.renderSettingsError(w, r, "rate_wage wajib diisi (rupiah)")
 		return
 	}
 	rateWageIDR, err1 := strconv.ParseInt(rateWageIDRStr, 10, 64)
-	rateWageUSDT, err2 := parseUSDTInput(rateWageUSDTStr)
-	if err1 != nil || err2 != nil || rateWageIDR <= 0 || rateWageUSDT <= 0 {
+	if err1 != nil || rateWageIDR <= 0 {
 		s.renderSettingsError(w, r, "rate_wage harus bernilai lebih dari 0")
 		return
 	}
-	rateWage := map[string]int64{
-		"IDR":  rateWageIDR,
-		"USDT": rateWageUSDT,
-	}
 
-	// 10. Validate rate_referral (IDR >= 0, USDT >= 0)
+	// 10. Validate rate_referral (IDR >= 0)
 	rateRefIDRStr := strings.TrimSpace(r.FormValue("rate_referral_idr"))
-	rateRefUSDTStr := strings.TrimSpace(r.FormValue("rate_referral_usdt"))
-	var rateRefIDR, rateRefUSDT int64
+	var rateRefIDR int64
 	if rateRefIDRStr != "" {
-		rateRefIDR, _ = strconv.ParseInt(rateRefIDRStr, 10, 64)
-	}
-	if rateRefUSDTStr != "" {
-		rateRefUSDT, err2 = parseUSDTInput(rateRefUSDTStr)
-		if err2 != nil {
-			s.renderSettingsError(w, r, "rate_referral USDT tidak valid: "+err2.Error())
+		var err2 error
+		rateRefIDR, err2 = strconv.ParseInt(rateRefIDRStr, 10, 64)
+		if err2 != nil || rateRefIDR < 0 {
+			s.renderSettingsError(w, r, "rate_referral tidak boleh negatif")
 			return
 		}
-	}
-	if rateRefIDR < 0 || rateRefUSDT < 0 {
-		s.renderSettingsError(w, r, "rate_referral tidak boleh negatif")
-		return
-	}
-	rateReferral := map[string]int64{
-		"IDR":  rateRefIDR,
-		"USDT": rateRefUSDT,
 	}
 
 	// 11. Validate rate_idr_to_usdt (IDR per 1 USDT, > 0)
@@ -545,6 +526,21 @@ func (s *Server) HandleAdminSettingsPOST(w http.ResponseWriter, r *http.Request)
 			s.renderSettingsError(w, r, "rate_idr_to_usdt harus bernilai lebih dari 0 (contoh: 15000)")
 			return
 		}
+	}
+
+	// Waktu perubahan kurs otomatis di rate_idr_to_usdt_updated_at
+	var oldKurs int64
+	var oldKursJSON string
+	_ = s.DB.Pool.QueryRow(r.Context(), "SELECT value::text FROM settings WHERE key = 'rate_idr_to_usdt'").Scan(&oldKursJSON)
+	_ = json.Unmarshal([]byte(oldKursJSON), &oldKurs)
+
+	var oldUpdatedAt string
+	_ = s.DB.Pool.QueryRow(r.Context(), "SELECT value::text FROM settings WHERE key = 'rate_idr_to_usdt_updated_at'").Scan(&oldUpdatedAt)
+	oldUpdatedAt = strings.Trim(oldUpdatedAt, `"`)
+
+	kursUpdatedAt := oldUpdatedAt
+	if oldKurs != rateIDRtoUSDT || kursUpdatedAt == "" {
+		kursUpdatedAt = time.Now().Format(time.RFC3339)
 	}
 
 	// Save all settings with audit log
@@ -561,9 +557,10 @@ func (s *Server) HandleAdminSettingsPOST(w http.ResponseWriter, r *http.Request)
 		{"max_accounts_per_worker", maxAccounts},
 		{"max_active_sessions", maxSessions},
 		{"default_country_code", defaultCC},
-		{"rate_wage", rateWage},
-		{"rate_referral", rateReferral},
+		{"rate_wage", rateWageIDR},
+		{"rate_referral", rateRefIDR},
 		{"rate_idr_to_usdt", rateIDRtoUSDT},
+		{"rate_idr_to_usdt_updated_at", kursUpdatedAt},
 	}
 
 	for _, up := range updates {
@@ -714,27 +711,29 @@ func (s *Server) readSettingsFromDB(ctx context.Context) (*SettingsViewData, err
 				data.DefaultCountryCode = strings.Trim(valStr, `"`)
 			}
 		case "rate_wage":
-			var rw map[string]int64
-			if err := json.Unmarshal([]byte(valStr), &rw); err == nil {
-				if idr, ok := rw["IDR"]; ok {
-					val := idr
-					data.RateWageIDR = &val
-				}
-				if usdt, ok := rw["USDT"]; ok {
-					val := usdt
-					data.RateWageUSDT = &val
+			var intVal int64
+			if err := json.Unmarshal([]byte(valStr), &intVal); err == nil && intVal > 0 {
+				data.RateWageIDR = &intVal
+			} else {
+				var rw map[string]int64
+				if err := json.Unmarshal([]byte(valStr), &rw); err == nil {
+					if idr, ok := rw["IDR"]; ok {
+						val := idr
+						data.RateWageIDR = &val
+					}
 				}
 			}
 		case "rate_referral":
-			var rr map[string]int64
-			if err := json.Unmarshal([]byte(valStr), &rr); err == nil {
-				if idr, ok := rr["IDR"]; ok {
-					val := idr
-					data.RateReferralIDR = &val
-				}
-				if usdt, ok := rr["USDT"]; ok {
-					val := usdt
-					data.RateReferralUSDT = &val
+			var intVal int64
+			if err := json.Unmarshal([]byte(valStr), &intVal); err == nil && intVal >= 0 {
+				data.RateReferralIDR = &intVal
+			} else {
+				var rr map[string]int64
+				if err := json.Unmarshal([]byte(valStr), &rr); err == nil {
+					if idr, ok := rr["IDR"]; ok {
+						val := idr
+						data.RateReferralIDR = &val
+					}
 				}
 			}
 		case "rate_idr_to_usdt":
@@ -742,19 +741,27 @@ func (s *Server) readSettingsFromDB(ctx context.Context) (*SettingsViewData, err
 			if err := json.Unmarshal([]byte(valStr), &v); err == nil {
 				data.RateIDRtoUSDT = &v
 			}
+		case "rate_idr_to_usdt_updated_at":
+			var s string
+			if err := json.Unmarshal([]byte(valStr), &s); err == nil {
+				data.RateIDRtoUSDTUpdatedAt = s
+			} else {
+				data.RateIDRtoUSDTUpdatedAt = strings.Trim(valStr, `"`)
+			}
 		}
 	}
 
-	if data.RateWageUSDT != nil {
-		f := float64(*data.RateWageUSDT) / 1000000.0
-		data.RateWageUSDTDisplay = strings.TrimRight(strings.TrimRight(fmt.Sprintf("%.6f", f), "0"), ".")
-	}
-	if data.RateReferralUSDT != nil {
-		f := float64(*data.RateReferralUSDT) / 1000000.0
-		data.RateReferralUSDTDisplay = strings.TrimRight(strings.TrimRight(fmt.Sprintf("%.6f", f), "0"), ".")
-	}
 	if data.RateIDRtoUSDT != nil {
-		data.RateIDRtoUSDTDisplay = formatIDR(*data.RateIDRtoUSDT)
+		data.RateIDRtoUSDTDisplay = money.FormatIDR(*data.RateIDRtoUSDT)
+	}
+	if data.RateIDRtoUSDTUpdatedAt != "" {
+		if t, err := time.Parse(time.RFC3339, data.RateIDRtoUSDTUpdatedAt); err == nil {
+			loc, _ := time.LoadLocation("Asia/Jakarta")
+			if loc != nil {
+				t = t.In(loc)
+			}
+			data.RateIDRtoUSDTUpdatedAt = t.Format("02 Jan 2006 15:04 WIB")
+		}
 	}
 
 	return data, nil
@@ -942,25 +949,11 @@ type WithdrawalItemView struct {
 }
 
 func formatIDR(n int64) string {
-	in := strconv.FormatInt(n, 10)
-	var out []byte
-	l := len(in)
-	for i, c := range in {
-		if i > 0 && (l-i)%3 == 0 {
-			out = append(out, '.')
-		}
-		out = append(out, byte(c))
-	}
-	return string(out)
+	return money.FormatIDR(n)
 }
 
 func formatUSDT(n int64) string {
-	f := float64(n) / 1000000.0
-	res := strings.TrimRight(strings.TrimRight(fmt.Sprintf("%.6f", f), "0"), ".")
-	if res == "" {
-		return "0"
-	}
-	return res
+	return money.FormatUSDT(n)
 }
 
 func (s *Server) HandleAdminWithdrawalsGET(w http.ResponseWriter, r *http.Request) {
@@ -2011,15 +2004,16 @@ func (s *Server) HandleAdminWorkerDetailGET(w http.ResponseWriter, r *http.Reque
 
 	err = s.DB.Pool.QueryRow(ctx, `
 		SELECT id, email, COALESCE(username, ''), COALESCE(display_name, ''),
-		       role, status, language, currency, referral_code,
+		       role, status, language, referral_code,
 		       payout_method, payout_account_name, payout_dest_encrypted, created_at
 		FROM users
 		WHERE id = $1 AND role = 'worker'
 	`, workerID).Scan(
 		&wInfo.ID, &emailPtr, &wInfo.Username, &wInfo.DisplayName,
-		&wInfo.Role, &wInfo.Status, &wInfo.Language, &wInfo.Currency, &wInfo.ReferralCode,
+		&wInfo.Role, &wInfo.Status, &wInfo.Language, &wInfo.ReferralCode,
 		&payoutMethod, &payoutAccName, &payoutDestEnc, &createdAt,
 	)
+	wInfo.Currency = "IDR"
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			http.Error(w, "Pekerja tidak ditemukan", http.StatusNotFound)

@@ -36,6 +36,11 @@
                 </div>
             </div>
 
+            <!-- PENJELASAN MATA UANG PENARIKAN (i18n) -->
+            <div style="background-color: var(--color-surface-muted); border: 1px solid var(--color-border); padding: 12px 16px; border-radius: 6px; margin-bottom: 24px; font-size: 13px; color: var(--color-muted); line-height: 1.5;">
+                {{ call .T "worker.withdraw_currency_note" }}
+            </div>
+
             <!-- KALKULATOR KONVERSI IDR KE USDT -->
             <div class="card" style="margin: 0 0 24px 0; padding: 20px;">
                 <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 12px;">
@@ -48,13 +53,15 @@
 
                 <form method="POST" action="/worker/convert" id="form-convert" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; align-items: flex-end;">
                     <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+                    <input type="hidden" name="request_token" value="{{.ConvertRequestToken}}">
                     <div class="field" style="margin: 0;">
-                        <label for="convert-amount-idr" style="font-weight: 600; font-size: 13px;">Nominal IDR yang Ditukar:</label>
-                        <input type="number" id="convert-amount-idr" name="amount_idr" class="input" min="1" max="{{.BalanceIDR}}" placeholder="contoh: 15000" required oninput="calculateConvert(this.value)">
+                        <label for="convert-amount-idr" style="font-weight: 600; font-size: 13px;">Nominal IDR yang Ditukar (min. Rp {{.MinConvertIDRFormatted}}):</label>
+                        <input type="number" id="convert-amount-idr" name="amount_idr" class="input" min="10000" max="{{.BalanceIDR}}" placeholder="contoh: 15000" required oninput="calculateConvert(this.value)">
                     </div>
                     <div style="background-color: var(--color-surface-muted); padding: 10px 14px; border-radius: 6px; border: 1px solid var(--color-border);">
                         <div style="font-size: 11px; font-weight: 600; text-transform: uppercase; color: var(--color-muted);">Estimasi Diterima:</div>
-                        <div id="convert-preview" style="font-size: 16px; font-weight: 800; color: var(--color-accent); margin-top: 2px;">0.000000 USDT</div>
+                        <div id="convert-preview" style="font-size: 16px; font-weight: 800; color: var(--color-accent); margin-top: 2px;">0 USDT</div>
+                        <div style="font-size: 11px; color: var(--color-muted); margin-top: 4px;">Kurs: 1 USDT = Rp {{.RateIDRtoUSDTDisplay}}</div>
                     </div>
                     <div>
                         <button type="submit" class="btn btn-secondary" style="width: 100%; padding: 10px; font-weight: 700; font-size: 13px; cursor: pointer; border-color: var(--color-accent); color: var(--color-accent);">
@@ -62,6 +69,9 @@
                         </button>
                     </div>
                 </form>
+                <div style="margin-top: 8px; font-size: 12px; color: var(--color-muted);">
+                    {{ call .T "worker.convert_rate_lock_notice" }}
+                </div>
             </div>
 
             <!-- INFORMASI & FORM PENARIKAN -->
@@ -220,15 +230,22 @@
             function calculateConvert(idrStr) {
                 var rate = {{.RateIDRtoUSDT}};
                 if (!rate || rate <= 0) rate = 15000;
-                var idr = parseFloat(idrStr);
+                var idr = parseInt(idrStr, 10);
                 var preview = document.getElementById('convert-preview');
                 if (!preview) return;
                 if (!idr || idr <= 0) {
-                    preview.textContent = '0.000000 USDT';
+                    preview.textContent = '0 USDT';
                     return;
                 }
-                var usdt = idr / rate;
-                preview.textContent = usdt.toFixed(6) + ' USDT';
+                var micro = Math.floor((idr * 1000000) / rate);
+                var whole = Math.floor(micro / 1000000);
+                var frac = micro % 1000000;
+                var fracStr = ('000000' + frac).slice(-6).replace(/0+$/, '');
+                if (fracStr.length > 0) {
+                    preview.textContent = whole + '.' + fracStr + ' USDT';
+                } else {
+                    preview.textContent = whole + ' USDT';
+                }
             }
 
             function focusConvert() {

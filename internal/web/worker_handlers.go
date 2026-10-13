@@ -10,7 +10,9 @@ import (
 	"time"
 
 	"goblast/internal/auth"
+	"goblast/internal/config"
 	"goblast/internal/i18n"
+	"goblast/internal/money"
 	"goblast/internal/withdraw"
 )
 
@@ -114,11 +116,7 @@ func (s *Server) HandleWorkerHome(w http.ResponseWriter, r *http.Request) {
 	var balanceUSDT int64
 	_ = s.DB.Pool.QueryRow(ctx, "SELECT user_balance($1, 'USDT')", user.ID).Scan(&balanceUSDT)
 
-	// Fallback balance sesuai mata uang utama user
 	var mainBalance int64 = balanceIDR
-	if user.Currency == "USDT" {
-		mainBalance = balanceUSDT
-	}
 
 	// 2. Pendapatan hari ini (upah + referral hari ini)
 	var earnedTodayIDR int64
@@ -241,16 +239,38 @@ func (s *Server) HandleWorkerHome(w http.ResponseWriter, r *http.Request) {
 
 	// 9b. Rate upah dari settings DB
 	var rateWageIDR int64 = 25
-	var rateWageUSDT int64 = 2000
 	var rwJSON string
 	if err := s.DB.Pool.QueryRow(ctx, "SELECT value::text FROM settings WHERE key = 'rate_wage'").Scan(&rwJSON); err == nil {
-		var rw map[string]int64
-		if err := json.Unmarshal([]byte(rwJSON), &rw); err == nil {
-			if idr, ok := rw["IDR"]; ok {
-				rateWageIDR = idr
+		var intVal int64
+		if err := json.Unmarshal([]byte(rwJSON), &intVal); err == nil && intVal > 0 {
+			rateWageIDR = intVal
+		} else {
+			var rw map[string]int64
+			if err := json.Unmarshal([]byte(rwJSON), &rw); err == nil {
+				if idr, ok := rw["IDR"]; ok {
+					rateWageIDR = idr
+				}
 			}
-			if usdt, ok := rw["USDT"]; ok {
-				rateWageUSDT = usdt
+		}
+	}
+
+	var rateIDRtoUSDT int64
+	var kursJSON string
+	_ = s.DB.Pool.QueryRow(ctx, "SELECT value::text FROM settings WHERE key = 'rate_idr_to_usdt'").Scan(&kursJSON)
+	_ = json.Unmarshal([]byte(kursJSON), &rateIDRtoUSDT)
+
+	var kursUpdatedAt string
+	_ = s.DB.Pool.QueryRow(ctx, "SELECT value::text FROM settings WHERE key = 'rate_idr_to_usdt_updated_at'").Scan(&kursUpdatedAt)
+	kursUpdatedAt = strings.Trim(kursUpdatedAt, `"`)
+
+	var rateWageUSDTApprox string
+	if rateIDRtoUSDT > 0 && kursUpdatedAt != "" {
+		if t, err := time.Parse(time.RFC3339, kursUpdatedAt); err == nil {
+			if time.Since(t).Hours() <= float64(config.KursMaxAgeHours) {
+				micro, errCalc := money.UsdtMicroFromIDR(rateWageIDR, rateIDRtoUSDT)
+				if errCalc == nil && micro > 0 {
+					rateWageUSDTApprox = money.FormatUSDT(micro)
+				}
 			}
 		}
 	}
@@ -346,7 +366,7 @@ func (s *Server) HandleWorkerHome(w http.ResponseWriter, r *http.Request) {
 		TotalReferral             int64
 		TotalWithdrawn            int64
 		RateWageIDR               int64
-		RateWageUSDT              int64
+		RateWageUSDTApprox        string
 		RateWageIDRFormatted      string
 		RateWageUSDTFormatted     string
 		TotalReferralIDR          int64
@@ -390,9 +410,9 @@ func (s *Server) HandleWorkerHome(w http.ResponseWriter, r *http.Request) {
 		TotalReferral:            totalReferralIDR,
 		TotalWithdrawn:           totalWithdrawnIDR,
 		RateWageIDR:               rateWageIDR,
-		RateWageUSDT:              rateWageUSDT,
-		RateWageIDRFormatted:      formatIDR(rateWageIDR),
-		RateWageUSDTFormatted:     formatUSDT(rateWageUSDT),
+		RateWageUSDTApprox:        rateWageUSDTApprox,
+		RateWageIDRFormatted:      money.FormatIDR(rateWageIDR),
+		RateWageUSDTFormatted:     rateWageUSDTApprox,
 		TotalReferralIDR:          totalReferralIDR,
 		TotalReferralUSDT:         totalReferralUSDT,
 		TotalReferralIDRFormatted: formatIDR(totalReferralIDR),
@@ -604,43 +624,49 @@ func (s *Server) HandleWorkerWithdrawalsGET(w http.ResponseWriter, r *http.Reque
 		successMsg = i18n.T(lang, "worker.withdraw_success")
 	}
 
+	convertRequestToken, _, _ := auth.GenerateSessionToken()
+
 	data := struct {
 		CSLinks
-		Lang                 string
-		Title                string
-		Theme                string
-		CSRFToken            string
-		ActiveNav            string
-		User                 UserSession
-		Balance              int64
-		BalanceIDR           int64
-		BalanceIDRFormatted  string
-		BalanceUSDT          int64
-		BalanceUSDTFormatted string
-		RateIDRtoUSDT        int64
-		RateIDRtoUSDTDisplay string
-		Withdrawals          []WorkerWithdrawalView
-		Error                string
-		Success              string
-		T                    func(string) string
+		Lang                    string
+		Title                   string
+		Theme                   string
+		CSRFToken               string
+		ActiveNav               string
+		User                    UserSession
+		Balance                 int64
+		BalanceIDR              int64
+		BalanceIDRFormatted     string
+		BalanceUSDT             int64
+		BalanceUSDTFormatted    string
+		RateIDRtoUSDT           int64
+		RateIDRtoUSDTDisplay    string
+		ConvertRequestToken     string
+		MinConvertIDRFormatted  string
+		Withdrawals             []WorkerWithdrawalView
+		Error                   string
+		Success                 string
+		T                       func(string) string
 	}{
-		CSLinks:              s.csLinks(),
-		Lang:                 lang,
-		Title:                i18n.T(lang, "nav.withdrawals"),
-		Theme:                getTheme(r),
-		CSRFToken:            getCSRF(r),
-		ActiveNav:            "withdrawals",
-		User:                 user,
-		Balance:              balanceIDR,
-		BalanceIDR:           balanceIDR,
-		BalanceIDRFormatted:  formatIDR(balanceIDR),
-		BalanceUSDT:          balanceUSDT,
-		BalanceUSDTFormatted: formatUSDT(balanceUSDT),
-		RateIDRtoUSDT:        rateIDRtoUSDT,
-		RateIDRtoUSDTDisplay: formatIDR(rateIDRtoUSDT),
-		Withdrawals:          list,
-		Error:                errMsg,
-		Success:              successMsg,
+		CSLinks:                 s.csLinks(),
+		Lang:                    lang,
+		Title:                   i18n.T(lang, "nav.withdrawals"),
+		Theme:                   getTheme(r),
+		CSRFToken:               getCSRF(r),
+		ActiveNav:               "withdrawals",
+		User:                    user,
+		Balance:                 balanceIDR,
+		BalanceIDR:              balanceIDR,
+		BalanceIDRFormatted:     money.FormatIDR(balanceIDR),
+		BalanceUSDT:             balanceUSDT,
+		BalanceUSDTFormatted:    money.FormatUSDT(balanceUSDT),
+		RateIDRtoUSDT:           rateIDRtoUSDT,
+		RateIDRtoUSDTDisplay:    money.FormatIDR(rateIDRtoUSDT),
+		ConvertRequestToken:     convertRequestToken,
+		MinConvertIDRFormatted:  money.FormatIDR(config.MinConvertIDR),
+		Withdrawals:             list,
+		Error:                   errMsg,
+		Success:                 successMsg,
 		T: func(key string) string {
 			return i18n.T(lang, key)
 		},
@@ -789,6 +815,12 @@ func (s *Server) HandleWorkerConvertPOST(w http.ResponseWriter, r *http.Request)
 	}
 
 	ctx := r.Context()
+	token := strings.TrimSpace(r.FormValue("request_token"))
+	if token == "" {
+		http.Redirect(w, r, "/worker/withdrawals?error=Permintaan+tidak+valid+(token+kosong)", http.StatusSeeOther)
+		return
+	}
+
 	amountIDRStr := strings.TrimSpace(r.FormValue("amount_idr"))
 	amountIDR, err := strconv.ParseInt(amountIDRStr, 10, 64)
 	if err != nil || amountIDR <= 0 {
@@ -796,7 +828,12 @@ func (s *Server) HandleWorkerConvertPOST(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Baca rate_idr_to_usdt dari settings DB
+	if amountIDR < config.MinConvertIDR {
+		http.Redirect(w, r, fmt.Sprintf("/worker/withdrawals?error=Jumlah+minimal+konversi+adalah+Rp+%s", money.FormatIDR(config.MinConvertIDR)), http.StatusSeeOther)
+		return
+	}
+
+	// Baca kurs rate_idr_to_usdt dari settings DB
 	var rateJSON string
 	err = s.DB.Pool.QueryRow(ctx, "SELECT value::text FROM settings WHERE key = 'rate_idr_to_usdt'").Scan(&rateJSON)
 	if err != nil {
@@ -810,7 +847,28 @@ func (s *Server) HandleWorkerConvertPOST(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Atomic transaction: lock user row, check balance, insert koreksi ledger entries
+	// Periksa usia kurs (KursMaxAgeHours)
+	var kursUpdatedAt string
+	_ = s.DB.Pool.QueryRow(ctx, "SELECT value::text FROM settings WHERE key = 'rate_idr_to_usdt_updated_at'").Scan(&kursUpdatedAt)
+	kursUpdatedAt = strings.Trim(kursUpdatedAt, `"`)
+	if kursUpdatedAt == "" {
+		http.Redirect(w, r, "/worker/withdrawals?error=Kurs+konversi+belum+divalidasi+admin", http.StatusSeeOther)
+		return
+	}
+	tUpdated, errTime := time.Parse(time.RFC3339, kursUpdatedAt)
+	if errTime != nil || time.Since(tUpdated).Hours() > float64(config.KursMaxAgeHours) {
+		http.Redirect(w, r, "/worker/withdrawals?error=Kurs+konversi+telah+kedaluwarsa+(lebih+dari+24+jam),+silakan+hubungi+admin", http.StatusSeeOther)
+		return
+	}
+
+	// Hitung mikro-USDT dengan pembulatan ke bawah (semua bilangan bulat murni)
+	usdtAmount, errCalc := money.UsdtMicroFromIDR(amountIDR, rateIDRtoUSDT)
+	if errCalc != nil || usdtAmount <= 0 {
+		http.Redirect(w, r, "/worker/withdrawals?error=Jumlah+terlalu+kecil+untuk+dikonversi", http.StatusSeeOther)
+		return
+	}
+
+	// Transaksi atomik tunggal
 	tx, err := s.DB.Pool.Begin(ctx)
 	if err != nil {
 		http.Redirect(w, r, "/worker/withdrawals?error=Terjadi+kesalahan+sistem", http.StatusSeeOther)
@@ -818,6 +876,7 @@ func (s *Server) HandleWorkerConvertPOST(w http.ResponseWriter, r *http.Request)
 	}
 	defer tx.Rollback(ctx)
 
+	// 1. Kunci baris user (FOR UPDATE)
 	var lockedUserID int64
 	err = tx.QueryRow(ctx, "SELECT id FROM users WHERE id = $1 FOR UPDATE", user.ID).Scan(&lockedUserID)
 	if err != nil {
@@ -825,6 +884,21 @@ func (s *Server) HandleWorkerConvertPOST(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	// 2. Cek apakah token ganda sudah pernah dipakai
+	var existingID, existingIDR, existingUSDT int64
+	errExist := tx.QueryRow(ctx, `
+		SELECT id, idr_amount, usdt_micro
+		FROM currency_conversions
+		WHERE user_id = $1 AND request_token = $2
+	`, user.ID, token).Scan(&existingID, &existingIDR, &existingUSDT)
+	if errExist == nil {
+		_ = tx.Rollback(ctx)
+		msg := fmt.Sprintf("Konversi sebelumnya telah berhasil (Rp %s menjadi %s USDT)", money.FormatIDR(existingIDR), money.FormatUSDT(existingUSDT))
+		http.Redirect(w, r, fmt.Sprintf("/worker/withdrawals?success=%s", url.QueryEscape(msg)), http.StatusSeeOther)
+		return
+	}
+
+	// 3. Cek kecukupan saldo rupiah
 	var balanceIDR int64
 	_ = tx.QueryRow(ctx, "SELECT user_balance($1, 'IDR')", user.ID).Scan(&balanceIDR)
 	if balanceIDR < amountIDR {
@@ -832,27 +906,34 @@ func (s *Server) HandleWorkerConvertPOST(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	usdtAmount := (amountIDR * 1000000) / rateIDRtoUSDT
-	if usdtAmount <= 0 {
-		http.Redirect(w, r, "/worker/withdrawals?error=Jumlah+terlalu+kecil+untuk+dikonversi", http.StatusSeeOther)
+	// 4. Insert currency_conversions
+	var conversionID int64
+	err = tx.QueryRow(ctx, `
+		INSERT INTO currency_conversions (user_id, idr_amount, usdt_micro, kurs, request_token)
+		VALUES ($1, $2, $3, $4, $5)
+		RETURNING id
+	`, user.ID, amountIDR, usdtAmount, rateIDRtoUSDT, token).Scan(&conversionID)
+	if err != nil {
+		http.Redirect(w, r, "/worker/withdrawals?error=Gagal+mencatat+konversi", http.StatusSeeOther)
 		return
 	}
 
-	noteIDR := fmt.Sprintf("Konversi ke USDT (kurs Rp %s/USDT)", formatIDR(rateIDRtoUSDT))
+	// 5. Insert dua baris ledger_entries kind 'konversi' dengan conversion_id
+	noteIDR := fmt.Sprintf("Konversi ke USDT (kurs Rp %s/USDT)", money.FormatIDR(rateIDRtoUSDT))
 	_, err = tx.Exec(ctx, `
-		INSERT INTO ledger_entries (user_id, kind, currency, amount, note)
-		VALUES ($1, 'koreksi', 'IDR', $2, $3)
-	`, user.ID, -amountIDR, noteIDR)
+		INSERT INTO ledger_entries (user_id, kind, currency, amount, conversion_id, note)
+		VALUES ($1, 'konversi', 'IDR', $2, $3, $4)
+	`, user.ID, -amountIDR, conversionID, noteIDR)
 	if err != nil {
 		http.Redirect(w, r, "/worker/withdrawals?error=Gagal+mengurangi+saldo+IDR", http.StatusSeeOther)
 		return
 	}
 
-	noteUSDT := fmt.Sprintf("Hasil konversi dari IDR (Rp %s)", formatIDR(amountIDR))
+	noteUSDT := fmt.Sprintf("Hasil konversi dari IDR (Rp %s)", money.FormatIDR(amountIDR))
 	_, err = tx.Exec(ctx, `
-		INSERT INTO ledger_entries (user_id, kind, currency, amount, note)
-		VALUES ($1, 'koreksi', 'USDT', $2, $3)
-	`, user.ID, usdtAmount, noteUSDT)
+		INSERT INTO ledger_entries (user_id, kind, currency, amount, conversion_id, note)
+		VALUES ($1, 'konversi', 'USDT', $2, $3, $4)
+	`, user.ID, usdtAmount, conversionID, noteUSDT)
 	if err != nil {
 		http.Redirect(w, r, "/worker/withdrawals?error=Gagal+menambah+saldo+USDT", http.StatusSeeOther)
 		return
@@ -863,8 +944,11 @@ func (s *Server) HandleWorkerConvertPOST(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	s.logAudit(&user.ID, "convert_idr_to_usdt", "users", strconv.FormatInt(user.ID, 10), fmt.Sprintf("converted %d IDR to %d micro-USDT at rate %d", amountIDR, usdtAmount, rateIDRtoUSDT))
-	http.Redirect(w, r, "/worker/withdrawals?success=Konversi+ke+USDT+berhasil", http.StatusSeeOther)
+	s.logAudit(&user.ID, "convert_idr_to_usdt", "currency_conversions", strconv.FormatInt(conversionID, 10),
+		fmt.Sprintf("converted %d IDR to %d micro-USDT at rate %d", amountIDR, usdtAmount, rateIDRtoUSDT))
+
+	successMsg := fmt.Sprintf("Berhasil menukar Rp %s menjadi %s USDT", money.FormatIDR(amountIDR), money.FormatUSDT(usdtAmount))
+	http.Redirect(w, r, fmt.Sprintf("/worker/withdrawals?success=%s", url.QueryEscape(successMsg)), http.StatusSeeOther)
 }
 
 func (s *Server) HandleWorkerWalletPOST(w http.ResponseWriter, r *http.Request) {
@@ -970,8 +1054,8 @@ func (s *Server) HandleWorkerReferralGET(w http.ResponseWriter, r *http.Request)
 	_ = s.DB.Pool.QueryRow(ctx, `
 		SELECT COALESCE(SUM(amount), 0)
 		FROM ledger_entries
-		WHERE user_id = $1 AND kind = 'referral' AND currency = $2
-	`, user.ID, user.Currency).Scan(&totalBonus)
+		WHERE user_id = $1 AND kind = 'referral' AND currency = 'IDR'
+	`, user.ID).Scan(&totalBonus)
 
 	// 4. Riwayat komisi referral (20 entri terakhir)
 	rows, err := s.DB.Pool.Query(ctx, `

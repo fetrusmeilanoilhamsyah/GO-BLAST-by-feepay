@@ -578,7 +578,7 @@ func TestLedgerFailureNeverReturnsToAvailable(t *testing.T) {
 	engine.RecordRetryDelays = []time.Duration{10 * time.Millisecond, 20 * time.Millisecond, 30 * time.Millisecond}
 	defer func() { engine.RecordRetryDelays = origDelays }()
 
-	err = eng.RecordWithRetry(ctx, numberID, workerID, "IDR")
+	err = eng.RecordWithRetry(ctx, numberID, workerID)
 	if err == nil {
 		t.Fatal("diharapkan recordWithRetry gagal karena rate_wage belum diisi admin")
 	}
@@ -676,7 +676,7 @@ func TestRepeatedRenderFailureStopsAccount(t *testing.T) {
 	engine.BuildRetryDelay = 10 * time.Millisecond
 	defer func() { engine.BuildRetryDelay = origDelay }()
 
-	eng.StartAccount(accID, workerID, "IDR")
+	eng.StartAccount(accID, workerID)
 
 	// Tunggu sampai akun berhenti (maks 3 detik)
 	deadline := time.Now().Add(3 * time.Second)
@@ -711,8 +711,8 @@ func TestRateWageUSDTAndMissingRate(t *testing.T) {
 
 	var workerID, campaignID, batchID, numberID int64
 	err := pool.QueryRow(ctx,
-		`INSERT INTO users (email, password_hash, role, display_name, referral_code, currency)
-		 VALUES ($1, 'hash', 'worker', 'Worker USDT', $2, 'USDT') RETURNING id`,
+		`INSERT INTO users (email, password_hash, role, display_name, referral_code)
+		 VALUES ($1, 'hash', 'worker', 'Worker IDR', $2) RETURNING id`,
 		fmt.Sprintf("worker_usdt_%d@test.local", time.Now().UnixNano()),
 		fmt.Sprintf("REF_USDT_%d", time.Now().UnixNano()),
 	).Scan(&workerID)
@@ -752,12 +752,12 @@ func TestRateWageUSDTAndMissingRate(t *testing.T) {
 	}
 
 	settings := newTestSettings()
-	settings.SetJSON("rate_wage", `{"IDR": 50, "USDT": 3000}`)
+	settings.SetInt("rate_wage", 400)
 
 	eng := engine.New(database, &wa.FakeSender{}, nil, settings)
 
-	// Uji Bagian 1: rate_wage USDT 3000 menghasilkan baris buku besar bernilai 3000
-	err = eng.RecordSuccessAndLedger(ctx, numberID, workerID, "USDT")
+	// Uji Bagian 1: rate_wage IDR 400 menghasilkan baris buku besar IDR bernilai 400
+	err = eng.RecordSuccessAndLedger(ctx, numberID, workerID)
 	if err != nil {
 		t.Fatalf("RecordSuccessAndLedger gagal: %v", err)
 	}
@@ -769,39 +769,39 @@ func TestRateWageUSDTAndMissingRate(t *testing.T) {
 		numberID,
 	).Scan(&amount, &rateSnapshot, &curr)
 	if err != nil {
-		t.Fatalf("query ledger entry USDT gagal: %v", err)
+		t.Fatalf("query ledger entry IDR gagal: %v", err)
 	}
 
-	if amount != 3000 {
-		t.Fatalf("amount buku besar diharapkan 3000, didapat %d", amount)
+	if amount != 400 {
+		t.Fatalf("amount buku besar diharapkan 400, didapat %d", amount)
 	}
-	if rateSnapshot != 3000 {
-		t.Fatalf("rate_snapshot diharapkan 3000, didapat %d", rateSnapshot)
+	if rateSnapshot != 400 {
+		t.Fatalf("rate_snapshot diharapkan 400, didapat %d", rateSnapshot)
 	}
-	if curr != "USDT" {
-		t.Fatalf("currency diharapkan USDT, didapat %s", curr)
+	if curr != "IDR" {
+		t.Fatalf("currency diharapkan IDR, didapat %s", curr)
 	}
 
-	// Uji Bagian 2: rate hilang membuat engine tidak mengirim apa pun dan menulis stop_reason "rate upah belum diisi admin"
+	// Uji Bagian 2: rate kosong/0 membuat engine tidak mengirim apa pun dan menulis stop_reason "rate upah belum diisi admin"
 	var accID int64
 	err = pool.QueryRow(ctx,
 		`INSERT INTO wa_accounts (worker_id, label, jid_hash, status, speed)
-		 VALUES ($1, 'Akun EUR', 'hash_eur', 'terhubung', 'medium') RETURNING id`,
+		 VALUES ($1, 'Akun ZeroRate', 'hash_zerorate', 'terhubung', 'medium') RETURNING id`,
 		workerID,
 	).Scan(&accID)
 	if err != nil {
-		t.Fatalf("setup account EUR: %v", err)
+		t.Fatalf("setup account zero rate: %v", err)
 	}
 
 	fakeSender := &wa.FakeSender{}
 	settingsMissing := newTestSettings()
 	settingsMissing.SetJSON("daily_limits", `{"medium": 100}`)
 	settingsMissing.SetInt("max_attempts", 3)
-	// rate_wage tidak memiliki mata uang EUR
-	settingsMissing.SetJSON("rate_wage", `{"IDR": 50, "USDT": 3000}`)
+	// rate_wage tidak disetel (0 / kosong)
+	settingsMissing.SetInt("rate_wage", 0)
 
 	engMissing := engine.New(database, fakeSender, nil, settingsMissing)
-	engMissing.StartAccount(accID, workerID, "EUR")
+	engMissing.StartAccount(accID, workerID)
 
 	time.Sleep(100 * time.Millisecond)
 	engMissing.StopAccount(accID)
@@ -1092,7 +1092,7 @@ func TestSendTimeoutResultsInHasilTidakPasti(t *testing.T) {
 	settings.SetJSON("rate_wage", `{"IDR": 50}`)
 
 	eng := engine.New(database, timeoutSender, nil, settings)
-	eng.StartAccount(accID, workerID, "IDR")
+	eng.StartAccount(accID, workerID)
 
 	// Tunggu nomor diproses
 	deadline := time.Now().Add(3 * time.Second)
@@ -1224,8 +1224,8 @@ func TestEngine_IsRunningAndNoDuplicateGoroutine(t *testing.T) {
 
 	var workerID int64
 	err := pool.QueryRow(ctx,
-		`INSERT INTO users (email, password_hash, role, display_name, language, currency, referral_code)
-		 VALUES ($1, 'hash', 'worker', 'Worker Engine Double', 'id', 'IDR', $2) RETURNING id`,
+		`INSERT INTO users (email, password_hash, role, display_name, language, referral_code)
+		 VALUES ($1, 'hash', 'worker', 'Worker Engine Double', 'id', $2) RETURNING id`,
 		fmt.Sprintf("w_eng_double_%d@test.com", time.Now().UnixNano()),
 		fmt.Sprintf("RF_ENG_%d", time.Now().UnixNano()),
 	).Scan(&workerID)
@@ -1261,13 +1261,13 @@ func TestEngine_IsRunningAndNoDuplicateGoroutine(t *testing.T) {
 	}
 
 	// Start pertama
-	eng.StartAccount(accID, workerID, "IDR")
+	eng.StartAccount(accID, workerID)
 	if !eng.IsRunning(accID) {
 		t.Fatal("akun seharusnya sudah berjalan setelah start")
 	}
 
 	// Start kedua: tidak boleh error dan tidak membuat goroutine ganda
-	eng.StartAccount(accID, workerID, "IDR")
+	eng.StartAccount(accID, workerID)
 	if !eng.IsRunning(accID) {
 		t.Fatal("akun harus tetap berjalan")
 	}

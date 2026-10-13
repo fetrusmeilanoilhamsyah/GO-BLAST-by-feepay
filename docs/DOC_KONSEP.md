@@ -109,22 +109,22 @@ Preview di panel hanyalah simulasi, bukan jaminan tampilan di HP penerima.
 
 ## 9. Upah, referral, dan dompet
 
-**Mata uang.** Rate upah dan rate referral ada dalam dua mata uang, rupiah (IDR) dan USDT. Keduanya diatur terpisah oleh admin di panel, tanpa kurs otomatis. Penghasilan seorang pekerja dicatat dalam satu mata uang, dan satu pesan dihitung memakai rate mata uang itu. Cara menentukan mata uang akun pekerja masih terbuka (bagian 15).
+**Mata uang tunggal.** Semua upah dan bonus referral dihitung dalam mata uang tunggal Rupiah (IDR), satu angka untuk seluruh pekerja. Tidak ada pemilihan mata uang akun saat pendaftaran. USDT hanya didapat lewat konversi eksplisit dari saldo rupiah ("Tukar ke USDT") dengan kurs yang diatur admin di panel (`rate_idr_to_usdt`), dilengkapi batas usia kurs maksimal 24 jam dan `request_token` idempoten.
 
-**Upah pekerja.** Dihitung per pesan berstatus `terkirim`. Pesan gagal atau tidak terdaftar tidak dibayar. Rate hari ini ditampilkan di halaman publik.
+**Upah pekerja.** Dihitung per pesan berstatus `terkirim` dalam rupiah utuh. Pesan gagal atau tidak terdaftar tidak dibayar. Rate hari ini ditampilkan di halaman pekerja/publik (misal: "Rp 50 per pesan" serta estimasi ekuivalen USDT jika kurs valid < 24 jam).
 
-**Referral.** Setiap pekerja punya link referral unik. Kalau pekerja A mendaftar lewat link pekerja B, maka setiap pesan terkirim oleh A memberi B sebuah bonus per pesan. Contoh: A mengirim 10 pesan, bonus B = 10 x rate referral. Rate referral diatur admin. Satu tingkat saja, bukan berantai.
+**Referral.** Setiap pekerja punya link referral unik. Kalau pekerja A mendaftar lewat link pekerja B, maka setiap pesan terkirim oleh A memberi B sebuah bonus per pesan dalam rupiah. Satu tingkat saja, bukan berantai.
 
-**Rate dicatat per pesan.** Rate yang berlaku saat pesan terkirim disimpan bersama pesan itu. Kalau admin mengubah rate besok, penghasilan kemarin tidak berubah.
+**Rate dicatat per pesan.** Rate yang berlaku saat pesan terkirim disimpan bersama pesan itu di buku besar (`rate_snapshot`). Kalau admin mengubah rate besok, penghasilan kemarin tidak berubah.
 
-**Catatan saldo.** Penghasilan dicatat sebagai buku besar (setiap pesan menambah satu baris), bukan sebagai satu angka saldo yang ditimpa. Setiap perubahan bisa ditelusuri. Tiap baris menyimpan mata uangnya.
+**Catatan saldo.** Penghasilan dan mutasi dicatat sebagai buku besar append-only di `ledger_entries` (setiap transaksi menambah satu baris), bukan sebagai satu angka saldo yang ditimpa. Setiap baris menyimpan mata uangnya (`IDR` atau `USDT`).
 
-**Dompet admin.** Jumlah nomor yang boleh dimasukkan dibatasi oleh dompet. Biaya terburuk per nomor = upah + bonus referral. Sistem menolak nomor yang melebihi dompet, sehingga kewajiban upah tidak pernah melebihi uang yang dialokasikan. Cara menghitung dompet dengan dua mata uang masih terbuka (bagian 15).
+**Dompet admin.** Jumlah nomor yang boleh dimasukkan dibatasi oleh dompet kas admin. Biaya terburuk per nomor = upah + bonus referral. Sistem menolak nomor yang melebihi dompet, sehingga kewajiban upah tidak pernah melebihi uang yang dialokasikan.
 
-**Penarikan.** Pekerja mengajukan tarik saldo, masuk antrean, admin transfer manual, lalu menandai selesai (bukti transfer opsional). Ada riwayat penarikan per pekerja.
+**Penarikan.** Penarikan rupiah diambil dari saldo rupiah, sedangkan penarikan USDT diambil dari saldo USDT hasil penukaran. Pekerja mengajukan tarik saldo, saldo langsung dikunci/dikurangi di buku besar, masuk antrean `withdrawals`, admin transfer manual, lalu menandai selesai di panel.
 Metode penarikan yang didukung:
-- **Lokal (Indonesia):** DANA, Seabank, dan seluruh bank lokal.
-- **Internasional:** USDT jaringan BEP20.
+- **Lokal (Indonesia - saldo IDR):** DANA, Seabank, BCA, dan transfer bank lokal.
+- **Internasional (saldo USDT):** USDT jaringan BEP20.
 
 ## 10. Kecepatan dan pengaman akun
 

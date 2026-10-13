@@ -35,7 +35,7 @@ func newMockWorkController() *mockWorkController {
 	}
 }
 
-func (m *mockWorkController) StartAccount(accountID, workerID int64, currency string) {
+func (m *mockWorkController) StartAccount(accountID, workerID int64) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.startCount[accountID]++
@@ -72,8 +72,8 @@ func TestWorkerPanelFlows(t *testing.T) {
 
 	var workerID int64
 	err := pool.QueryRow(context.Background(), `
-		INSERT INTO users (email, password_hash, role, display_name, language, currency, referral_code)
-		VALUES ($1, 'hash_pass', 'worker', 'Pekerja Uji', 'id', 'IDR', $2)
+		INSERT INTO users (email, password_hash, role, display_name, language, referral_code)
+		VALUES ($1, 'hash_pass', 'worker', 'Pekerja Uji', 'id', $2)
 		RETURNING id
 	`, email, refCode).Scan(&workerID)
 	if err != nil {
@@ -99,7 +99,6 @@ func TestWorkerPanelFlows(t *testing.T) {
 		Email:       email,
 		DisplayName: "Pekerja Uji",
 		Language:    "id",
-		Currency:    "IDR",
 	}
 
 	withWorker := func(req *http.Request) *http.Request {
@@ -131,9 +130,15 @@ func TestWorkerPanelFlows(t *testing.T) {
 	t.Run("HandleWorkerAccounts rendering", func(t *testing.T) {
 		// insert test accounts with different status
 		var acc1, acc2, acc3 int64
-		_ = pool.QueryRow(context.Background(), `INSERT INTO wa_accounts (worker_id, label, jid_hash, speed, status) VALUES ($1, 'WA Scan', 'h1', 'medium', 'menunggu_scan') RETURNING id`, workerID).Scan(&acc1)
-		_ = pool.QueryRow(context.Background(), `INSERT INTO wa_accounts (worker_id, label, jid_hash, speed, status) VALUES ($1, 'WA Terhubung', 'h2', 'medium', 'terhubung') RETURNING id`, workerID).Scan(&acc2)
-		_ = pool.QueryRow(context.Background(), `INSERT INTO wa_accounts (worker_id, label, jid_hash, speed, status) VALUES ($1, 'WA Terputus', 'h3', 'medium', 'terputus') RETURNING id`, workerID).Scan(&acc3)
+		if err := pool.QueryRow(context.Background(), `INSERT INTO wa_accounts (worker_id, label, jid_hash, speed, status) VALUES ($1, 'WA Scan', 'h1', 'medium', 'menunggu_scan') RETURNING id`, workerID).Scan(&acc1); err != nil {
+			t.Fatalf("insert acc1 failed: %v", err)
+		}
+		if err := pool.QueryRow(context.Background(), `INSERT INTO wa_accounts (worker_id, label, jid_hash, speed, status) VALUES ($1, 'WA Terhubung', 'h2', 'medium', 'terhubung') RETURNING id`, workerID).Scan(&acc2); err != nil {
+			t.Fatalf("insert acc2 failed: %v", err)
+		}
+		if err := pool.QueryRow(context.Background(), `INSERT INTO wa_accounts (worker_id, label, jid_hash, speed, status) VALUES ($1, 'WA Terputus', 'h3', 'medium', 'terputus') RETURNING id`, workerID).Scan(&acc3); err != nil {
+			t.Fatalf("insert acc3 failed: %v", err)
+		}
 
 		req := httptest.NewRequest("GET", "/worker/accounts", nil)
 		req = withWorker(req)
@@ -330,8 +335,8 @@ func TestWorkerPanelFlows(t *testing.T) {
 		{
 			var freshWorkerID int64
 			_ = pool.QueryRow(context.Background(), `
-				INSERT INTO users (email, password_hash, role, display_name, language, currency, referral_code)
-				VALUES ($1, 'hash_pass', 'worker', 'Pekerja Kosong', 'id', 'IDR', $2)
+				INSERT INTO users (email, password_hash, role, display_name, language, referral_code)
+				VALUES ($1, 'hash_pass', 'worker', 'Pekerja Kosong', 'id', $2)
 				RETURNING id
 			`, fmt.Sprintf("fresh_%d@example.com", time.Now().UnixNano()), fmt.Sprintf("RF_FRESH_%d", time.Now().UnixNano())).Scan(&freshWorkerID)
 			createdUserIDs = append(createdUserIDs, freshWorkerID)
@@ -342,9 +347,8 @@ func TestWorkerPanelFlows(t *testing.T) {
 			`, freshWorkerID)
 
 			freshSess := UserSession{
-				ID:       freshWorkerID,
-				Role:     "worker",
-				Currency: "IDR",
+				ID:   freshWorkerID,
+				Role: "worker",
 			}
 			req := httptest.NewRequest("POST", "/worker/withdrawals", strings.NewReader(url.Values{"amount": {"10000"}}.Encode()))
 			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -548,8 +552,8 @@ func TestWorkerPanelFlows(t *testing.T) {
 		// Buat worker B
 		var workerBID int64
 		_ = pool.QueryRow(context.Background(), `
-			INSERT INTO users (email, password_hash, role, display_name, language, currency, referral_code)
-			VALUES ($1, 'hash_b', 'worker', 'Pekerja B', 'id', 'IDR', $2)
+			INSERT INTO users (email, password_hash, role, display_name, language, referral_code)
+			VALUES ($1, 'hash_b', 'worker', 'Pekerja B', 'id', $2)
 			RETURNING id
 		`, fmt.Sprintf("worker_b_%d@example.com", time.Now().UnixNano()), fmt.Sprintf("RFB%d", time.Now().UnixNano())).Scan(&workerBID)
 		createdUserIDs = append(createdUserIDs, workerBID)
@@ -621,16 +625,15 @@ func TestWorkerPanelFlows(t *testing.T) {
 		// 3. Buat worker B
 		var workerBID int64
 		_ = pool.QueryRow(context.Background(), `
-			INSERT INTO users (email, password_hash, role, display_name, language, currency, referral_code)
-			VALUES ($1, 'hash_b2', 'worker', 'Pekerja B2', 'id', 'IDR', $2)
+			INSERT INTO users (email, password_hash, role, display_name, language, referral_code)
+			VALUES ($1, 'hash_b2', 'worker', 'Pekerja B2', 'id', $2)
 			RETURNING id
 		`, fmt.Sprintf("worker_b2_%d@example.com", time.Now().UnixNano()), fmt.Sprintf("RFB2%d", time.Now().UnixNano())).Scan(&workerBID)
 		createdUserIDs = append(createdUserIDs, workerBID)
 
 		sessB := UserSession{
-			ID:       workerBID,
-			Role:     "worker",
-			Currency: "IDR",
+			ID:   workerBID,
+			Role: "worker",
 		}
 		withWorkerB := func(req *http.Request) *http.Request {
 			return req.WithContext(context.WithValue(req.Context(), userContextKey, sessB))
@@ -922,12 +925,21 @@ func TestWorkerPanelFlows(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to set rate_idr_to_usdt: %v", err)
 		}
+		nowRFC := time.Now().Format(time.RFC3339)
+		_, err = pool.Exec(context.Background(), `
+			INSERT INTO settings (key, value)
+			VALUES ('rate_idr_to_usdt_updated_at', to_jsonb($1::text))
+			ON CONFLICT (key) DO UPDATE SET value = to_jsonb($1::text)
+		`, nowRFC)
+		if err != nil {
+			t.Fatalf("Failed to set rate_idr_to_usdt_updated_at: %v", err)
+		}
 
 		// Create dedicated worker for conversion tests
 		var convWorkerID int64
 		_ = pool.QueryRow(context.Background(), `
-			INSERT INTO users (email, username, password_hash, role, display_name, language, currency, referral_code)
-			VALUES ($1, $2, 'hash_pass', 'worker', 'Pekerja Konversi', 'id', 'IDR', $3)
+			INSERT INTO users (email, username, password_hash, role, display_name, language, referral_code)
+			VALUES ($1, $2, 'hash_pass', 'worker', 'Pekerja Konversi', 'id', $3)
 			RETURNING id
 		`, fmt.Sprintf("conv_%d@example.com", time.Now().UnixNano()), fmt.Sprintf("conv_%d", time.Now().UnixNano()), fmt.Sprintf("RF_CONV_%d", time.Now().UnixNano())).Scan(&convWorkerID)
 		createdUserIDs = append(createdUserIDs, convWorkerID)
@@ -937,14 +949,13 @@ func TestWorkerPanelFlows(t *testing.T) {
 				ID:       convWorkerID,
 				Role:     "worker",
 				Language: "id",
-				Currency: "IDR",
 			}
 			return r.WithContext(context.WithValue(r.Context(), userContextKey, sess))
 		}
 
 		// 1. Convert with zero balance -> insufficient balance
 		{
-			form := url.Values{"amount_idr": {"15000"}}
+			form := url.Values{"amount_idr": {"15000"}, "request_token": {"token_zero_bal"}}
 			req := httptest.NewRequest("POST", "/worker/convert", strings.NewReader(form.Encode()))
 			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 			req = withConvWorker(req)
@@ -967,7 +978,7 @@ func TestWorkerPanelFlows(t *testing.T) {
 
 		// Convert 30,000 IDR at rate 15,000 -> should yield 2,000,000 micro-USDT (2 USDT)
 		{
-			form := url.Values{"amount_idr": {"30000"}}
+			form := url.Values{"amount_idr": {"30000"}, "request_token": {"token_valid_conv"}}
 			req := httptest.NewRequest("POST", "/worker/convert", strings.NewReader(form.Encode()))
 			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 			req = withConvWorker(req)

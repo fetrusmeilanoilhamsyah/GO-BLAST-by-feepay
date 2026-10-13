@@ -27,7 +27,7 @@ func TestNumbersUpload(t *testing.T) {
 	randEmail := fmt.Sprintf("test%d@test.com", time.Now().UnixNano())
 	randRef := fmt.Sprintf("REF%d", time.Now().UnixNano())
 
-	err := pool.QueryRow(context.Background(), "INSERT INTO users (email, password_hash, role, currency, referral_code, display_name) VALUES ($1, 'hash', 'admin', 'IDR', $2, 'Test Admin') RETURNING id", randEmail, randRef).Scan(&userID)
+	err := pool.QueryRow(context.Background(), "INSERT INTO users (email, password_hash, role, referral_code, display_name) VALUES ($1, 'hash', 'admin', $2, 'Test Admin') RETURNING id", randEmail, randRef).Scan(&userID)
 	if err != nil {
 		t.Fatal("Failed to create user:", err)
 	}

@@ -509,13 +509,8 @@ func (s *Server) HandleWorkerAccountWorkStart(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	currency := user.Currency
-	if currency == "" {
-		currency = "IDR"
-	}
-
 	if s.WorkCtrl != nil {
-		s.WorkCtrl.StartAccount(id, user.ID, currency)
+		s.WorkCtrl.StartAccount(id, user.ID)
 	}
 
 	target := "/worker/accounts"
