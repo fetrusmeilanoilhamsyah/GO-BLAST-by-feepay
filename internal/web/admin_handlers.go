@@ -1838,19 +1838,26 @@ func (s *Server) RunHealthChecks(ctx context.Context) []HealthCheckItem {
 	if lastSentAt != nil {
 		lastSentStr = lastSentAt.Format("02 Jan 15:04:05")
 	}
-	if failRate > 50 {
+	if total15 >= 5 && failRate > 50 {
 		results = append(results, HealthCheckItem{
 			Key:     "engine",
 			Name:    "Mesin Pengiriman Pesan",
 			Status:  "gagal",
 			Message: fmt.Sprintf("%d akun aktif, tingkat gagal 15 mnt tinggi: %d%% (%d/%d), sukses terakhir: %s", runningWorkers, failRate, fail15, total15, lastSentStr),
 		})
-	} else if failRate > 20 {
+	} else if total15 >= 5 && failRate > 20 {
 		results = append(results, HealthCheckItem{
 			Key:     "engine",
 			Name:    "Mesin Pengiriman Pesan",
 			Status:  "peringatan",
 			Message: fmt.Sprintf("%d akun aktif, tingkat gagal 15 mnt: %d%% (%d/%d), sukses terakhir: %s", runningWorkers, failRate, fail15, total15, lastSentStr),
+		})
+	} else if total15 > 0 && fail15 > 0 {
+		results = append(results, HealthCheckItem{
+			Key:     "engine",
+			Name:    "Mesin Pengiriman Pesan",
+			Status:  "peringatan",
+			Message: fmt.Sprintf("%d akun aktif, %d gagal dari %d pengiriman 15 mnt terakhir, sukses terakhir: %s", runningWorkers, fail15, total15, lastSentStr),
 		})
 	} else {
 		results = append(results, HealthCheckItem{
@@ -1884,6 +1891,15 @@ func (s *Server) RunHealthChecks(ctx context.Context) []HealthCheckItem {
 			Name:    "Sesi Akun WhatsApp",
 			Status:  "ok",
 			Message: fmt.Sprintf("%d dari %d akun WhatsApp terhubung aktif", connectedWA, totalWA),
+		})
+	}
+
+	if s.WaManager != nil && s.WaManager.IsClientOutdated() {
+		results = append(results, HealthCheckItem{
+			Key:     "wa_client_version",
+			Name:    "Versi Pustaka WhatsApp",
+			Status:  "gagal",
+			Message: "Pustaka WhatsApp kedaluwarsa (WhatsApp menolak koneksi: ClientOutdated). Diperlukan pembaruan modul whatsmeow.",
 		})
 	}
 

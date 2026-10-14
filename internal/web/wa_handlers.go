@@ -397,7 +397,9 @@ func (s *Server) HandleWorkerAccountDelete(w http.ResponseWriter, r *http.Reques
 	if s.WaManager != nil {
 		delErr = s.WaManager.Delete(r.Context(), id, user.ID)
 	} else {
-		_, _ = s.DB.Pool.Exec(r.Context(), `UPDATE campaign_numbers SET claimed_account_id = NULL WHERE claimed_account_id = $1`, id)
+		_, _ = s.DB.Pool.Exec(r.Context(),
+			`UPDATE campaign_numbers SET status = 'gagal', sent_at = now(), last_error = 'hasil_tidak_pasti'
+			 WHERE status = 'dikirim' AND claimed_account_id = $1`, id)
 		_, delErr = s.DB.Pool.Exec(r.Context(), `DELETE FROM wa_accounts WHERE id = $1 AND worker_id = $2`, id, user.ID)
 	}
 

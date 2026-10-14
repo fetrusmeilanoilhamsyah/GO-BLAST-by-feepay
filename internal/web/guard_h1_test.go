@@ -59,10 +59,6 @@ func TestNoTestDoublesInProdPackages(t *testing.T) {
 					case *ast.ValueSpec:
 						for _, name := range s.Names {
 							if containsTestDoubleWord(name.Name) {
-								// Pengecualian khusus dummyHash di wa_handlers.go (H2 & H4)
-								if rel == "internal/web/wa_handlers.go" && name.Name == "dummyHash" {
-									continue
-								}
 								violations = append(violations, rel+": var/const "+name.Name)
 							}
 						}

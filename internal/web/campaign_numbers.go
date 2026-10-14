@@ -187,6 +187,12 @@ func (s *Server) HandleAdminCampaignNumbersConfirm(w http.ResponseWriter, r *htt
 		return
 	}
 
+	previewID := r.FormValue("preview_id")
+	if previewID == "" || !campaign.IsValidPreviewID(previewID) {
+		http.Error(w, "Preview ID tidak valid", http.StatusBadRequest)
+		return
+	}
+
 	var archivedAt *time.Time
 	err = s.DB.Pool.QueryRow(r.Context(), "SELECT archived_at FROM campaigns WHERE id = $1", campaignID).Scan(&archivedAt)
 	if err != nil {
@@ -195,12 +201,6 @@ func (s *Server) HandleAdminCampaignNumbersConfirm(w http.ResponseWriter, r *htt
 	}
 	if archivedAt != nil {
 		http.Error(w, "Campaign terarsip tidak menerima unggahan nomor baru", http.StatusBadRequest)
-		return
-	}
-
-	previewID := r.FormValue("preview_id")
-	if previewID == "" || !campaign.IsValidPreviewID(previewID) {
-		http.Error(w, "Preview ID tidak valid", http.StatusBadRequest)
 		return
 	}
 

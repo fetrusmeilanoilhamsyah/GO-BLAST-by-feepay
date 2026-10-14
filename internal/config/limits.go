@@ -87,4 +87,13 @@ var (
 
 	// DefaultWhatsmeowConnMaxLifetime adalah umur maksimal koneksi pool whatsmeow (30 menit).
 	DefaultWhatsmeowConnMaxLifetime = 30 * time.Minute
+
+	// DisconnectTimeout adalah batas waktu putus sementara sebelum sesi dihentikan (5 menit).
+	DisconnectTimeout = 5 * time.Minute
+
+	// PairingTimeout adalah batas waktu operasi pairing phone whatsmeow (30 detik).
+	PairingTimeout = 30 * time.Second
+
+	// DrainAccountTimeout adalah batas waktu tunggu drain worker akun saat Stop atau Delete (10 detik).
+	DrainAccountTimeout = 10 * time.Second
 )

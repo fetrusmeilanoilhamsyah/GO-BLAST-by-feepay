@@ -64,10 +64,16 @@ func main() {
 	sender := wa.NewRealSender(waManager)
 
 	eng := engine.New(database, sender, waManager, settingsReader)
-	waManager.SetDisconnectCallback(eng.StopAccount)
+	waManager.SetEngineStopper(eng.StopAccountWait)
 
-	// H3: Pulihkan nomor menggantung saat boot sebelum menerima request (Keputusan A1)
+	// H4 & H3: Rekonsiliasi sesi WA saat boot (B1) & pulihkan nomor menggantung (A1) sebelum menerima request
 	bootCtx, bootCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	if recAcc, purgedDev, err := waManager.ReconcileOnBoot(bootCtx); err != nil {
+		slog.Error("Gagal menjalankan ReconcileOnBoot saat startup", "err", err)
+	} else if recAcc > 0 || purgedDev > 0 {
+		slog.Info("ReconcileOnBoot selesai saat boot", "reconciled_accounts", recAcc, "purged_devices", purgedDev)
+	}
+
 	if recovered, err := eng.RecoverOnBoot(bootCtx); err != nil {
 		slog.Error("Gagal menjalankan RecoverOnBoot saat startup", "err", err)
 	} else if recovered > 0 {

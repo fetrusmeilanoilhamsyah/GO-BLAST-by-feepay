@@ -331,6 +331,46 @@ func (e *Engine) StopAccount(accountID int64) {
 	e.mu.Unlock()
 }
 
+// StopAccountWait menghentikan goroutine pengiriman untuk accountID dan menunggu
+// goroutine selesai sampai batas waktu context tercapai. Sisa nomor setelah batas diproses sesuai Keputusan A1.
+func (e *Engine) StopAccountWait(ctx context.Context, accountID int64) error {
+	e.mu.Lock()
+	cancel, exists := e.workers[accountID]
+	if !exists {
+		e.mu.Unlock()
+		return nil
+	}
+	delete(e.workers, accountID)
+	cancel()
+	e.mu.Unlock()
+
+	ticker := time.NewTicker(20 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			// Batas waktu tercapai, proses sisa nomor yang dipegang akun ini sesuai Keputusan A1
+			if e.db != nil && e.db.Pool != nil {
+				failCtx, failCancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+				defer failCancel()
+				_, _ = e.db.Pool.Exec(failCtx,
+					`UPDATE campaign_numbers SET status = 'gagal', sent_at = now(), last_error = 'hasil_tidak_pasti'
+					 WHERE status = 'dikirim' AND claimed_account_id = $1`,
+					accountID,
+				)
+			}
+			return ctx.Err()
+		case <-ticker.C:
+			e.mu.Lock()
+			_, active := e.activeWorkers[accountID]
+			e.mu.Unlock()
+			if !active {
+				return nil
+			}
+		}
+	}
+}
+
 // StopAll menghentikan seluruh worker engine dengan batas waktu 20 detik (Drain).
 func (e *Engine) StopAll() {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
@@ -834,14 +874,25 @@ func (e *Engine) runWorker(ctx context.Context, accountID, workerID int64) {
 		if !ok {
 			var speed, status string
 			err := e.db.Pool.QueryRow(ctx, `SELECT speed, status FROM wa_accounts WHERE id = $1`, accountID).Scan(&speed, &status)
-			if err != nil || status != "terhubung" {
+			if err != nil || (status != "terhubung" && status != "terputus") {
 				return
 			}
 			e.accountCache.Set(accountID, speed, status)
 			acc.Speed = speed
 			acc.Status = status
 		}
-		if acc.Status != "terhubung" {
+		if acc.Status == "terputus" {
+			// Sesi putus sementara: berhenti mengklaim sambil menunggu Connected (whatsmeow auto-reconnect)
+			select {
+			case <-ctx.Done():
+				return
+			case <-e.drainChan:
+				return
+			case <-time.After(1 * time.Second):
+				e.accountCache.Invalidate(accountID)
+				continue
+			}
+		} else if acc.Status != "terhubung" {
 			return
 		}
 

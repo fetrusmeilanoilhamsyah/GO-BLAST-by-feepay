@@ -274,8 +274,8 @@ func TestS5_FrozenAccountCannotLoginOrWithdraw(t *testing.T) {
 
 	// 1. Buat pekerja aktif dengan saldo IDR
 	hash, _ := auth.HashPassword("WorkerPass123")
-	workerUSN := fmt.Sprintf("frozentest_%d", time.Now().UnixNano()%10000000)
-	refCode := fmt.Sprintf("REF%05d", time.Now().UnixNano()%100000)
+	workerUSN := fmt.Sprintf("frozentest_%d", time.Now().UnixNano())
+	refCode := fmt.Sprintf("REF%d", time.Now().UnixNano())
 	var workerID int64
 	err := pool.QueryRow(ctx, `
 		INSERT INTO users (username, display_name, password_hash, role, status, terms_version, terms_accepted_at, referral_code)
