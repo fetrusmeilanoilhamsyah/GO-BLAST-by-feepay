@@ -10,7 +10,7 @@ import (
 	"goblast/internal/db"
 	"goblast/internal/engine"
 	"goblast/internal/testutil"
-	"goblast/internal/wa"
+	"goblast/internal/wa/watest"
 )
 
 // TestClaimableCount_ThreeCampaignsAndEngineClaim menguji spesifikasi Tahap S2:
@@ -147,7 +147,7 @@ func TestClaimableCount_ThreeCampaignsAndEngineClaim(t *testing.T) {
 		t.Fatalf("setup wa_account gagal: %v", err)
 	}
 
-	fakeSender := &wa.FakeSender{}
+	fakeSender := &watest.FakeSender{}
 	settings := newTestSettings()
 	eng := engine.New(database, fakeSender, nil, settings)
 

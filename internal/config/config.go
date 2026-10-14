@@ -3,8 +3,10 @@ package config
 import (
 	"encoding/base64"
 	"errors"
+	"net"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/joho/godotenv"
 )
@@ -40,8 +42,8 @@ func Load() (*Config, error) {
 		cfg.AppEnv = "dev"
 	}
 
-	if cfg.AppAddr == "" || cfg.AppAddr == "127.0.0.1:8080" {
-		cfg.AppAddr = "0.0.0.0:8080"
+	if cfg.AppAddr == "" {
+		cfg.AppAddr = "127.0.0.1:8080"
 	}
 
 	if cfg.CSWhatsAppURL == "" || cfg.CSWhatsAppURL == "https://wa.me/" {
@@ -82,11 +84,37 @@ func Load() (*Config, error) {
 	}
 
 	if cfg.AppEnv == "prod" || cfg.AppEnv == "production" {
+		// Validasi APP_ADDR tidak boleh bind public tanpa izin eksplisit
+		host, _, err := net.SplitHostPort(cfg.AppAddr)
+		if err != nil {
+			host = cfg.AppAddr
+		}
+		if host == "" || host == "0.0.0.0" || host == "::" || host == "[::]" {
+			if os.Getenv("ALLOW_PUBLIC_BIND") != "true" {
+				return nil, errors.New("APP_ADDR mengikat antarmuka publik (0.0.0.0, ::, atau host kosong) tanpa ALLOW_PUBLIC_BIND=true di produksi")
+			}
+		}
+
 		if cfg.DatabaseURL == "" {
 			return nil, errors.New("DATABASE_URL is required in prod")
 		}
+		if strings.Contains(cfg.DatabaseURL, "dummy_password") {
+			return nil, errors.New("DATABASE_URL berisi nilai contoh dummy_password di produksi")
+		}
+
 		if cfg.SessionSecret == "" {
 			return nil, errors.New("SESSION_SECRET is required in prod")
+		}
+		if len(cfg.SessionSecret) < 32 {
+			return nil, errors.New("SESSION_SECRET minimal 32 karakter di produksi")
+		}
+		lowerSec := strings.ToLower(cfg.SessionSecret)
+		if strings.Contains(lowerSec, "dummy") || strings.Contains(lowerSec, "change_me") {
+			return nil, errors.New("SESSION_SECRET berisi nilai contoh ('dummy' atau 'change_me') di produksi")
+		}
+
+		if isWeakOrSequentialKey(cfg.EncryptionKey) {
+			return nil, errors.New("ENCRYPTION_KEY semua byte-nya sama atau berpola berurutan di produksi")
 		}
 	}
 
@@ -105,4 +133,55 @@ func Load() (*Config, error) {
 	}
 
 	return cfg, nil
+}
+
+func isWeakOrSequentialKey(b []byte) bool {
+	if len(b) == 0 {
+		return true
+	}
+	// 1. Semua byte sama
+	allSame := true
+	for i := 1; i < len(b); i++ {
+		if b[i] != b[0] {
+			allSame = false
+			break
+		}
+	}
+	if allSame {
+		return true
+	}
+
+	// 2. Monotonik naik atau turun berurutan
+	inc, dec := true, true
+	for i := 1; i < len(b); i++ {
+		if b[i] != b[i-1]+1 {
+			inc = false
+		}
+		if b[i] != b[i-1]-1 {
+			dec = false
+		}
+	}
+	if inc || dec {
+		return true
+	}
+
+	// 3. Pola digit berurutan berulang (misal 12345678901234567890...)
+	digitSeq := true
+	for i := 1; i < len(b); i++ {
+		prev := b[i-1]
+		curr := b[i]
+		expected := prev + 1
+		if prev == '9' {
+			expected = '0'
+		}
+		if curr != expected {
+			digitSeq = false
+			break
+		}
+	}
+	if digitSeq {
+		return true
+	}
+
+	return false
 }

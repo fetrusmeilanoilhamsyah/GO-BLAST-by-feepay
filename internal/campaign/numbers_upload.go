@@ -17,6 +17,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"goblast/internal/numbers"
+	"goblast/internal/safe"
 )
 
 var previewIDRegex = regexp.MustCompile(`^[0-9a-f]{32}$`)
@@ -241,6 +242,11 @@ func ConfirmUpload(ctx context.Context, db *pgxpool.Pool, campaignID int64, user
 	}
 	defer tx.Rollback(ctx)
 
+	// Operasi sah berukuran besar memakai SET LOCAL di transaksinya sendiri
+	if _, err := tx.Exec(ctx, "SET LOCAL statement_timeout = 0"); err != nil {
+		return fmt.Errorf("gagal mengatur timeout lokal: %w", err)
+	}
+
 	// Check campaign status
 	var status string
 	var archivedAt *time.Time
@@ -349,19 +355,10 @@ func CleanTmpFiles(maxAge time.Duration) {
 	}
 }
 
-// StartTmpCleaner starts a background goroutine that cleans data/tmp every hour.
+// StartTmpCleaner starts a background goroutine that cleans data/tmp every hour with panic recovery.
 func StartTmpCleaner(ctx context.Context) {
 	CleanTmpFiles(24 * time.Hour)
-	go func() {
-		ticker := time.NewTicker(1 * time.Hour)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ticker.C:
-				CleanTmpFiles(24 * time.Hour)
-			case <-ctx.Done():
-				return
-			}
-		}
-	}()
+	safe.Loop(ctx, "campaign.tmp_cleaner", 1*time.Hour, func(c context.Context) {
+		CleanTmpFiles(24 * time.Hour)
+	})
 }

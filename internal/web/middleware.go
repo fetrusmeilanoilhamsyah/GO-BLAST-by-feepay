@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net"
 	"net/http"
 	"strings"
@@ -173,7 +174,8 @@ func (s *Server) RequireRole(next http.HandlerFunc, roles ...string) http.Handle
 		var expiresAt time.Time
 		var payoutMethod, payoutDestEncrypted, payoutAccName *string
 
-		err = s.DB.Pool.QueryRow(context.Background(), `
+		qCtx, qCancel := context.WithTimeout(r.Context(), 10*time.Second)
+		err = s.DB.Pool.QueryRow(qCtx, `
 			SELECT u.id, u.role, COALESCE(u.email, ''), COALESCE(u.username, ''), COALESCE(u.display_name, u.username, ''), u.language,
 			       u.payout_method, u.payout_dest_encrypted, u.payout_account_name, ws.expires_at, COALESCE(u.must_change_password, FALSE)
 			FROM web_sessions ws
@@ -181,6 +183,7 @@ func (s *Server) RequireRole(next http.HandlerFunc, roles ...string) http.Handle
 			WHERE ws.token_hash = $1 AND u.status = 'active'
 		`, hash).Scan(&user.ID, &user.Role, &user.Email, &user.Username, &user.DisplayName, &user.Language,
 			&payoutMethod, &payoutDestEncrypted, &payoutAccName, &expiresAt, &user.MustChangePassword)
+		qCancel()
 
 		if payoutMethod != nil {
 			user.PayoutMethod = *payoutMethod
@@ -237,9 +240,11 @@ func (s *Server) RequireRole(next http.HandlerFunc, roles ...string) http.Handle
 		}
 
 		// Update last seen
-		_, _ = s.DB.Pool.Exec(context.Background(), `
+		updCtx, updCancel := context.WithTimeout(r.Context(), 10*time.Second)
+		_, _ = s.DB.Pool.Exec(updCtx, `
 			UPDATE web_sessions SET last_seen_at = CURRENT_TIMESTAMP WHERE token_hash = $1
 		`, hash)
+		updCancel()
 
 		ctx := context.WithValue(r.Context(), userContextKey, user)
 		ctx = context.WithValue(ctx, sessionKey, hash)
@@ -272,6 +277,19 @@ func (s *Server) CSRFMiddleware(next http.Handler) http.Handler {
 		}
 
 		if r.Method == http.MethodPost || r.Method == http.MethodPut || r.Method == http.MethodDelete {
+			var maxBytesErr *http.MaxBytesError
+			if strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data") {
+				if err := r.ParseMultipartForm(6 << 20); err != nil && errors.As(err, &maxBytesErr) {
+					http.Error(w, "Ukuran request melebihi batas", http.StatusRequestEntityTooLarge)
+					return
+				}
+			} else {
+				if err := r.ParseForm(); err != nil && errors.As(err, &maxBytesErr) {
+					http.Error(w, "Ukuran request melebihi batas", http.StatusRequestEntityTooLarge)
+					return
+				}
+			}
+
 			sentToken := r.FormValue("csrf_token")
 			if sentToken == "" {
 				sentToken = r.Header.Get("X-CSRF-Token")

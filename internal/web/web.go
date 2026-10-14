@@ -4,17 +4,22 @@ import (
 	"context"
 	"encoding/json"
 	"html/template"
+	"log/slog"
 	"net/http"
 	"net/url"
+	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"goblast/internal/auth"
 	"goblast/internal/campaign"
 	"goblast/internal/db"
 	"goblast/internal/i18n"
+	"goblast/internal/safe"
 	"goblast/internal/wa"
 	"goblast/internal/withdraw"
 )
@@ -67,6 +72,17 @@ type Server struct {
 	ChannelTelegramURL string
 	statsCache         globalStatsCache
 	lockCache          systemLockCache
+	draining           atomic.Bool
+}
+
+// SetDraining menyetel status penutupan server (draining).
+func (s *Server) SetDraining(val bool) {
+	s.draining.Store(val)
+}
+
+// IsDraining memeriksa apakah server sedang dalam status draining.
+func (s *Server) IsDraining() bool {
+	return s.draining.Load()
 }
 
 // DecryptDestination mendekripsi tujuan penarikan dengan kunci aktif dan kunci rotasi sebelumnya.
@@ -311,120 +327,241 @@ func NewServer(database *db.DB, env string, waMgr *wa.Manager, workCtrl WorkCont
 	}, nil
 }
 
-func (s *Server) RegisterRoutes(mux *http.ServeMux) {
-	// Serve static files
-	staticHandler := http.FileServer(http.Dir(filepath.Join("web", "static")))
-	mux.Handle("/static/", http.StripPrefix("/static/", staticHandler))
-
-	mux.HandleFunc("/healthz", s.handleHealthz)
-
-	mux.Handle("/", s.CSRFMiddleware(http.HandlerFunc(s.handleIndex)))
-	mux.Handle("POST /theme", s.CSRFMiddleware(http.HandlerFunc(s.HandleThemePOST)))
-	mux.Handle("POST /language", s.CSRFMiddleware(http.HandlerFunc(s.HandleLanguagePOST)))
-	mux.Handle("/login", s.CSRFMiddleware(RateLimitLogin(s.handleLogin)))
-	mux.Handle("/register", s.CSRFMiddleware(RateLimitRegister(s.handleRegister)))
-
-	mux.Handle("/logout", s.CSRFMiddleware(s.RequireRole(s.handleLogout, "admin", "worker")))
-	mux.Handle("GET /maintenance", s.CSRFMiddleware(http.HandlerFunc(s.HandleMaintenancePublicGET)))
-
-	// Tahap 12: Admin Dashboard, Settings, Wallet, Workers
-	mux.Handle("GET /admin", s.CSRFMiddleware(s.RequireRole(s.HandleAdminHome, "admin")))
-	mux.Handle("GET /admin/api/stats", s.RequireRole(s.HandleAdminAPIStats, "admin"))
-	mux.Handle("GET /admin/settings", s.CSRFMiddleware(s.RequireRole(s.HandleAdminSettingsGET, "admin")))
-	mux.Handle("POST /admin/settings", s.CSRFMiddleware(s.RequireRole(s.HandleAdminSettingsPOST, "admin")))
-	mux.Handle("GET /admin/wallet", s.CSRFMiddleware(s.RequireRole(s.HandleAdminWalletGET, "admin")))
-	mux.Handle("POST /admin/wallet", s.CSRFMiddleware(s.RequireRole(s.HandleAdminWalletTopupPOST, "admin")))
-	mux.Handle("POST /admin/wallet/topup", s.CSRFMiddleware(s.RequireRole(s.HandleAdminWalletTopupPOST, "admin")))
-	mux.Handle("GET /admin/withdrawals", s.CSRFMiddleware(s.RequireRole(s.HandleAdminWithdrawalsGET, "admin")))
-	mux.Handle("POST /admin/withdrawals/{id}/view-destination", s.CSRFMiddleware(s.RequireRole(s.HandleAdminWithdrawalViewDestinationPOST, "admin")))
-	mux.Handle("POST /admin/withdrawals/{id}/approve", s.CSRFMiddleware(s.RequireRole(s.HandleAdminWithdrawalApprovePOST, "admin")))
-	mux.Handle("POST /admin/withdrawals/{id}/reject", s.CSRFMiddleware(s.RequireRole(s.HandleAdminWithdrawalRejectPOST, "admin")))
-	mux.Handle("GET /admin/workers", s.CSRFMiddleware(s.RequireRole(s.HandleAdminWorkers, "admin")))
-	mux.Handle("GET /admin/workers/{id}", s.CSRFMiddleware(s.RequireRole(s.HandleAdminWorkerDetailGET, "admin")))
-	mux.Handle("POST /admin/workers/{id}/reset-password", s.CSRFMiddleware(s.RequireRole(s.HandleAdminWorkerResetPasswordPOST, "admin")))
-	mux.Handle("POST /admin/workers/{id}/freeze", s.CSRFMiddleware(s.RequireRole(s.HandleAdminWorkerFreezePOST, "admin")))
-	mux.Handle("POST /admin/workers/{id}/unfreeze", s.CSRFMiddleware(s.RequireRole(s.HandleAdminWorkerUnfreezePOST, "admin")))
-	mux.Handle("POST /admin/workers/{id}/disable", s.CSRFMiddleware(s.RequireRole(s.HandleAdminWorkerDisablePOST, "admin")))
-	mux.Handle("POST /admin/workers/{id}/enable", s.CSRFMiddleware(s.RequireRole(s.HandleAdminWorkerEnablePOST, "admin")))
-	mux.Handle("GET /admin/tickets", s.CSRFMiddleware(s.RequireRole(s.HandleAdminTicketsGET, "admin")))
-	mux.Handle("POST /admin/tickets/{id}/resolve", s.CSRFMiddleware(s.RequireRole(s.HandleAdminTicketResolvePOST, "admin")))
-	mux.Handle("GET /admin/broadcasts", s.CSRFMiddleware(s.RequireRole(s.HandleAdminBroadcastsGET, "admin")))
-	mux.Handle("POST /admin/broadcasts/new", s.CSRFMiddleware(s.RequireRole(s.HandleAdminBroadcastNewPOST, "admin")))
-	mux.Handle("POST /admin/broadcasts/{id}/toggle", s.CSRFMiddleware(s.RequireRole(s.HandleAdminBroadcastTogglePOST, "admin")))
-	mux.Handle("POST /admin/broadcasts/{id}/delete", s.CSRFMiddleware(s.RequireRole(s.HandleAdminBroadcastDeletePOST, "admin")))
-	mux.Handle("GET /admin/maintenance", s.CSRFMiddleware(s.RequireRole(s.HandleAdminMaintenanceGET, "admin")))
-	mux.Handle("POST /admin/maintenance/toggle", s.CSRFMiddleware(s.RequireRole(s.HandleAdminMaintenanceTogglePOST, "admin")))
-	mux.Handle("POST /admin/maintenance/locks", s.CSRFMiddleware(s.RequireRole(s.HandleAdminMaintenanceLocksPOST, "admin")))
-	mux.Handle("POST /admin/maintenance/lock/toggle", s.CSRFMiddleware(s.RequireRole(s.HandleAdminMaintenanceLockTogglePOST, "admin")))
-	mux.Handle("/admin/", s.CSRFMiddleware(s.RequireRole(func(w http.ResponseWriter, r *http.Request) { http.NotFound(w, r) }, "admin")))
-
-	// Tahap 8
-	mux.Handle("GET /admin/campaigns", s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaigns, "admin")))
-	mux.Handle("GET /admin/campaigns/new", s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignNewGET, "admin")))
-	mux.Handle("POST /admin/campaigns/new", s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignNewPOST, "admin")))
-	mux.Handle("GET /admin/campaigns/{id}", s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignDetail, "admin")))
-	mux.Handle("POST /admin/campaigns/{id}/start", s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignStart, "admin")))
-	mux.Handle("POST /admin/campaigns/{id}/pause", s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignPause, "admin")))
-	mux.Handle("POST /admin/campaigns/{id}/finish", s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignFinish, "admin")))
-	mux.Handle("POST /admin/campaigns/{id}/delete", s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignDelete, "admin")))
-	mux.Handle("POST /admin/campaigns/{id}/archive", s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignArchive, "admin")))
-	mux.Handle("GET /admin/campaigns/{id}/edit", s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignEditGET, "admin")))
-	mux.Handle("POST /admin/campaigns/{id}/edit", s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignEditPOST, "admin")))
-	mux.Handle("POST /admin/campaigns/preview", s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignPreview, "admin")))
-	mux.Handle("GET /uploads/{filename}", s.RequireRole(s.HandleServeUpload, "admin")) // simple protection
-
-	// Tahap 7
-	mux.Handle("GET /admin/campaigns/{id}/numbers", s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignNumbersGET, "admin")))
-	mux.Handle("GET /admin/campaigns/{id}/numbers/upload", s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignNumbersGET, "admin")))
-	mux.Handle("POST /admin/campaigns/{id}/numbers/preview", s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignNumbersPreview, "admin")))
-	mux.Handle("POST /admin/campaigns/{id}/numbers/confirm", s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignNumbersConfirm, "admin")))
-	mux.Handle("GET /admin/campaigns/{id}/numbers/rejected/{previewId}", s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignNumbersRejected, "admin")))
-
-	// Tahap 11: Worker Panel
-	mux.Handle("GET /worker", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerHome, "worker")))
-	mux.Handle("POST /worker/profile", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerProfilePOST, "worker")))
-	mux.Handle("POST /worker/wallet", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerWalletPOST, "worker")))
-	mux.Handle("POST /worker/security", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerSecurityPOST, "worker")))
-	mux.Handle("GET /worker/withdrawals", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerWithdrawalsGET, "worker")))
-	mux.Handle("POST /worker/withdrawals", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerWithdrawalsPOST, "worker")))
-	mux.Handle("POST /worker/convert", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerConvertPOST, "worker")))
-	mux.Handle("GET /worker/referral", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerReferralGET, "worker")))
-	mux.Handle("GET /worker/history", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerHistoryGET, "worker")))
-	mux.Handle("POST /worker/ticket", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerTicketPOST, "worker")))
-	mux.Handle("GET /worker/api/notifications", s.RequireRole(s.HandleWorkerNotificationsAPI, "worker"))
-	mux.Handle("GET /worker/api/tickets", s.RequireRole(s.HandleWorkerTicketsAPI, "worker"))
-	mux.Handle("GET /worker/api/stats", s.RequireRole(s.HandleWorkerAPIStats, "worker"))
-	mux.Handle("POST /worker/notifications/read", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerNotificationsReadAllPOST, "worker")))
-	mux.Handle("POST /worker/notifications/{id}/read", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerNotificationReadOnePOST, "worker")))
-
-	// Tahap 9
-	mux.Handle("GET /worker/accounts", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerAccounts, "worker")))
-	mux.Handle("POST /worker/accounts/init", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerAccountInitPOST, "worker")))
-	mux.Handle("GET /worker/accounts/new", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerAccountNewGET, "worker")))
-	mux.Handle("POST /worker/accounts/new", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerAccountNewPOST, "worker")))
-	mux.Handle("GET /worker/accounts/{id}/status", s.RequireRole(s.HandleWorkerAccountStatus, "worker"))
-	mux.Handle("POST /worker/accounts/{id}/pair", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerAccountPairPOST, "worker")))
-	mux.Handle("POST /worker/accounts/{id}/settings", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerAccountSettingsPOST, "worker")))
-	mux.Handle("POST /worker/accounts/{id}/delete", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerAccountDelete, "worker")))
-	mux.Handle("POST /worker/accounts/{id}/disconnect", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerAccountDisconnect, "worker")))
-	mux.Handle("POST /worker/accounts/{id}/stop", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerAccountStop, "worker")))
-
-	// Tahap 10b: Kerja kirim pesan
-	mux.Handle("POST /worker/accounts/{id}/work/start", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerAccountWorkStart, "worker")))
-	mux.Handle("POST /worker/accounts/{id}/work/stop", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerAccountWorkStop, "worker")))
+// neuteredFileSystem membungkus http.FileSystem untuk menolak directory listing (mengembalikan 404).
+type neuteredFileSystem struct {
+	fs http.FileSystem
 }
 
+func (nfs neuteredFileSystem) Open(name string) (http.File, error) {
+	f, err := nfs.fs.Open(name)
+	if err != nil {
+		return nil, err
+	}
+	s, err := f.Stat()
+	if err != nil {
+		_ = f.Close()
+		return nil, err
+	}
+	if s.IsDir() {
+		index := filepath.Join(name, "index.html")
+		if _, err := nfs.fs.Open(index); err != nil {
+			_ = f.Close()
+			return nil, os.ErrNotExist
+		}
+	}
+	return f, nil
+}
+
+// isUploadRoute memeriksa apakah rute merupakan endpoint unggahan (batas 6 MB vs 1 MB rute umum).
+func isUploadRoute(pattern string) bool {
+	parts := strings.Fields(pattern)
+	path := pattern
+	if len(parts) == 2 {
+		path = parts[1]
+	}
+	if path == "/admin/campaigns/new" || path == "/admin/campaigns/preview" {
+		return true
+	}
+	if strings.HasPrefix(path, "/admin/campaigns/") {
+		if strings.HasSuffix(path, "/edit") || strings.HasSuffix(path, "/numbers/preview") {
+			return true
+		}
+	}
+	return false
+}
+
+// MaxBytesMiddleware membatasi ukuran request body (1 MB rute umum, 6 MB rute upload).
+func (s *Server) MaxBytesMiddleware(next http.Handler, isUpload bool) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		limit := int64(1 * 1024 * 1024) // 1 MB bawaan
+		if isUpload {
+			limit = 6 * 1024 * 1024 // 6 MB upload
+		}
+
+		if r.ContentLength > limit {
+			http.Error(w, "Ukuran request melebihi batas", http.StatusRequestEntityTooLarge)
+			return
+		}
+
+		r.Body = http.MaxBytesReader(w, r.Body, limit)
+		next.ServeHTTP(w, r)
+	})
+}
+
+// RecoverMiddleware menangkap panic pada handler HTTP, mencatat via slog, dan membalas 500 generik.
+func (s *Server) RecoverMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer func() {
+			if rec := recover(); rec != nil {
+				safe.IncPanicCount()
+				slog.Error("web: panic pada HTTP handler",
+					"path", r.URL.Path,
+					"method", r.Method,
+					"panic", rec,
+					"stack", string(debug.Stack()),
+				)
+				http.Error(w, "Terjadi kesalahan internal server", http.StatusInternalServerError)
+			}
+		}()
+		next.ServeHTTP(w, r)
+	})
+}
+
+// WrapGlobalMiddleware membungkus handler utama dengan RecoverMiddleware dan MaxBytes dinamis.
+func (s *Server) WrapGlobalMiddleware(next http.Handler) http.Handler {
+	return s.RecoverMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		isUpload := isUploadRoute(r.URL.Path)
+		s.MaxBytesMiddleware(next, isUpload).ServeHTTP(w, r)
+	}))
+}
+
+func (s *Server) RegisterRoutes(mux *http.ServeMux) {
+	handle := func(pattern string, handler http.Handler) {
+		isUpload := isUploadRoute(pattern)
+		mux.Handle(pattern, s.RecoverMiddleware(s.MaxBytesMiddleware(handler, isUpload)))
+	}
+	handleFunc := func(pattern string, fn http.HandlerFunc) {
+		isUpload := isUploadRoute(pattern)
+		mux.Handle(pattern, s.RecoverMiddleware(s.MaxBytesMiddleware(fn, isUpload)))
+	}
+
+	// Serve static files dengan neutered file system (mencegah directory listing)
+	staticHandler := http.FileServer(neuteredFileSystem{fs: http.Dir(filepath.Join("web", "static"))})
+	handle("/static/", http.StripPrefix("/static/", staticHandler))
+
+	handleFunc("/healthz", s.handleHealthz)
+	handleFunc("GET /healthz", s.handleHealthz)
+	handleFunc("/readyz", s.handleReadyz)
+	handleFunc("GET /readyz", s.handleReadyz)
+
+	handle("/", s.CSRFMiddleware(http.HandlerFunc(s.handleIndex)))
+	handle("POST /theme", s.CSRFMiddleware(http.HandlerFunc(s.HandleThemePOST)))
+	handle("POST /language", s.CSRFMiddleware(http.HandlerFunc(s.HandleLanguagePOST)))
+	handle("/login", s.CSRFMiddleware(RateLimitLogin(s.handleLogin)))
+	handle("/register", s.CSRFMiddleware(RateLimitRegister(s.handleRegister)))
+
+	handle("/logout", s.CSRFMiddleware(s.RequireRole(s.handleLogout, "admin", "worker")))
+	handle("GET /maintenance", s.CSRFMiddleware(http.HandlerFunc(s.HandleMaintenancePublicGET)))
+
+	// Tahap 12: Admin Dashboard, Settings, Wallet, Workers
+	handle("GET /admin", s.CSRFMiddleware(s.RequireRole(s.HandleAdminHome, "admin")))
+	handle("GET /admin/api/stats", s.RequireRole(s.HandleAdminAPIStats, "admin"))
+	handle("GET /admin/settings", s.CSRFMiddleware(s.RequireRole(s.HandleAdminSettingsGET, "admin")))
+	handle("POST /admin/settings", s.CSRFMiddleware(s.RequireRole(s.HandleAdminSettingsPOST, "admin")))
+	handle("GET /admin/wallet", s.CSRFMiddleware(s.RequireRole(s.HandleAdminWalletGET, "admin")))
+	handle("POST /admin/wallet", s.CSRFMiddleware(s.RequireRole(s.HandleAdminWalletTopupPOST, "admin")))
+	handle("POST /admin/wallet/topup", s.CSRFMiddleware(s.RequireRole(s.HandleAdminWalletTopupPOST, "admin")))
+	handle("GET /admin/withdrawals", s.CSRFMiddleware(s.RequireRole(s.HandleAdminWithdrawalsGET, "admin")))
+	handle("POST /admin/withdrawals/{id}/view-destination", s.CSRFMiddleware(s.RequireRole(s.HandleAdminWithdrawalViewDestinationPOST, "admin")))
+	handle("POST /admin/withdrawals/{id}/approve", s.CSRFMiddleware(s.RequireRole(s.HandleAdminWithdrawalApprovePOST, "admin")))
+	handle("POST /admin/withdrawals/{id}/reject", s.CSRFMiddleware(s.RequireRole(s.HandleAdminWithdrawalRejectPOST, "admin")))
+	handle("GET /admin/workers", s.CSRFMiddleware(s.RequireRole(s.HandleAdminWorkers, "admin")))
+	handle("GET /admin/workers/{id}", s.CSRFMiddleware(s.RequireRole(s.HandleAdminWorkerDetailGET, "admin")))
+	handle("POST /admin/workers/{id}/reset-password", s.CSRFMiddleware(s.RequireRole(s.HandleAdminWorkerResetPasswordPOST, "admin")))
+	handle("POST /admin/workers/{id}/freeze", s.CSRFMiddleware(s.RequireRole(s.HandleAdminWorkerFreezePOST, "admin")))
+	handle("POST /admin/workers/{id}/unfreeze", s.CSRFMiddleware(s.RequireRole(s.HandleAdminWorkerUnfreezePOST, "admin")))
+	handle("POST /admin/workers/{id}/disable", s.CSRFMiddleware(s.RequireRole(s.HandleAdminWorkerDisablePOST, "admin")))
+	handle("POST /admin/workers/{id}/enable", s.CSRFMiddleware(s.RequireRole(s.HandleAdminWorkerEnablePOST, "admin")))
+	handle("GET /admin/tickets", s.CSRFMiddleware(s.RequireRole(s.HandleAdminTicketsGET, "admin")))
+	handle("POST /admin/tickets/{id}/resolve", s.CSRFMiddleware(s.RequireRole(s.HandleAdminTicketResolvePOST, "admin")))
+	handle("GET /admin/broadcasts", s.CSRFMiddleware(s.RequireRole(s.HandleAdminBroadcastsGET, "admin")))
+	handle("POST /admin/broadcasts/new", s.CSRFMiddleware(s.RequireRole(s.HandleAdminBroadcastNewPOST, "admin")))
+	handle("POST /admin/broadcasts/{id}/toggle", s.CSRFMiddleware(s.RequireRole(s.HandleAdminBroadcastTogglePOST, "admin")))
+	handle("POST /admin/broadcasts/{id}/delete", s.CSRFMiddleware(s.RequireRole(s.HandleAdminBroadcastDeletePOST, "admin")))
+	handle("GET /admin/maintenance", s.CSRFMiddleware(s.RequireRole(s.HandleAdminMaintenanceGET, "admin")))
+	handle("POST /admin/maintenance/toggle", s.CSRFMiddleware(s.RequireRole(s.HandleAdminMaintenanceTogglePOST, "admin")))
+	handle("POST /admin/maintenance/locks", s.CSRFMiddleware(s.RequireRole(s.HandleAdminMaintenanceLocksPOST, "admin")))
+	handle("POST /admin/maintenance/lock/toggle", s.CSRFMiddleware(s.RequireRole(s.HandleAdminMaintenanceLockTogglePOST, "admin")))
+	handle("/admin/", s.CSRFMiddleware(s.RequireRole(func(w http.ResponseWriter, r *http.Request) { http.NotFound(w, r) }, "admin")))
+
+	// Tahap 8
+	handle("GET /admin/campaigns", s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaigns, "admin")))
+	handle("GET /admin/campaigns/new", s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignNewGET, "admin")))
+	handle("POST /admin/campaigns/new", s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignNewPOST, "admin")))
+	handle("GET /admin/campaigns/{id}", s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignDetail, "admin")))
+	handle("POST /admin/campaigns/{id}/start", s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignStart, "admin")))
+	handle("POST /admin/campaigns/{id}/pause", s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignPause, "admin")))
+	handle("POST /admin/campaigns/{id}/finish", s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignFinish, "admin")))
+	handle("POST /admin/campaigns/{id}/delete", s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignDelete, "admin")))
+	handle("POST /admin/campaigns/{id}/archive", s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignArchive, "admin")))
+	handle("GET /admin/campaigns/{id}/edit", s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignEditGET, "admin")))
+	handle("POST /admin/campaigns/{id}/edit", s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignEditPOST, "admin")))
+	handle("POST /admin/campaigns/preview", s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignPreview, "admin")))
+	handle("GET /uploads/{filename}", s.RequireRole(s.HandleServeUpload, "admin"))
+
+	// Tahap 7
+	handle("GET /admin/campaigns/{id}/numbers", s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignNumbersGET, "admin")))
+	handle("GET /admin/campaigns/{id}/numbers/upload", s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignNumbersGET, "admin")))
+	handle("POST /admin/campaigns/{id}/numbers/preview", s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignNumbersPreview, "admin")))
+	handle("POST /admin/campaigns/{id}/numbers/confirm", s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignNumbersConfirm, "admin")))
+	handle("GET /admin/campaigns/{id}/numbers/rejected/{previewId}", s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignNumbersRejected, "admin")))
+
+	// Tahap 11: Worker Panel
+	handle("GET /worker", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerHome, "worker")))
+	handle("POST /worker/profile", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerProfilePOST, "worker")))
+	handle("POST /worker/wallet", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerWalletPOST, "worker")))
+	handle("POST /worker/security", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerSecurityPOST, "worker")))
+	handle("GET /worker/withdrawals", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerWithdrawalsGET, "worker")))
+	handle("POST /worker/withdrawals", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerWithdrawalsPOST, "worker")))
+	handle("POST /worker/convert", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerConvertPOST, "worker")))
+	handle("GET /worker/referral", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerReferralGET, "worker")))
+	handle("GET /worker/history", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerHistoryGET, "worker")))
+	handle("POST /worker/ticket", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerTicketPOST, "worker")))
+	handle("GET /worker/api/notifications", s.RequireRole(s.HandleWorkerNotificationsAPI, "worker"))
+	handle("GET /worker/api/tickets", s.RequireRole(s.HandleWorkerTicketsAPI, "worker"))
+	handle("GET /worker/api/stats", s.RequireRole(s.HandleWorkerAPIStats, "worker"))
+	handle("POST /worker/notifications/read", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerNotificationsReadAllPOST, "worker")))
+	handle("POST /worker/notifications/{id}/read", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerNotificationReadOnePOST, "worker")))
+
+	// Tahap 9
+	handle("GET /worker/accounts", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerAccounts, "worker")))
+	handle("POST /worker/accounts/init", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerAccountInitPOST, "worker")))
+	handle("GET /worker/accounts/new", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerAccountNewGET, "worker")))
+	handle("POST /worker/accounts/new", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerAccountNewPOST, "worker")))
+	handle("GET /worker/accounts/{id}/status", s.RequireRole(s.HandleWorkerAccountStatus, "worker"))
+	handle("POST /worker/accounts/{id}/pair", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerAccountPairPOST, "worker")))
+	handle("POST /worker/accounts/{id}/settings", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerAccountSettingsPOST, "worker")))
+	handle("POST /worker/accounts/{id}/delete", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerAccountDelete, "worker")))
+	handle("POST /worker/accounts/{id}/disconnect", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerAccountDisconnect, "worker")))
+	handle("POST /worker/accounts/{id}/stop", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerAccountStop, "worker")))
+
+	// Tahap 10b: Kerja kirim pesan
+	handle("POST /worker/accounts/{id}/work/start", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerAccountWorkStart, "worker")))
+	handle("POST /worker/accounts/{id}/work/stop", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerAccountWorkStop, "worker")))
+}
+
+// handleHealthz adalah liveness probe (200 OK selama proses web hidup).
 func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(`{"status":"ok"}`))
+}
 
-	err := s.DB.Pool.Ping(context.Background())
-	if err != nil {
+// handleReadyz adalah readiness probe (200 OK hanya jika database reachable dan server tidak sedang draining).
+func (s *Server) handleReadyz(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if s.IsDraining() {
 		w.WriteHeader(http.StatusServiceUnavailable)
-		w.Write([]byte(`{"status":"error","db":"unreachable"}`))
+		_, _ = w.Write([]byte(`{"status":"draining","ready":false}`))
 		return
 	}
 
-	w.Write([]byte(`{"status":"ok","db":"ok"}`))
+	if s.DB == nil || s.DB.Pool == nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = w.Write([]byte(`{"status":"error","db":"nil","ready":false}`))
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+	if err := s.DB.Pool.Ping(ctx); err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = w.Write([]byte(`{"status":"error","db":"unreachable","ready":false}`))
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(`{"status":"ok","db":"ok","ready":true}`))
 }
 
 func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {

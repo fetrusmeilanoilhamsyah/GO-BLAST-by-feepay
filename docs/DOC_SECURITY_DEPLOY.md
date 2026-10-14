@@ -75,7 +75,7 @@ Panduan dan aturan mengenai keamanan aplikasi dan prosedur deploy sistem GO BLAS
 - Gunakan pengguna sistem `goblast` tanpa akses root untuk menjalankan aplikasi.
 - Sediakan pengguna database terpisah di PostgreSQL (bukan `postgres`).
 - Batasi alokasi memori melalui `MemoryMax` di pengaturan systemd, nilainya ditentukan setelah pengukuran memori (keputusan terbuka nomor 6).
-- Buka port internal (misal 8080) hanya untuk `127.0.0.1`.
+- Buka port internal (misal 8080) hanya untuk `127.0.0.1` (loopback). Pada lingkungan `production`, aplikasi menolak bind publik (`0.0.0.0` atau tanpa IP) secara default; bind publik hanya diizinkan jika `ALLOW_PUBLIC_BIND=true` disetel eksplisit.
 
 ### B2. Nginx
 - Siapkan server block reverse proxy di Nginx.
@@ -98,12 +98,27 @@ Panduan dan aturan mengenai keamanan aplikasi dan prosedur deploy sistem GO BLAS
 ### B4. Variabel lingkungan
 | Nama Variabel | Fungsi | Contoh Nilai | Sifat |
 |---|---|---|---|
-| `APP_ENV` | Lingkungan aplikasi | `production` | Wajib |
-| `APP_ADDR` | Alamat aplikasi | `:8080` | Wajib |
-| `DATABASE_URL` | String koneksi psql | `postgres://<username>:<password>@localhost:5432/goblast` | Wajib |
-| `SESSION_SECRET` | Rahasia cookie sesi | `(base64 dari 32 byte)` | Wajib |
-| `ENCRYPTION_KEY` | Kunci enkripsi | `(base64 dari 32 byte)` | Wajib |
+| `APP_ENV` | Lingkungan aplikasi | `production` / `dev` | Wajib |
+| `APP_ADDR` | Alamat bind aplikasi | `127.0.0.1:8080` (wajib loopback di produksi) | Wajib |
+| `ALLOW_PUBLIC_BIND` | Mengizinkan bind publik di produksi jika `true` | `false` | Opsional |
+| `DATABASE_URL` | String koneksi PostgreSQL | `postgres://<user>:<pass>@localhost:5432/goblast` | Wajib |
+| `DB_MAX_CONNS` | Batas maksimum koneksi pool DB aplikasi | `25` (default 25) | Opsional |
+| `DB_MIN_CONNS` | Batas minimum koneksi pool DB aplikasi | `5` (default 5) | Opsional |
+| `SESSION_SECRET` | Rahasia cookie sesi (32 byte base64) | `(base64 dari 32 byte acak)` | Wajib |
+| `ENCRYPTION_KEY` | Kunci enkripsi data (32 byte base64) | `(base64 dari 32 byte acak)` | Wajib |
 | `ENCRYPTION_KEY_PREV` | Kunci enkripsi versi sebelumnya (rotasi kunci) | `(base64 dari 32 byte)` | Opsional |
+| `TURNSTILE_SECRET_KEY` | Kunci rahasia Cloudflare Turnstile | `0x4AAAAAA...` | Opsional |
+
+#### Rumus Kapasitas Koneksi Database:
+Untuk mencegah kegagalan pool koneksi database di produksi karena kehabisan koneksi PostgreSQL, kapasitas koneksi harus memenuhi rumus:
+$$\text{DB\_MAX\_CONNS} + \text{batas pool whatsmeow} + 10 < \text{max\_connections PostgreSQL}$$
+
+Penjelasan:
+- `DB_MAX_CONNS`: batas pool pgxpool aplikasi utama (default: 25).
+- `batas pool whatsmeow`: batas pool whatsmeow sqlstore (`SetMaxOpenConns`, default: 10).
+- `10`: margin pengaman untuk migrasi skema database, koneksi administrasi, pemantauan pg_stat, dan psql ad-hoc.
+- `max_connections PostgreSQL`: batas maksimal koneksi di PostgreSQL (default umumnya 100).
+- Contoh konfigurasi default: $25 + 10 + 10 = 45 < 100$ (Aman).
 
 ### B5. Migrasi
 - Jalankan migrasi (misal `go run ./cmd/goblast migrate up`) menggunakan folder db/migrations sebelum memulai versi biner baru.
@@ -123,9 +138,9 @@ Panduan dan aturan mengenai keamanan aplikasi dan prosedur deploy sistem GO BLAS
 - Lakukan langkah mengembalikan versi dengan menghentikan service, mengubah symlink biner lama, dan menyalakan kembali service.
 - Jangan melakukan rollback aplikasi jika migrasi database pada versi terbaru tidak kompatibel mundur (tidak bisa di-rollback secara aman).
 
-### B9. Health check
-- Sediakan rute endpoint `/healthz` tanpa autentikasi yang membalas status 200 OK.
-- Gunakan endpoint tersebut untuk pemantauan sederhana atau deteksi crash otomatis.
+### B9. Health check & Readiness probe
+- `/healthz` (Liveness probe): membalas status `200 OK` murni untuk mendeteksi apakah proses web hidup (tetap `200 OK` walau server sedang dalam proses *draining* atau DB lambat).
+- `/readyz` (Readiness probe): membalas `200 OK` hanya jika database berhasil di-*ping* dan server tidak sedang *draining*. Mengembalikan `503 Service Unavailable` saat server sedang proses shutdown (*draining*) atau database terputus, sehingga reverse proxy/load balancer tidak lagi mengirimkan trafik baru.
 
 ### B10. Cloudflare
 - Keputusan pemakaian Cloudflare adalah di tangan pemilik proyek (diseting sendiri dari panel Cloudflare).

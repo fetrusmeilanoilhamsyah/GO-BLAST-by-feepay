@@ -14,6 +14,7 @@ import (
 	"goblast/internal/campaign"
 	"goblast/internal/config"
 	"goblast/internal/db"
+	"goblast/internal/safe"
 	"goblast/internal/wa"
 )
 
@@ -71,6 +72,7 @@ type Engine struct {
 	workers   map[int64]context.CancelFunc // accountID -> cancel goroutine
 	stopped   bool
 	lockCache engineLockCache
+	wg        sync.WaitGroup
 }
 
 // New membuat instance Engine baru.
@@ -99,8 +101,16 @@ func (e *Engine) StartAccount(accountID, workerID int64) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	e.workers[accountID] = cancel
+	e.wg.Add(1)
 
-	go e.runWorker(ctx, accountID, workerID)
+	safe.GoWithRecovery(fmt.Sprintf("engine.runWorker-%d", accountID), func() {
+		defer e.wg.Done()
+		e.runWorker(ctx, accountID, workerID)
+	}, func(r any) {
+		timeoutCtx, timeoutCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer timeoutCancel()
+		e.StopAccountForFailure(timeoutCtx, accountID, "galat internal")
+	})
 }
 
 // IsRunning memeriksa apakah goroutine pengiriman untuk accountID sedang aktif.
@@ -138,7 +148,7 @@ func (e *Engine) StopAccount(accountID int64) {
 	}
 }
 
-// StopAll menghentikan seluruh worker engine.
+// StopAll menghentikan seluruh worker engine dan menunggu seluruh goroutine selesai (maksimal 20 detik).
 func (e *Engine) StopAll() {
 	e.mu.Lock()
 	e.stopped = true
@@ -147,23 +157,26 @@ func (e *Engine) StopAll() {
 		delete(e.workers, id)
 	}
 	e.mu.Unlock()
+
+	done := make(chan struct{})
+	go func() {
+		e.wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		slog.Info("engine: semua worker selesai")
+	case <-time.After(20 * time.Second):
+		slog.Warn("engine: timeout 20s menunggu worker selesai saat StopAll")
+	}
 }
 
 // StartCleaner menjalankan pembersih nomor menggantung secara berkala setiap 60 detik.
 func (e *Engine) StartCleaner(ctx context.Context) {
-	go func() {
-		ticker := time.NewTicker(60 * time.Second)
-		defer ticker.Stop()
-
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				e.CleanStaleNumbers(ctx)
-			}
-		}
-	}()
+	safe.Loop(ctx, "engine.cleaner", 60*time.Second, func(c context.Context) {
+		_, _ = e.CleanStaleNumbers(c)
+	})
 }
 
 // CleanStaleNumbers mengembalikan nomor dikirim yang claimed_at lebih tua dari claim_timeout_seconds ke tersedia.

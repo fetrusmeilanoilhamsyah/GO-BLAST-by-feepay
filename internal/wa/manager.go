@@ -13,8 +13,10 @@ import (
 
 	"goblast/internal/config"
 	"goblast/internal/db"
+	"goblast/internal/safe"
 
 	"github.com/jackc/pgx/v5"
+	_ "github.com/jackc/pgx/v5/stdlib"
 	qrcode "github.com/skip2/go-qrcode"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/store/sqlstore"
@@ -190,16 +192,18 @@ func (m *Manager) Connect(ctx context.Context, accountID, workerID int64) (<-cha
 	m.sessions[accountID] = sess
 	m.mu.Unlock()
 
-	// Tangani event
+	// Tangani event dengan recovery
 	client.AddEventHandler(func(evt interface{}) {
-		m.handleEvent(sessCtx, accountID, workerID, evt)
+		safe.RunWithRecovery(fmt.Sprintf("wa.eventHandler-%d", accountID), func() {
+			m.handleEvent(sessCtx, accountID, workerID, evt)
+		})
 	})
 
 	// Mulai koneksi
 	if client.Store.ID == nil {
 		// Perlu QR atau pairing
 		qrChan, _ := client.GetQRChannel(sessCtx)
-		go func() {
+		safe.Go(fmt.Sprintf("wa.qrReader-%d", accountID), func() {
 			for qr := range qrChan {
 				if qr.Event == "code" {
 					var b64 string
@@ -218,7 +222,7 @@ func (m *Manager) Connect(ctx context.Context, accountID, workerID int64) (<-cha
 					}
 				}
 			}
-		}()
+		})
 		err = client.Connect()
 		if err != nil {
 			m.removeSession(accountID)
@@ -377,6 +381,25 @@ func (m *Manager) IsOnWhatsApp(ctx context.Context, accountID int64, phone strin
 	return false, nil
 }
 
+// DisconnectAll memutus seluruh sesi WhatsApp aktif tanpa logout (dipakai saat shutdown).
+func (m *Manager) DisconnectAll() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for id, sess := range m.sessions {
+		if sess != nil {
+			sess.cancel()
+			if sess.Client != nil {
+				sess.Client.Disconnect()
+			}
+		}
+		delete(m.sessions, id)
+	}
+	if m.container != nil {
+		_ = m.container.Close()
+		m.container = nil
+	}
+}
+
 // --- helper ---
 
 func (m *Manager) getContainer(ctx context.Context) (*sqlstore.Container, error) {
@@ -388,9 +411,19 @@ func (m *Manager) getContainer(ctx context.Context) (*sqlstore.Container, error)
 	if m.cfg == nil || m.cfg.DatabaseURL == "" {
 		return nil, errors.New("database URL tidak tersedia")
 	}
-	container, err := sqlstore.New(ctx, "pgx", m.cfg.DatabaseURL, waLog.Noop)
+
+	rawDB, err := sql.Open("pgx", m.cfg.DatabaseURL)
 	if err != nil {
-		return nil, fmt.Errorf("gagal membuat sqlstore: %w", err)
+		return nil, fmt.Errorf("gagal membuka koneksi database whatsmeow: %w", err)
+	}
+	rawDB.SetMaxOpenConns(config.DefaultWhatsmeowMaxOpenConns)
+	rawDB.SetMaxIdleConns(config.DefaultWhatsmeowMaxIdleConns)
+	rawDB.SetConnMaxLifetime(config.DefaultWhatsmeowConnMaxLifetime)
+
+	container := sqlstore.NewWithDB(rawDB, "postgres", waLog.Noop)
+	if err := container.Upgrade(ctx); err != nil {
+		_ = container.Close()
+		return nil, fmt.Errorf("gagal upgrade database whatsmeow: %w", err)
 	}
 	m.container = container
 	return container, nil

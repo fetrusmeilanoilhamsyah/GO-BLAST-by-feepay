@@ -1,6 +1,7 @@
 package web
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -93,9 +94,14 @@ func (s *Server) HandleAdminCampaignNumbersPreview(w http.ResponseWriter, r *htt
 		return
 	}
 
-	err = r.ParseMultipartForm(5 << 20) // 5 MB max
+	err = r.ParseMultipartForm(6 << 20) // 6 MB max
 	if err != nil {
-		http.Error(w, "Gagal memproses form (batas 5MB)", http.StatusBadRequest)
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			http.Error(w, "Ukuran file melebihi batas (maksimal 6 MB)", http.StatusRequestEntityTooLarge)
+			return
+		}
+		http.Error(w, "Gagal memproses form", http.StatusBadRequest)
 		return
 	}
 

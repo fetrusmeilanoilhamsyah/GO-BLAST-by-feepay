@@ -51,4 +51,40 @@ var (
 
 	// DailyLimitPerAccount adalah batas pesan per hari per akun (0 berarti tanpa batas, keputusan pemilik).
 	DailyLimitPerAccount = 0
+
+	// DefaultDBMaxConns adalah batas maksimal koneksi pool database (Tahap H1).
+	DefaultDBMaxConns = 20
+
+	// DefaultDBMinConns adalah batas minimal koneksi pool database (Tahap H1).
+	DefaultDBMinConns = 2
+
+	// DefaultDBMaxConnLifetime adalah batas umur maksimal koneksi pool (30 menit).
+	DefaultDBMaxConnLifetime = 30 * time.Minute
+
+	// DefaultDBMaxConnIdleTime adalah batas idle maksimal koneksi pool (5 menit).
+	DefaultDBMaxConnIdleTime = 5 * time.Minute
+
+	// DefaultDBHealthCheckPeriod adalah periode health check koneksi pool (30 detik).
+	DefaultDBHealthCheckPeriod = 30 * time.Second
+
+	// DefaultDBConnectTimeout adalah batas waktu timeout saat membuat koneksi (5 detik).
+	DefaultDBConnectTimeout = 5 * time.Second
+
+	// DefaultDBStatementTimeout adalah statement_timeout PostgreSQL (30 detik).
+	DefaultDBStatementTimeout = "30s"
+
+	// DefaultDBLockTimeout adalah lock_timeout PostgreSQL (5 detik).
+	DefaultDBLockTimeout = "5s"
+
+	// DefaultDBIdleInTransactionTimeout adalah idle_in_transaction_session_timeout PostgreSQL (30 detik).
+	DefaultDBIdleInTransactionTimeout = "30s"
+
+	// DefaultWhatsmeowMaxOpenConns adalah batas maksimal open connection pool whatsmeow.
+	DefaultWhatsmeowMaxOpenConns = 10
+
+	// DefaultWhatsmeowMaxIdleConns adalah batas maksimal idle connection pool whatsmeow.
+	DefaultWhatsmeowMaxIdleConns = 2
+
+	// DefaultWhatsmeowConnMaxLifetime adalah umur maksimal koneksi pool whatsmeow (30 menit).
+	DefaultWhatsmeowConnMaxLifetime = 30 * time.Minute
 )

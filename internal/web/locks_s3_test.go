@@ -17,6 +17,7 @@ import (
 	"goblast/internal/engine"
 	"goblast/internal/testutil"
 	"goblast/internal/wa"
+	"goblast/internal/wa/watest"
 )
 
 type s3MockWorkController struct {
@@ -276,7 +277,7 @@ func TestLockEngine_StopsEngineAndReason(t *testing.T) {
 
 	// Settings reader untuk engine
 	settingsReader := wa.NewDBSettingsReader(database)
-	fakeSender := &wa.FakeSender{}
+	fakeSender := &watest.FakeSender{}
 	eng := engine.New(database, fakeSender, nil, settingsReader)
 
 	// A. Uji saat lock_engine = true

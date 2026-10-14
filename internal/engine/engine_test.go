@@ -14,6 +14,7 @@ import (
 	"goblast/internal/engine"
 	"goblast/internal/testutil"
 	"goblast/internal/wa"
+	"goblast/internal/wa/watest"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -158,7 +159,7 @@ func TestConcurrentAtomicClaim(t *testing.T) {
 	}
 
 	settings := newTestSettings()
-	eng := engine.New(database, &wa.FakeSender{}, nil, settings)
+	eng := engine.New(database, &watest.FakeSender{}, nil, settings)
 
 	// Jalankan 50 worker goroutine mengklaim secara bersamaan
 	claimedMap := sync.Map{}
@@ -340,7 +341,7 @@ func TestSessionDisconnectReturnsNumbers(t *testing.T) {
 	}
 
 	settings := newTestSettings()
-	eng := engine.New(database, &wa.FakeSender{}, nil, settings)
+	eng := engine.New(database, &watest.FakeSender{}, nil, settings)
 
 	// Panggil StopAccount (mensimulasikan sesi diputus)
 	eng.StopAccount(accID)
@@ -419,7 +420,7 @@ func TestCleanerReturnsStaleNumbers(t *testing.T) {
 	settings := newTestSettings()
 	settings.SetInt("claim_timeout_seconds", 300) // 5 menit
 
-	eng := engine.New(database, &wa.FakeSender{}, nil, settings)
+	eng := engine.New(database, &watest.FakeSender{}, nil, settings)
 	cleaned, err := eng.CleanStaleNumbers(ctx)
 	if err != nil {
 		t.Fatalf("CleanStaleNumbers gagal: %v", err)
@@ -571,7 +572,7 @@ func TestLedgerFailureNeverReturnsToAvailable(t *testing.T) {
 	// Settings kosong untuk rate_wage sehingga recordSuccessAndLedger gagal
 	settings := newTestSettings()
 
-	eng := engine.New(database, &wa.FakeSender{}, nil, settings)
+	eng := engine.New(database, &watest.FakeSender{}, nil, settings)
 
 	// Percepat delay coba ulang untuk tes
 	origDelays := engine.RecordRetryDelays
@@ -669,7 +670,7 @@ func TestRepeatedRenderFailureStopsAccount(t *testing.T) {
 	settings.SetInt("max_attempts", 3)
 	settings.SetJSON("rate_wage", `{"IDR": 50}`)
 
-	eng := engine.New(database, &wa.FakeSender{}, nil, settings)
+	eng := engine.New(database, &watest.FakeSender{}, nil, settings)
 
 	// Percepat jeda gagal susun pesan
 	origDelay := engine.BuildRetryDelay
@@ -754,7 +755,7 @@ func TestRateWageUSDTAndMissingRate(t *testing.T) {
 	settings := newTestSettings()
 	settings.SetInt("rate_wage", 400)
 
-	eng := engine.New(database, &wa.FakeSender{}, nil, settings)
+	eng := engine.New(database, &watest.FakeSender{}, nil, settings)
 
 	// Uji Bagian 1: rate_wage IDR 400 menghasilkan baris buku besar IDR bernilai 400
 	err = eng.RecordSuccessAndLedger(ctx, numberID, workerID)
@@ -793,7 +794,7 @@ func TestRateWageUSDTAndMissingRate(t *testing.T) {
 		t.Fatalf("setup account zero rate: %v", err)
 	}
 
-	fakeSender := &wa.FakeSender{}
+	fakeSender := &watest.FakeSender{}
 	settingsMissing := newTestSettings()
 	settingsMissing.SetJSON("daily_limits", `{"medium": 100}`)
 	settingsMissing.SetInt("max_attempts", 3)
@@ -866,7 +867,7 @@ func TestMaxAttemptsMakesNumberGagal(t *testing.T) {
 	).Scan(&num2ID)
 
 	settings := newTestSettings()
-	eng := engine.New(database, &wa.FakeSender{}, nil, settings)
+	eng := engine.New(database, &watest.FakeSender{}, nil, settings)
 
 	// Kasus 1: attempts (3) >= maxAttempts (3) -> nomor harus menjadi 'gagal'
 	eng.HandleSendFailure(ctx, accID, num1ID, 3, 3, "gagal ketiga kali")
@@ -930,7 +931,7 @@ func TestConsecutiveFailuresStopsAccountAndReleasesNumbers(t *testing.T) {
 		campID, batchID, fmt.Sprintf("62822%06d", time.Now().UnixNano()%1000000), accID,
 	).Scan(&numID)
 
-	eng := engine.New(database, &wa.FakeSender{}, nil, newTestSettings())
+	eng := engine.New(database, &watest.FakeSender{}, nil, newTestSettings())
 
 	eng.StopAccountForFailure(ctx, accID, "berhenti otomatis: 5 kegagalan beruntun")
 
@@ -1080,7 +1081,7 @@ func TestSendTimeoutResultsInHasilTidakPasti(t *testing.T) {
 	).Scan(&numID)
 
 	// Sender yang selalu mengembalikan error batas waktu
-	timeoutSender := &wa.FakeSender{
+	timeoutSender := &watest.FakeSender{
 		ErrFunc: func(accountID int64) error {
 			return context.DeadlineExceeded
 		},
@@ -1187,7 +1188,7 @@ func TestCampaignAutoCompletedWithAuditLog(t *testing.T) {
 		campID, batchID, fmt.Sprintf("62826%06d", time.Now().UnixNano()%1000000),
 	).Scan(&numID)
 
-	eng := engine.New(database, &wa.FakeSender{}, nil, newTestSettings())
+	eng := engine.New(database, &watest.FakeSender{}, nil, newTestSettings())
 
 	completed, err := eng.CheckAndCompleteCampaign(ctx, campID)
 	if err != nil {
@@ -1252,7 +1253,7 @@ func TestEngine_IsRunningAndNoDuplicateGoroutine(t *testing.T) {
 	settings.SetInt("max_attempts", 3)
 	settings.SetJSON("rate_wage", `{"IDR": 50}`)
 
-	sender := &wa.FakeSender{}
+	sender := &watest.FakeSender{}
 	eng := engine.New(&db.DB{Pool: pool}, sender, nil, settings)
 
 	// Sebelum start: IsRunning harus false

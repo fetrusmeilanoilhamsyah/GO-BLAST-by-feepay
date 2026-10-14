@@ -3,7 +3,6 @@ package wa
 import (
 	"context"
 	"fmt"
-	"sync"
 	"time"
 
 	waProto "go.mau.fi/whatsmeow/binary/proto"
@@ -98,57 +97,3 @@ func maskPhone(phone string) string {
 	return phone[:2] + "****" + phone[len(phone)-2:]
 }
 
-// --- FakeSender (untuk tes) ---
-
-// SentRecord menyimpan catatan kirim di FakeSender.
-type SentRecord struct {
-	AccountID int64
-	Phone     string
-	Msg       OutMessage
-	SentAt    time.Time
-}
-
-// FakeSender implementasi palsu untuk tes. Thread-safe.
-type FakeSender struct {
-	mu      sync.Mutex
-	Sent    []SentRecord
-	ErrFunc func(accountID int64) error // opsional, untuk simulasi error
-}
-
-// Send mencatat pesan ke slice Sent. Mengembalikan error dari ErrFunc jika ada.
-func (f *FakeSender) Send(ctx context.Context, accountID int64, phone string, msg OutMessage) (Result, error) {
-	if f.ErrFunc != nil {
-		if err := f.ErrFunc(accountID); err != nil {
-			return Result{}, err
-		}
-	}
-
-	now := time.Now()
-	f.mu.Lock()
-	f.Sent = append(f.Sent, SentRecord{
-		AccountID: accountID,
-		Phone:     phone,
-		Msg:       msg,
-		SentAt:    now,
-	})
-	f.mu.Unlock()
-
-	return Result{
-		MessageID: fmt.Sprintf("fake-%d-%d", accountID, now.UnixNano()),
-		SentAt:    now,
-	}, nil
-}
-
-// SentCount mengembalikan jumlah pesan yang berhasil dikirim.
-func (f *FakeSender) SentCount() int {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return len(f.Sent)
-}
-
-// Reset mengosongkan catatan kirim.
-func (f *FakeSender) Reset() {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.Sent = nil
-}

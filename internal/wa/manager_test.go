@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"goblast/internal/wa"
+	"goblast/internal/wa/watest"
 )
 
 // --- stub untuk SettingsReader ---
@@ -74,7 +75,7 @@ func TestOwnershipCheckDiDokumentasikan(t *testing.T) {
 
 // TestFakeSender memverifikasi bahwa FakeSender mencatat pesan dengan benar.
 func TestFakeSender(t *testing.T) {
-	f := &wa.FakeSender{}
+	f := &watest.FakeSender{}
 
 	ctx := context.Background()
 	r, err := f.Send(ctx, 1, "628100000001", wa.OutMessage{Text: "halo"})
@@ -97,7 +98,7 @@ func TestFakeSender(t *testing.T) {
 // TestFakeSenderError memverifikasi bahwa FakeSender mengembalikan error dari ErrFunc.
 func TestFakeSenderError(t *testing.T) {
 	import_err := context.DeadlineExceeded
-	f := &wa.FakeSender{
+	f := &watest.FakeSender{
 		ErrFunc: func(_ int64) error { return import_err },
 	}
 
@@ -112,7 +113,7 @@ func TestFakeSenderError(t *testing.T) {
 
 // TestFakeSenderConcurrent memverifikasi bahwa FakeSender aman dari race condition.
 func TestFakeSenderConcurrent(t *testing.T) {
-	f := &wa.FakeSender{}
+	f := &watest.FakeSender{}
 	ctx := context.Background()
 
 	done := make(chan struct{})

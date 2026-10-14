@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -133,8 +134,13 @@ func (s *Server) HandleAdminCampaignNewGET(w http.ResponseWriter, r *http.Reques
 }
 
 func (s *Server) HandleAdminCampaignNewPOST(w http.ResponseWriter, r *http.Request) {
-	err := r.ParseMultipartForm(5 << 20) // 5 MB max memory
+	err := r.ParseMultipartForm(6 << 20)
 	if err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			http.Error(w, "Ukuran file melebihi batas (maksimal 6 MB)", http.StatusRequestEntityTooLarge)
+			return
+		}
 		http.Error(w, "Failed to parse form", http.StatusBadRequest)
 		return
 	}
@@ -314,8 +320,13 @@ func (s *Server) HandleAdminCampaignEditPOST(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	err = r.ParseMultipartForm(5 << 20)
+	err = r.ParseMultipartForm(6 << 20)
 	if err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			http.Error(w, "Ukuran file melebihi batas (maksimal 6 MB)", http.StatusRequestEntityTooLarge)
+			return
+		}
 		http.Error(w, "Failed to parse form", http.StatusBadRequest)
 		return
 	}
@@ -416,8 +427,13 @@ func (s *Server) HandleAdminCampaignEditPOST(w http.ResponseWriter, r *http.Requ
 }
 
 func (s *Server) HandleAdminCampaignPreview(w http.ResponseWriter, r *http.Request) {
-	err := r.ParseMultipartForm(5 << 20)
+	err := r.ParseMultipartForm(6 << 20)
 	if err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			http.Error(w, "Ukuran file melebihi batas (maksimal 6 MB)", http.StatusRequestEntityTooLarge)
+			return
+		}
 		http.Error(w, "Failed to parse form", http.StatusBadRequest)
 		return
 	}

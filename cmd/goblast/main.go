@@ -83,7 +83,8 @@ func main() {
 
 	httpServer := &http.Server{
 		Addr:              cfg.AppAddr,
-		Handler:           mux,
+		Handler:           srv.WrapGlobalMiddleware(mux),
+		MaxHeaderBytes:    16 * 1024,
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       60 * time.Second,
 		WriteTimeout:      60 * time.Second,
@@ -102,19 +103,29 @@ func main() {
 	}()
 
 	<-stopCtx.Done()
-	slog.Info("Menerima sinyal shutdown, menghentikan proses...")
+	slog.Info("Menerima sinyal shutdown, memulai penutupan proses secara berurutan...")
 
-	// 1. Panggil eng.StopAll
+	// 1. Tandai draining
+	srv.SetDraining(true)
+
+	// 2. Engine.StopAll yang kini menunggu semua goroutine selesai dengan WaitGroup (batas 20 detik)
+	slog.Info("Menghentikan seluruh worker engine (menunggu hingga 20 detik)...")
 	eng.StopAll()
 
-	// 2. Hentikan server dengan batas waktu 15 detik
+	// 3. Hentikan server HTTP dengan batas waktu 15 detik
+	slog.Info("Menghentikan HTTP server...")
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer shutdownCancel()
 	if err := httpServer.Shutdown(shutdownCtx); err != nil {
 		slog.Error("Server shutdown forced", "err", err)
 	}
 
-	// 3. Tutup pool database
+	// 4. Putus sesi WhatsApp tanpa logout
+	slog.Info("Memutus seluruh sesi WhatsApp tanpa logout...")
+	waManager.DisconnectAll()
+
+	// 5. Tutup pool database
+	slog.Info("Menutup pool koneksi database...")
 	database.Pool.Close()
 	slog.Info("Shutdown selesai dengan rapi.")
 }
