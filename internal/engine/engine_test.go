@@ -136,10 +136,10 @@ func TestConcurrentAtomicClaim(t *testing.T) {
 	for i := 0; i < 50; i++ {
 		var accID int64
 		err = pool.QueryRow(ctx,
-			`INSERT INTO wa_accounts (worker_id, label, jid_hash, status)
-			 VALUES ($1, $2, 'dummy_hash', 'terhubung')
+			`INSERT INTO wa_accounts (worker_id, label, wa_jid_hash, status)
+			 VALUES ($1, $2, $3, 'terhubung')
 			 RETURNING id`,
-			workerID, fmt.Sprintf("Akun %d", i+1),
+			workerID, fmt.Sprintf("Akun %d", i+1), fmt.Sprintf("hash_%d_%d", i+1, time.Now().UnixNano()),
 		).Scan(&accID)
 		if err != nil {
 			t.Fatalf("setup wa_account %d gagal: %v", i, err)
@@ -251,7 +251,7 @@ func TestIdempotentLedgerEntry(t *testing.T) {
 	var numberID int64
 	_ = pool.QueryRow(ctx,
 		`INSERT INTO campaign_numbers (campaign_id, batch_id, phone_e164, country_code, status, attempts)
-		 VALUES ($1, $2, $3, '62', 'dikirim', 1)
+		 VALUES ($1, $2, $3, '62', 'terkirim', 1)
 		 RETURNING id`,
 		campaignID, batchID, fmt.Sprintf("62812%d", time.Now().UnixNano()%100000000),
 	).Scan(&numberID)
@@ -325,7 +325,7 @@ func TestSessionDisconnectReturnsNumbers(t *testing.T) {
 
 	var accID int64
 	_ = pool.QueryRow(ctx,
-		`INSERT INTO wa_accounts (worker_id, label, jid_hash, status)
+		`INSERT INTO wa_accounts (worker_id, label, wa_jid_hash, status)
 		 VALUES ($1, 'Akun Disc', 'hash', 'terhubung')
 		 RETURNING id`,
 		workerID,
@@ -397,7 +397,7 @@ func TestCleanerReturnsStaleNumbers(t *testing.T) {
 
 	var accID int64
 	_ = pool.QueryRow(ctx,
-		`INSERT INTO wa_accounts (worker_id, label, jid_hash, status)
+		`INSERT INTO wa_accounts (worker_id, label, wa_jid_hash, status)
 		 VALUES ($1, 'Akun Stale', 'hash', 'terhubung')
 		 RETURNING id`,
 		workerID,
@@ -485,7 +485,7 @@ func TestRateSnapshotStaticAfterRateChange(t *testing.T) {
 	var numberID int64
 	_ = pool.QueryRow(ctx,
 		`INSERT INTO campaign_numbers (campaign_id, batch_id, phone_e164, country_code, status, attempts)
-		 VALUES ($1, $2, $3, '62', 'dikirim', 1)
+		 VALUES ($1, $2, $3, '62', 'terkirim', 1)
 		 RETURNING id`,
 		campaignID, batchID, fmt.Sprintf("62816%d", time.Now().UnixNano()%100000000),
 	).Scan(&numberID)
@@ -560,10 +560,20 @@ func TestLedgerFailureNeverReturnsToAvailable(t *testing.T) {
 		t.Fatalf("setup batch: %v", err)
 	}
 
+	var accID int64
 	err = pool.QueryRow(ctx,
-		`INSERT INTO campaign_numbers (campaign_id, batch_id, phone_e164, country_code, status, attempts)
-		 VALUES ($1, $2, $3, '62', 'dikirim', 1) RETURNING id`,
-		campaignID, batchID, fmt.Sprintf("62817%06d", time.Now().UnixNano()%1000000),
+		`INSERT INTO wa_accounts (worker_id, label, status, speed)
+		 VALUES ($1, 'Akun LF', 'terhubung', 'medium') RETURNING id`,
+		workerID,
+	).Scan(&accID)
+	if err != nil {
+		t.Fatalf("setup account: %v", err)
+	}
+
+	err = pool.QueryRow(ctx,
+		`INSERT INTO campaign_numbers (campaign_id, batch_id, phone_e164, country_code, status, attempts, claimed_account_id, claimed_at)
+		 VALUES ($1, $2, $3, '62', 'dikirim', 1, $4, now()) RETURNING id`,
+		campaignID, batchID, fmt.Sprintf("62817%06d", time.Now().UnixNano()%1000000), accID,
 	).Scan(&numberID)
 	if err != nil {
 		t.Fatalf("setup number: %v", err)
@@ -624,7 +634,7 @@ func TestRepeatedRenderFailureStopsAccount(t *testing.T) {
 	}
 
 	err = pool.QueryRow(ctx,
-		`INSERT INTO wa_accounts (worker_id, label, jid_hash, status, speed)
+		`INSERT INTO wa_accounts (worker_id, label, wa_jid_hash, status, speed)
 		 VALUES ($1, 'Akun Render', 'hash_rnd', 'terhubung', 'medium') RETURNING id`,
 		workerID,
 	).Scan(&accID)
@@ -743,10 +753,20 @@ func TestRateWageUSDTAndMissingRate(t *testing.T) {
 		t.Fatalf("setup batch: %v", err)
 	}
 
+	var accID1 int64
 	err = pool.QueryRow(ctx,
-		`INSERT INTO campaign_numbers (campaign_id, batch_id, phone_e164, country_code, status, attempts)
-		 VALUES ($1, $2, $3, '62', 'dikirim', 1) RETURNING id`,
-		campaignID, batchID, fmt.Sprintf("62819%06d", time.Now().UnixNano()%1000000),
+		`INSERT INTO wa_accounts (worker_id, label, status, speed)
+		 VALUES ($1, 'Akun Wage', 'terhubung', 'medium') RETURNING id`,
+		workerID,
+	).Scan(&accID1)
+	if err != nil {
+		t.Fatalf("setup account: %v", err)
+	}
+
+	err = pool.QueryRow(ctx,
+		`INSERT INTO campaign_numbers (campaign_id, batch_id, phone_e164, country_code, status, attempts, claimed_account_id, claimed_at)
+		 VALUES ($1, $2, $3, '62', 'dikirim', 1, $4, now()) RETURNING id`,
+		campaignID, batchID, fmt.Sprintf("62819%06d", time.Now().UnixNano()%1000000), accID1,
 	).Scan(&numberID)
 	if err != nil {
 		t.Fatalf("setup number: %v", err)
@@ -786,7 +806,7 @@ func TestRateWageUSDTAndMissingRate(t *testing.T) {
 	// Uji Bagian 2: rate kosong/0 membuat engine tidak mengirim apa pun dan menulis stop_reason "rate upah belum diisi admin"
 	var accID int64
 	err = pool.QueryRow(ctx,
-		`INSERT INTO wa_accounts (worker_id, label, jid_hash, status, speed)
+		`INSERT INTO wa_accounts (worker_id, label, wa_jid_hash, status, speed)
 		 VALUES ($1, 'Akun ZeroRate', 'hash_zerorate', 'terhubung', 'medium') RETURNING id`,
 		workerID,
 	).Scan(&accID)
@@ -833,7 +853,7 @@ func TestMaxAttemptsMakesNumberGagal(t *testing.T) {
 	).Scan(&workerID)
 
 	_ = pool.QueryRow(ctx,
-		`INSERT INTO wa_accounts (worker_id, label, jid_hash, status)
+		`INSERT INTO wa_accounts (worker_id, label, wa_jid_hash, status)
 		 VALUES ($1, 'Akun Max', 'hash_max', 'terhubung') RETURNING id`,
 		workerID,
 	).Scan(&accID)
@@ -855,15 +875,15 @@ func TestMaxAttemptsMakesNumberGagal(t *testing.T) {
 	).Scan(&batchID)
 
 	_ = pool.QueryRow(ctx,
-		`INSERT INTO campaign_numbers (campaign_id, batch_id, phone_e164, country_code, status, attempts)
-		 VALUES ($1, $2, $3, '62', 'dikirim', 3) RETURNING id`,
-		campaignID, batchID, fmt.Sprintf("62820%06d", time.Now().UnixNano()%1000000),
+		`INSERT INTO campaign_numbers (campaign_id, batch_id, phone_e164, country_code, status, attempts, claimed_account_id, claimed_at)
+		 VALUES ($1, $2, $3, '62', 'dikirim', 3, $4, now()) RETURNING id`,
+		campaignID, batchID, fmt.Sprintf("62820%06d", time.Now().UnixNano()%1000000), accID,
 	).Scan(&num1ID)
 
 	_ = pool.QueryRow(ctx,
-		`INSERT INTO campaign_numbers (campaign_id, batch_id, phone_e164, country_code, status, attempts)
-		 VALUES ($1, $2, $3, '62', 'dikirim', 2) RETURNING id`,
-		campaignID, batchID, fmt.Sprintf("62821%06d", time.Now().UnixNano()%1000000),
+		`INSERT INTO campaign_numbers (campaign_id, batch_id, phone_e164, country_code, status, attempts, claimed_account_id, claimed_at)
+		 VALUES ($1, $2, $3, '62', 'dikirim', 2, $4, now()) RETURNING id`,
+		campaignID, batchID, fmt.Sprintf("62821%06d", time.Now().UnixNano()%1000000), accID,
 	).Scan(&num2ID)
 
 	settings := newTestSettings()
@@ -904,7 +924,7 @@ func TestConsecutiveFailuresStopsAccountAndReleasesNumbers(t *testing.T) {
 	).Scan(&workerID)
 
 	_ = pool.QueryRow(ctx,
-		`INSERT INTO wa_accounts (worker_id, label, jid_hash, status)
+		`INSERT INTO wa_accounts (worker_id, label, wa_jid_hash, status)
 		 VALUES ($1, 'Akun Csf', 'hash_csf', 'terhubung') RETURNING id`,
 		workerID,
 	).Scan(&accID)
@@ -984,7 +1004,7 @@ func TestDailyLimitAsiaJakarta(t *testing.T) {
 	).Scan(&workerID)
 
 	_ = pool.QueryRow(ctx,
-		`INSERT INTO wa_accounts (worker_id, label, jid_hash, status)
+		`INSERT INTO wa_accounts (worker_id, label, wa_jid_hash, status)
 		 VALUES ($1, 'Akun Jkt', 'hash_jkt', 'terhubung') RETURNING id`,
 		workerID,
 	).Scan(&accID)
@@ -1053,7 +1073,7 @@ func TestSendTimeoutResultsInHasilTidakPasti(t *testing.T) {
 	).Scan(&workerID)
 
 	_ = pool.QueryRow(ctx,
-		`INSERT INTO wa_accounts (worker_id, label, jid_hash, status, speed)
+		`INSERT INTO wa_accounts (worker_id, label, wa_jid_hash, status, speed)
 		 VALUES ($1, 'Akun To', 'hash_to', 'terhubung', 'medium') RETURNING id`,
 		workerID,
 	).Scan(&accID)
@@ -1240,7 +1260,7 @@ func TestEngine_IsRunningAndNoDuplicateGoroutine(t *testing.T) {
 
 	var accID int64
 	err = pool.QueryRow(ctx,
-		`INSERT INTO wa_accounts (worker_id, label, jid_hash, speed, status)
+		`INSERT INTO wa_accounts (worker_id, label, wa_jid_hash, speed, status)
 		 VALUES ($1, 'Acc Double', 'hash_double', 'medium', 'terhubung') RETURNING id`,
 		workerID,
 	).Scan(&accID)

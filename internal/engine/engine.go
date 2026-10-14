@@ -15,6 +15,7 @@ import (
 	"goblast/internal/config"
 	"goblast/internal/db"
 	"goblast/internal/safe"
+	"goblast/internal/timeutil"
 	"goblast/internal/wa"
 )
 
@@ -299,22 +300,12 @@ func (e *Engine) ClaimNextNumber(ctx context.Context, accountID int64) (*Claimed
 
 // GetJakartaStartOfDay mengembalikan awal hari (00:00:00) zona waktu Asia/Jakarta.
 func GetJakartaStartOfDay() time.Time {
-	loc, err := time.LoadLocation("Asia/Jakarta")
-	if err != nil {
-		loc = time.FixedZone("Asia/Jakarta", 7*3600)
-	}
-	now := time.Now().In(loc)
-	return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc)
+	return timeutil.GetJakartaStartOfDay()
 }
 
 func getJakartaNextDayWaitDuration() time.Duration {
-	loc, err := time.LoadLocation("Asia/Jakarta")
-	if err != nil {
-		loc = time.FixedZone("Asia/Jakarta", 7*3600)
-	}
-	now := time.Now().In(loc)
-	nextDay := time.Date(now.Year(), now.Month(), now.Day()+1, 0, 0, 1, 0, loc)
-	return nextDay.Sub(now)
+	nextMidnight := timeutil.GetNextJakartaMidnight()
+	return time.Until(nextMidnight)
 }
 
 // getRateWage membaca rate_wage sebagai bilangan bulat rupiah.

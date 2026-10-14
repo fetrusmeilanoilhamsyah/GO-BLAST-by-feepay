@@ -155,11 +155,15 @@ func CleanupTestData(pool *pgxpool.Pool, userIDs []int64, campaignIDs []int64) {
 		_, _ = pool.Exec(ctx, "DELETE FROM campaigns WHERE id = ANY($1)", campaignIDs)
 	}
 	if len(userIDs) > 0 {
+		_, _ = pool.Exec(ctx, "DELETE FROM admin_recovery_codes WHERE user_id = ANY($1)", userIDs)
+		_, _ = pool.Exec(ctx, "DELETE FROM backups WHERE created_by = ANY($1)", userIDs)
 		_, _ = pool.Exec(ctx, "DELETE FROM web_sessions WHERE user_id = ANY($1)", userIDs)
 		_, _ = pool.Exec(ctx, "DELETE FROM audit_logs WHERE actor_id = ANY($1)", userIDs)
-		_, _ = pool.Exec(ctx, "DELETE FROM support_tickets WHERE user_id = ANY($1)", userIDs)
+		_, _ = pool.Exec(ctx, "DELETE FROM notifications WHERE user_id = ANY($1)", userIDs)
+		_, _ = pool.Exec(ctx, "DELETE FROM support_tickets WHERE user_id = ANY($1) OR replied_by = ANY($1)", userIDs)
 		_, _ = pool.Exec(ctx, "DELETE FROM broadcasts WHERE created_by = ANY($1)", userIDs)
 		_, _ = pool.Exec(ctx, "DELETE FROM wallet_entries WHERE created_by = ANY($1)", userIDs)
+		_, _ = pool.Exec(ctx, "DELETE FROM currency_conversions WHERE user_id = ANY($1)", userIDs)
 		_, _ = pool.Exec(ctx, "DELETE FROM wa_accounts WHERE worker_id = ANY($1)", userIDs)
 		_, _ = pool.Exec(ctx, "DELETE FROM withdrawals WHERE user_id = ANY($1) OR processed_by = ANY($1)", userIDs)
 		_, _ = pool.Exec(ctx, "UPDATE settings SET updated_by = NULL WHERE updated_by = ANY($1)", userIDs)

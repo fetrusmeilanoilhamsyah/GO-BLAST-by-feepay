@@ -85,7 +85,7 @@ func TestS5_LinkingRejectedWhenMaxAccountsEmptyOrReached(t *testing.T) {
 	// Buat 1 akun terhubung di database
 	var acc1ID int64
 	err := pool.QueryRow(ctx, `
-		INSERT INTO wa_accounts (worker_id, label, jid_hash, status)
+		INSERT INTO wa_accounts (worker_id, label, wa_jid_hash, status)
 		VALUES ($1, 'Akun 1', 'hash_test_1', 'terhubung')
 		RETURNING id
 	`, workerID).Scan(&acc1ID)
@@ -96,7 +96,7 @@ func TestS5_LinkingRejectedWhenMaxAccountsEmptyOrReached(t *testing.T) {
 	// Buat akun ke-2 dan coba hubungkan, harus ditolak batas tercapai
 	var acc2ID int64
 	err = pool.QueryRow(ctx, `
-		INSERT INTO wa_accounts (worker_id, label, jid_hash, status)
+		INSERT INTO wa_accounts (worker_id, label, wa_jid_hash, status)
 		VALUES ($1, 'Akun 2', 'hash_test_2', 'menunggu_scan')
 		RETURNING id
 	`, workerID).Scan(&acc2ID)

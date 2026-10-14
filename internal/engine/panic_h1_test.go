@@ -85,7 +85,7 @@ func TestEnginePanicRecovery_FakeSender(t *testing.T) {
 	// 4. Buat 2 akun: akun 1 (akan panic) dan akun 2 (berjalan normal)
 	var acc1ID, acc2ID int64
 	err = pool.QueryRow(ctx,
-		`INSERT INTO wa_accounts (worker_id, label, jid_hash, status, speed)
+		`INSERT INTO wa_accounts (worker_id, label, wa_jid_hash, status, speed)
 		 VALUES ($1, 'Akun Panic 1', 'jid_panic_1', 'terhubung', 'fast') RETURNING id`,
 		workerID,
 	).Scan(&acc1ID)
@@ -94,7 +94,7 @@ func TestEnginePanicRecovery_FakeSender(t *testing.T) {
 	}
 
 	err = pool.QueryRow(ctx,
-		`INSERT INTO wa_accounts (worker_id, label, jid_hash, status, speed)
+		`INSERT INTO wa_accounts (worker_id, label, wa_jid_hash, status, speed)
 		 VALUES ($1, 'Akun Normal 2', 'jid_normal_2', 'terhubung', 'fast') RETURNING id`,
 		workerID,
 	).Scan(&acc2ID)

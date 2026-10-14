@@ -1,8 +1,6 @@
 package web
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -158,12 +156,11 @@ func (s *Server) HandleWorkerAccountInitPOST(w http.ResponseWriter, r *http.Requ
 		label = fmt.Sprintf("WhatsApp %d", countExisting+1)
 		speed = "medium"
 
-		dummyHash := hex.EncodeToString(sha256.New().Sum([]byte(fmt.Sprintf("%d-wa-%d", user.ID, timeNowUnix()))))
 		err := s.DB.Pool.QueryRow(r.Context(),
-			`INSERT INTO wa_accounts (worker_id, label, jid_hash, speed, status)
-			 VALUES ($1, $2, $3, $4, 'menunggu_scan')
+			`INSERT INTO wa_accounts (worker_id, label, speed, status)
+			 VALUES ($1, $2, $3, 'menunggu_scan')
 			 RETURNING id`,
-			user.ID, label, dummyHash, speed,
+			user.ID, label, speed,
 		).Scan(&activeAccountID)
 		if err != nil {
 			json.NewEncoder(w).Encode(map[string]interface{}{

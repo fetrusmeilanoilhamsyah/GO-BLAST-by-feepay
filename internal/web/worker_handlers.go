@@ -15,6 +15,7 @@ import (
 	"goblast/internal/config"
 	"goblast/internal/i18n"
 	"goblast/internal/money"
+	"goblast/internal/timeutil"
 	"goblast/internal/withdraw"
 )
 
@@ -126,20 +127,22 @@ func (s *Server) HandleWorkerHome(w http.ResponseWriter, r *http.Request) {
 
 	var mainBalance int64 = balanceIDR
 
-	// 2. Pendapatan hari ini (upah + referral hari ini)
+	startOfTodayWIB := timeutil.GetJakartaStartOfDay()
+
+	// 2. Pendapatan hari ini (upah + referral hari ini, Asia/Jakarta)
 	var earnedTodayIDR int64
 	_ = s.DB.Pool.QueryRow(ctx, `
 		SELECT COALESCE(SUM(amount), 0)
 		FROM ledger_entries
-		WHERE user_id = $1 AND kind IN ('upah', 'referral') AND currency = 'IDR' AND created_at >= CURRENT_DATE
-	`, user.ID).Scan(&earnedTodayIDR)
+		WHERE user_id = $1 AND kind IN ('upah', 'referral') AND currency = 'IDR' AND created_at >= $2
+	`, user.ID, startOfTodayWIB).Scan(&earnedTodayIDR)
 
 	var earnedTodayUSDT int64
 	_ = s.DB.Pool.QueryRow(ctx, `
 		SELECT COALESCE(SUM(amount), 0)
 		FROM ledger_entries
-		WHERE user_id = $1 AND kind IN ('upah', 'referral') AND currency = 'USDT' AND created_at >= CURRENT_DATE
-	`, user.ID).Scan(&earnedTodayUSDT)
+		WHERE user_id = $1 AND kind IN ('upah', 'referral') AND currency = 'USDT' AND created_at >= $2
+	`, user.ID, startOfTodayWIB).Scan(&earnedTodayUSDT)
 
 	// 3. Total upah terkumpul all-time
 	var totalWageIDR int64
@@ -1547,12 +1550,7 @@ func (s *Server) HandleWorkerAPIStats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	loc, err := time.LoadLocation("Asia/Jakarta")
-	if err != nil {
-		loc = time.FixedZone("Asia/Jakarta", 7*3600)
-	}
-	nowWIB := time.Now().In(loc)
-	startOfTodayWIB := time.Date(nowWIB.Year(), nowWIB.Month(), nowWIB.Day(), 0, 0, 0, 0, loc)
+	startOfTodayWIB := timeutil.GetJakartaStartOfDay()
 
 	var earnedTodayIDR int64
 	_ = s.DB.Pool.QueryRow(ctx, `

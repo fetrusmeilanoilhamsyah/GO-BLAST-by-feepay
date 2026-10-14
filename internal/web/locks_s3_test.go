@@ -240,7 +240,7 @@ func TestLockEngine_StopsEngineAndReason(t *testing.T) {
 	// 1. Setup akun WhatsApp terhubung
 	var accountID int64
 	err := database.Pool.QueryRow(ctx,
-		`INSERT INTO wa_accounts (worker_id, label, jid_hash, speed, status)
+		`INSERT INTO wa_accounts (worker_id, label, wa_jid_hash, speed, status)
 		 VALUES ($1, 'WA S3 Engine', $2, 'medium', 'terhubung')
 		 RETURNING id`,
 		workerID, fmt.Sprintf("jid_s3_%d", time.Now().UnixNano()),
@@ -492,10 +492,17 @@ func TestHealthChecks_AllNine_OkAndFail(t *testing.T) {
 	if err != nil {
 		t.Fatalf("setup stale batch gagal: %v", err)
 	}
+	var staleAccID int64
 	err = database.Pool.QueryRow(ctx,
-		`INSERT INTO campaign_numbers (campaign_id, batch_id, phone_e164, country_code, status, claimed_at)
-		 VALUES ($1, $2, '6281200000099', '62', 'dikirim', now() - interval '1 hour')
-		 RETURNING id`, cID, bID,
+		`INSERT INTO wa_accounts (worker_id, label, status) VALUES ($1, 'Akun Stale', 'terhubung') RETURNING id`, adminID,
+	).Scan(&staleAccID)
+	if err != nil {
+		t.Fatalf("setup stale wa account gagal: %v", err)
+	}
+	err = database.Pool.QueryRow(ctx,
+		`INSERT INTO campaign_numbers (campaign_id, batch_id, phone_e164, country_code, status, claimed_account_id, claimed_at)
+		 VALUES ($1, $2, '6281200000099', '62', 'dikirim', $3, now() - interval '1 hour')
+		 RETURNING id`, cID, bID, staleAccID,
 	).Scan(&staleNumID)
 	if err != nil {
 		t.Fatalf("setup stale num gagal: %v", err)
@@ -514,6 +521,7 @@ func TestHealthChecks_AllNine_OkAndFail(t *testing.T) {
 	}
 	// Bersihkan data rusak
 	_, _ = database.Pool.Exec(ctx, "DELETE FROM campaign_numbers WHERE id = $1", staleNumID)
+	_, _ = database.Pool.Exec(ctx, "DELETE FROM wa_accounts WHERE id = $1", staleAccID)
 
 	// ==================== KEADAAN GAGAL 2: Rekonsiliasi Buku Besar (Saldo Negatif) ====================
 	// Buat saldo negatif sengaja via kind 'koreksi'

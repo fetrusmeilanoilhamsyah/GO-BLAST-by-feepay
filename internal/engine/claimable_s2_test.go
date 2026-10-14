@@ -138,7 +138,7 @@ func TestClaimableCount_ThreeCampaignsAndEngineClaim(t *testing.T) {
 	// 5. Inisialisasi Engine dan akun worker
 	var accountID int64
 	err = pool.QueryRow(ctx,
-		`INSERT INTO wa_accounts (worker_id, label, jid_hash, status)
+		`INSERT INTO wa_accounts (worker_id, label, wa_jid_hash, status)
 		 VALUES ($1, 'WA Worker S2', 'hash_s2', 'terhubung')
 		 RETURNING id`,
 		userID,

@@ -20,6 +20,7 @@ import (
 	"goblast/internal/config"
 	"goblast/internal/i18n"
 	"goblast/internal/money"
+	"goblast/internal/timeutil"
 	"goblast/internal/withdraw"
 )
 
@@ -120,12 +121,7 @@ func (s *Server) HandleAdminAPIStats(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) fetchDashboardData(ctx context.Context) (*DashboardData, error) {
-	loc, err := time.LoadLocation("Asia/Jakarta")
-	if err != nil {
-		loc = time.FixedZone("Asia/Jakarta", 7*3600)
-	}
-	nowWIB := time.Now().In(loc)
-	startOfTodayWIB := time.Date(nowWIB.Year(), nowWIB.Month(), nowWIB.Day(), 0, 0, 0, 0, loc)
+	startOfTodayWIB := timeutil.GetJakartaStartOfDay()
 
 	// 1. Overall counts
 	overall := map[string]int{
@@ -576,10 +572,7 @@ func (s *Server) readSettingsFromDB(ctx context.Context) (*SettingsViewData, err
 	}
 	if data.RateIDRtoUSDTUpdatedAt != "" {
 		if t, err := time.Parse(time.RFC3339, data.RateIDRtoUSDTUpdatedAt); err == nil {
-			loc, _ := time.LoadLocation("Asia/Jakarta")
-			if loc != nil {
-				t = t.In(loc)
-			}
+			t = t.In(timeutil.JakartaLocation())
 			data.RateIDRtoUSDTUpdatedAt = t.Format("02 Jan 2006 15:04 WIB")
 		}
 	}

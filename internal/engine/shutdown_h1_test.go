@@ -74,7 +74,7 @@ func TestEngineShutdown_FiveAccounts(t *testing.T) {
 	accIDs := make([]int64, 5)
 	for i := 0; i < 5; i++ {
 		err = pool.QueryRow(ctx,
-			`INSERT INTO wa_accounts (worker_id, label, jid_hash, status, speed)
+			`INSERT INTO wa_accounts (worker_id, label, wa_jid_hash, status, speed)
 			 VALUES ($1, $2, $3, 'terhubung', 'fast') RETURNING id`,
 			workerID, fmt.Sprintf("Akun Shutdown %d", i+1), fmt.Sprintf("jid_shut_%d_%d", i+1, time.Now().UnixNano()),
 		).Scan(&accIDs[i])

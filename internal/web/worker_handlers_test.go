@@ -136,13 +136,13 @@ func TestWorkerPanelFlows(t *testing.T) {
 	t.Run("HandleWorkerAccounts rendering", func(t *testing.T) {
 		// insert test accounts with different status
 		var acc1, acc2, acc3 int64
-		if err := pool.QueryRow(context.Background(), `INSERT INTO wa_accounts (worker_id, label, jid_hash, speed, status) VALUES ($1, 'WA Scan', 'h1', 'medium', 'menunggu_scan') RETURNING id`, workerID).Scan(&acc1); err != nil {
+		if err := pool.QueryRow(context.Background(), `INSERT INTO wa_accounts (worker_id, label, wa_jid_hash, speed, status) VALUES ($1, 'WA Scan', 'h1', 'medium', 'menunggu_scan') RETURNING id`, workerID).Scan(&acc1); err != nil {
 			t.Fatalf("insert acc1 failed: %v", err)
 		}
-		if err := pool.QueryRow(context.Background(), `INSERT INTO wa_accounts (worker_id, label, jid_hash, speed, status) VALUES ($1, 'WA Terhubung', 'h2', 'medium', 'terhubung') RETURNING id`, workerID).Scan(&acc2); err != nil {
+		if err := pool.QueryRow(context.Background(), `INSERT INTO wa_accounts (worker_id, label, wa_jid_hash, speed, status) VALUES ($1, 'WA Terhubung', 'h2', 'medium', 'terhubung') RETURNING id`, workerID).Scan(&acc2); err != nil {
 			t.Fatalf("insert acc2 failed: %v", err)
 		}
-		if err := pool.QueryRow(context.Background(), `INSERT INTO wa_accounts (worker_id, label, jid_hash, speed, status) VALUES ($1, 'WA Terputus', 'h3', 'medium', 'terputus') RETURNING id`, workerID).Scan(&acc3); err != nil {
+		if err := pool.QueryRow(context.Background(), `INSERT INTO wa_accounts (worker_id, label, wa_jid_hash, speed, status) VALUES ($1, 'WA Terputus', 'h3', 'medium', 'terputus') RETURNING id`, workerID).Scan(&acc3); err != nil {
 			t.Fatalf("insert acc3 failed: %v", err)
 		}
 
@@ -613,7 +613,7 @@ func TestWorkerPanelFlows(t *testing.T) {
 		// 1. Buat akun milik Worker A (workerID) dengan status 'terhubung'
 		var accAID int64
 		err = pool.QueryRow(context.Background(), `
-			INSERT INTO wa_accounts (worker_id, label, jid_hash, speed, status)
+			INSERT INTO wa_accounts (worker_id, label, wa_jid_hash, speed, status)
 			VALUES ($1, 'Akun Kerja A', 'hash_work_a', 'medium', 'terhubung')
 			RETURNING id
 		`, workerID).Scan(&accAID)
@@ -624,7 +624,7 @@ func TestWorkerPanelFlows(t *testing.T) {
 		// 2. Buat akun milik Worker A dengan status 'menunggu_scan' (tidak terhubung)
 		var accDisconnectedID int64
 		err = pool.QueryRow(context.Background(), `
-			INSERT INTO wa_accounts (worker_id, label, jid_hash, speed, status)
+			INSERT INTO wa_accounts (worker_id, label, wa_jid_hash, speed, status)
 			VALUES ($1, 'Akun Putus A', 'hash_work_putus', 'medium', 'menunggu_scan')
 			RETURNING id
 		`, workerID).Scan(&accDisconnectedID)
@@ -1102,7 +1102,7 @@ func TestWorkerPanelFlows(t *testing.T) {
 			INSERT INTO ledger_entries (user_id, kind, amount, currency, note)
 			VALUES 
 			($1, 'upah', 25000, 'IDR', 'Upah blast tes'),
-			($1, 'referral', 5000, 'IDR', 'Bonus referral tes'),
+			($1, 'upah', 5000, 'IDR', 'Bonus upah tes'),
 			($1, 'koreksi', 2000000, 'USDT', 'Hasil konversi ke USDT'),
 			($1, 'penarikan', -10000, 'IDR', 'Penarikan BCA tes')
 		`, workerID); err != nil {

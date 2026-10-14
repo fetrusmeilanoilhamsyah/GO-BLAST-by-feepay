@@ -433,13 +433,39 @@ func TestAdminWalletBalanceEqualsTopupMinusWages(t *testing.T) {
 	}
 
 	// 2. Worker earns upah IDR 50 + IDR 50 + referral IDR 10 = IDR 110
+	var cID, bID, numID int64
+	err = pool.QueryRow(context.Background(),
+		`INSERT INTO campaigns (name, status, button_mode, body, elements, created_by)
+		 VALUES ('Camp Ref', 'berjalan', 'kartu_link', 'Halo', '{}', $1) RETURNING id`,
+		adminID,
+	).Scan(&cID)
+	if err != nil {
+		t.Fatalf("Failed to create campaign for referral: %v", err)
+	}
+	err = pool.QueryRow(context.Background(),
+		`INSERT INTO number_batches (campaign_id, filename, uploaded_by, total, accepted)
+		 VALUES ($1, 'ref.csv', $2, 1, 1) RETURNING id`,
+		cID, adminID,
+	).Scan(&bID)
+	if err != nil {
+		t.Fatalf("Failed to create batch for referral: %v", err)
+	}
+	err = pool.QueryRow(context.Background(),
+		`INSERT INTO campaign_numbers (campaign_id, batch_id, phone_e164, country_code, status)
+		 VALUES ($1, $2, '62899991111', '62', 'terkirim') RETURNING id`,
+		cID, bID,
+	).Scan(&numID)
+	if err != nil {
+		t.Fatalf("Failed to create number for referral: %v", err)
+	}
+
 	_, err = pool.Exec(context.Background(), `
-		INSERT INTO ledger_entries (user_id, kind, currency, amount, rate_snapshot, note)
+		INSERT INTO ledger_entries (user_id, kind, currency, amount, rate_snapshot, campaign_number_id, source_user_id, note)
 		VALUES 
-			($1, 'upah', 'IDR', 50, 50, 'upah 1'),
-			($1, 'upah', 'IDR', 50, 50, 'upah 2'),
-			($1, 'referral', 'IDR', 10, 10, 'bonus ref')
-	`, workerID)
+			($1, 'upah', 'IDR', 50, 50, NULL, NULL, 'upah 1'),
+			($1, 'upah', 'IDR', 50, 50, NULL, NULL, 'upah 2'),
+			($1, 'referral', 'IDR', 10, 10, $2, $1, 'bonus ref')
+	`, workerID, numID)
 	if err != nil {
 		t.Fatalf("Failed to insert ledger entries: %v", err)
 	}
@@ -510,7 +536,7 @@ func TestDisableWorkerStopsAccountAndClearsWebSessions(t *testing.T) {
 	// Create 2 WhatsApp accounts for worker
 	var acc1, acc2 int64
 	err := pool.QueryRow(context.Background(), `
-		INSERT INTO wa_accounts (worker_id, label, jid_hash, status)
+		INSERT INTO wa_accounts (worker_id, label, wa_jid_hash, status)
 		VALUES ($1, 'Account 1', 'hash1', 'terhubung')
 		RETURNING id
 	`, workerID).Scan(&acc1)
@@ -519,7 +545,7 @@ func TestDisableWorkerStopsAccountAndClearsWebSessions(t *testing.T) {
 	}
 
 	err = pool.QueryRow(context.Background(), `
-		INSERT INTO wa_accounts (worker_id, label, jid_hash, status)
+		INSERT INTO wa_accounts (worker_id, label, wa_jid_hash, status)
 		VALUES ($1, 'Account 2', 'hash2', 'terhubung')
 		RETURNING id
 	`, workerID).Scan(&acc2)
@@ -1367,7 +1393,7 @@ func TestAdminWorkerDetailAndResetPassword(t *testing.T) {
 
 	// Add WA account
 	_, _ = pool.Exec(ctx, `
-		INSERT INTO wa_accounts (worker_id, label, jid_hash, speed, status)
+		INSERT INTO wa_accounts (worker_id, label, wa_jid_hash, speed, status)
 		VALUES ($1, 'Akun WA Tes', 'jidhash123', 'medium', 'terhubung')
 	`, workerID)
 
