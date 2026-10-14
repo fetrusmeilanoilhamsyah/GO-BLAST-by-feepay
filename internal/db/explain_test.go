@@ -177,8 +177,8 @@ func TestExplain_CampaignNumbersIndexes(t *testing.T) {
 		if strings.Contains(planText, "Seq Scan on campaign_numbers") {
 			t.Errorf("Query pembersih memakai Seq Scan! Harusnya memakai indeks. Plan:\n%s", planText)
 		}
-		if !strings.Contains(planText, "idx_campaign_numbers_claimed_at_stale") {
-			t.Errorf("Query pembersih tidak memakai idx_campaign_numbers_claimed_at_stale! Plan:\n%s", planText)
+		if !strings.Contains(planText, "idx_campaign_numbers_claimed_at_stale") && !strings.Contains(planText, "idx_campaign_numbers_claimed_account_release") {
+			t.Errorf("Query pembersih tidak memakai indeks parsial! Plan:\n%s", planText)
 		}
 	})
 }

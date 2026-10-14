@@ -44,6 +44,18 @@ func RootDir(t testing.TB) string {
 	return ""
 }
 
+// TestDBURL memuat .env dan mengembalikan TEST_DATABASE_URL yang valid.
+func TestDBURL(t testing.TB) string {
+	t.Helper()
+	root := RootDir(t)
+	_ = godotenv.Load(filepath.Join(root, ".env"))
+	testDSN := strings.TrimSpace(os.Getenv("TEST_DATABASE_URL"))
+	if testDSN == "" {
+		t.Fatal("TEST_DATABASE_URL kosong. Harap atur TEST_DATABASE_URL dengan nama database berakhiran '_test'.")
+	}
+	return testDSN
+}
+
 // TestDB memuat .env dari root, membaca TEST_DATABASE_URL, memvalidasi nama database
 // berakhiran "_test" dan tidak sama dengan DATABASE_URL, menjalankan migrasi goose bila belum,
 // serta mengembalikan pgxpool.Pool yang otomatis ditutup saat tes selesai.

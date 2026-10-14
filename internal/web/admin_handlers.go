@@ -10,6 +10,7 @@ import (
 	"math"
 	"net/http"
 	"net/url"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -18,6 +19,7 @@ import (
 	"goblast/internal/auth"
 	"goblast/internal/campaign"
 	"goblast/internal/config"
+	"goblast/internal/engine"
 	"goblast/internal/i18n"
 	"goblast/internal/money"
 	"goblast/internal/timeutil"
@@ -118,6 +120,61 @@ func (s *Server) HandleAdminAPIStats(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(data)
+}
+
+// HandleAdminAPIMetrics menyajikan GET /admin/api/metrics (JSON, khusus admin).
+// Menyajikan metrik atomik engine, metrik pgx connection pool, dan runtime MemStats.
+func (s *Server) HandleAdminAPIMetrics(w http.ResponseWriter, r *http.Request) {
+	var engStats engine.EngineStats
+	if s.Engine != nil {
+		engStats = s.Engine.Stats()
+	}
+
+	type dbStatsJSON struct {
+		AcquireCount         int64 `json:"acquire_count"`
+		AcquiredConns        int32 `json:"acquired_conns"`
+		CanceledAcquireCount int64 `json:"canceled_acquire_count"`
+		ConstructingConns    int32 `json:"constructing_conns"`
+		EmptyAcquireCount    int64 `json:"empty_acquire_count"`
+		IdleConns            int32 `json:"idle_conns"`
+		MaxConns             int32 `json:"max_conns"`
+		TotalConns           int32 `json:"total_conns"`
+	}
+
+	var dbJSON dbStatsJSON
+	if s.DB != nil && s.DB.Pool != nil {
+		stat := s.DB.Pool.Stat()
+		if stat != nil {
+			dbJSON = dbStatsJSON{
+				AcquireCount:         stat.AcquireCount(),
+				AcquiredConns:        stat.AcquiredConns(),
+				CanceledAcquireCount: stat.CanceledAcquireCount(),
+				ConstructingConns:    stat.ConstructingConns(),
+				EmptyAcquireCount:    stat.EmptyAcquireCount(),
+				IdleConns:            stat.IdleConns(),
+				MaxConns:             stat.MaxConns(),
+				TotalConns:           stat.TotalConns(),
+			}
+		}
+	}
+
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+
+	resp := map[string]any{
+		"engine": engStats,
+		"db":     dbJSON,
+		"memory": map[string]any{
+			"alloc_bytes":       m.Alloc,
+			"total_alloc_bytes": m.TotalAlloc,
+			"sys_bytes":         m.Sys,
+			"num_gc":            m.NumGC,
+			"num_goroutine":     runtime.NumGoroutine(),
+		},
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(resp)
 }
 
 func (s *Server) fetchDashboardData(ctx context.Context) (*DashboardData, error) {

@@ -343,18 +343,19 @@ func TestSessionDisconnectReturnsNumbers(t *testing.T) {
 	settings := newTestSettings()
 	eng := engine.New(database, &watest.FakeSender{}, nil, settings)
 
-	// Panggil StopAccount (mensimulasikan sesi diputus)
+	// Panggil StopAccount dari luar (mensimulasikan sinyal henti dari UI/callback)
 	eng.StopAccount(accID)
 
-	// Pastikan semua nomor kembali berstatus 'tersedia'
-	var tersediaCount int
+	// Sesuai Tahap H3 butir 1: Pihak luar TIDAK melepas nomor massal dari status 'dikirim'.
+	// Hanya goroutine pengklaim yang memfinalisasi statusnya.
+	var dikirimCount int
 	_ = pool.QueryRow(ctx,
-		`SELECT COUNT(*) FROM campaign_numbers WHERE claimed_account_id IS NULL AND status = 'tersedia' AND batch_id = $1`,
-		batchID,
-	).Scan(&tersediaCount)
+		`SELECT COUNT(*) FROM campaign_numbers WHERE claimed_account_id = $1 AND status = 'dikirim' AND batch_id = $2`,
+		accID, batchID,
+	).Scan(&dikirimCount)
 
-	if tersediaCount != 3 {
-		t.Fatalf("diharapkan 3 nomor kembali tersedia, didapat %d", tersediaCount)
+	if dikirimCount != 3 {
+		t.Fatalf("diharapkan 3 nomor tetap dimiliki sampai diselesaikan goroutine/cleaner, didapat dikirim: %d", dikirimCount)
 	}
 }
 
@@ -965,15 +966,16 @@ func TestConsecutiveFailuresStopsAccountAndReleasesNumbers(t *testing.T) {
 		t.Fatalf("stop_reason harus sesuai, didapat '%s'", stopReason)
 	}
 
-	// Periksa nomor yang dipegang kembali ke 'tersedia' dan claimed_account_id NULL
+	// Sesuai Tahap H3 butir 1: StopAccountForFailure hanya menghentikan akun di wa_accounts.
+	// Pihak luar tidak melepas nomor massal dari status 'dikirim'.
 	var numStatus string
 	var claimedAcc sql.NullInt64
 	_ = pool.QueryRow(ctx, `SELECT status, claimed_account_id FROM campaign_numbers WHERE id = $1`, numID).Scan(&numStatus, &claimedAcc)
-	if numStatus != "tersedia" {
-		t.Fatalf("nomor yang dipegang harus dikembalikan ke 'tersedia', didapat '%s'", numStatus)
+	if numStatus != "dikirim" {
+		t.Fatalf("nomor yang dipegang tetap berstatus 'dikirim' hingga diselesaikan goroutine/cleaner, didapat '%s'", numStatus)
 	}
-	if claimedAcc.Valid {
-		t.Fatalf("claimed_account_id harus NULL, didapat %d", claimedAcc.Int64)
+	if !claimedAcc.Valid || claimedAcc.Int64 != accID {
+		t.Fatalf("claimed_account_id harus tetap %d, didapat %v", accID, claimedAcc)
 	}
 }
 

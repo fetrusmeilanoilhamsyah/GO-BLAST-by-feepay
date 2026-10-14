@@ -324,6 +324,9 @@
   "admin.maintenance": "Maintenance",
   "maintenance.title": "System Under Maintenance",
   "maintenance.desc": "We are currently performing routine system maintenance for performance optimization and security. Worker services will resume shortly.",
-  "maintenance.refresh_btn": "Reload Page"
+  "maintenance.refresh_btn": "Reload Page",
+  "campaign.requeue_uncertain_btn": "Requeue uncertain numbers",
+  "campaign.requeue_uncertain_warning": "Attention: these numbers may have already received the message when the disruption occurred. Requeueing may send a duplicate message to the recipient. Proceed only if you are certain the message was not delivered.",
+  "campaign.requeue_uncertain_success": "%d uncertain numbers were successfully requeued to available status."
 }
 

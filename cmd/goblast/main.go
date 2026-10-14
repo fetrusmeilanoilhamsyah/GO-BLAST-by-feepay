@@ -65,6 +65,19 @@ func main() {
 
 	eng := engine.New(database, sender, waManager, settingsReader)
 	waManager.SetDisconnectCallback(eng.StopAccount)
+
+	// H3: Pulihkan nomor menggantung saat boot sebelum menerima request (Keputusan A1)
+	bootCtx, bootCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	if recovered, err := eng.RecoverOnBoot(bootCtx); err != nil {
+		slog.Error("Gagal menjalankan RecoverOnBoot saat startup", "err", err)
+	} else if recovered > 0 {
+		slog.Info("RecoverOnBoot berhasil memulihkan nomor menggantung", "count", recovered)
+	}
+	bootCancel()
+
+	// H3: Jalankan background refresher settings, supervisor auto-complete, dan pembersih stale claims
+	eng.StartSettingsRefresher(context.Background())
+	eng.StartSupervisor(context.Background())
 	eng.StartCleaner(context.Background())
 
 	srv, err := web.NewServer(database, cfg.AppEnv, waManager, eng)
@@ -72,6 +85,7 @@ func main() {
 		slog.Error("Failed to initialize server", "err", err)
 		os.Exit(1)
 	}
+	srv.Engine = eng
 	srv.EncryptionKey = cfg.EncryptionKey
 	srv.EncryptionKeyPrev = cfg.EncryptionKeyPrev
 	srv.CSWhatsAppURL = cfg.CSWhatsAppURL
@@ -105,12 +119,16 @@ func main() {
 	<-stopCtx.Done()
 	slog.Info("Menerima sinyal shutdown, memulai penutupan proses secara berurutan...")
 
-	// 1. Tandai draining
+	// 1. Tandai draining pada HTTP layer
 	srv.SetDraining(true)
 
-	// 2. Engine.StopAll yang kini menunggu semua goroutine selesai dengan WaitGroup (batas 20 detik)
-	slog.Info("Menghentikan seluruh worker engine (menunggu hingga 20 detik)...")
-	eng.StopAll()
+	// 2. Engine Drain yang membiarkan kirim in-flight selesai anggun (hingga 20 detik)
+	slog.Info("Menghentikan seluruh worker engine secara anggun (Drain maks 20 detik)...")
+	drainCtx, drainCancel := context.WithTimeout(context.Background(), 20*time.Second)
+	if err := eng.Drain(drainCtx); err != nil {
+		slog.Error("Drain engine selesai dengan catatan", "err", err)
+	}
+	drainCancel()
 
 	// 3. Hentikan server HTTP dengan batas waktu 15 detik
 	slog.Info("Menghentikan HTTP server...")

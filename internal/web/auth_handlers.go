@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 	"net/http"
 	"regexp"
@@ -273,9 +274,18 @@ func (s *Server) handleWorkerHome(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) logAudit(actorID *int64, action, entity, entityID, meta string) {
-	metaJSON := "{}"
-	if meta != "" {
-		metaJSON = `{"note": "` + meta + `"}`
+	var metaJSON []byte
+	if meta == "" {
+		metaJSON = []byte("{}")
+	} else if json.Valid([]byte(meta)) {
+		metaJSON = []byte(meta)
+	} else {
+		b, err := json.Marshal(map[string]string{"note": meta})
+		if err == nil {
+			metaJSON = b
+		} else {
+			metaJSON = []byte("{}")
+		}
 	}
 	_, _ = s.DB.Pool.Exec(context.Background(), `
 		INSERT INTO audit_logs (actor_id, action, entity, entity_id, meta)

@@ -18,6 +18,7 @@ import (
 	"goblast/internal/auth"
 	"goblast/internal/campaign"
 	"goblast/internal/db"
+	"goblast/internal/engine"
 	"goblast/internal/i18n"
 	"goblast/internal/safe"
 	"goblast/internal/wa"
@@ -67,6 +68,7 @@ type Server struct {
 	EncryptionKey      []byte
 	EncryptionKeyPrev  []byte
 	WorkCtrl           WorkController
+	Engine             *engine.Engine
 	CSWhatsAppURL      string
 	CSTelegramURL      string
 	ChannelTelegramURL string
@@ -315,7 +317,7 @@ func NewServer(database *db.DB, env string, waMgr *wa.Manager, workCtrl WorkCont
 		templates["admin_campaign_preview.html"] = previewTmpl
 	}
 
-	return &Server{
+	srv := &Server{
 		DB:                 database,
 		Tmpl:               templates,
 		Env:                env,
@@ -324,7 +326,11 @@ func NewServer(database *db.DB, env string, waMgr *wa.Manager, workCtrl WorkCont
 		CSWhatsAppURL:      "https://wa.me/",
 		CSTelegramURL:      "https://t.me/feepay_cs",
 		ChannelTelegramURL: "https://t.me/goblast_channel",
-	}, nil
+	}
+	if eng, ok := workCtrl.(*engine.Engine); ok {
+		srv.Engine = eng
+	}
+	return srv, nil
 }
 
 // neuteredFileSystem membungkus http.FileSystem untuk menolak directory listing (mengembalikan 404).
@@ -446,6 +452,7 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	// Tahap 12: Admin Dashboard, Settings, Wallet, Workers
 	handle("GET /admin", s.CSRFMiddleware(s.RequireRole(s.HandleAdminHome, "admin")))
 	handle("GET /admin/api/stats", s.RequireRole(s.HandleAdminAPIStats, "admin"))
+	handle("GET /admin/api/metrics", s.RequireRole(s.HandleAdminAPIMetrics, "admin"))
 	handle("GET /admin/settings", s.CSRFMiddleware(s.RequireRole(s.HandleAdminSettingsGET, "admin")))
 	handle("POST /admin/settings", s.CSRFMiddleware(s.RequireRole(s.HandleAdminSettingsPOST, "admin")))
 	handle("GET /admin/wallet", s.CSRFMiddleware(s.RequireRole(s.HandleAdminWalletGET, "admin")))
@@ -484,6 +491,7 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	handle("POST /admin/campaigns/{id}/finish", s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignFinish, "admin")))
 	handle("POST /admin/campaigns/{id}/delete", s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignDelete, "admin")))
 	handle("POST /admin/campaigns/{id}/archive", s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignArchive, "admin")))
+	handle("POST /admin/campaigns/{id}/requeue-uncertain", s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignRequeueUncertain, "admin")))
 	handle("GET /admin/campaigns/{id}/edit", s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignEditGET, "admin")))
 	handle("POST /admin/campaigns/{id}/edit", s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignEditPOST, "admin")))
 	handle("POST /admin/campaigns/preview", s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignPreview, "admin")))

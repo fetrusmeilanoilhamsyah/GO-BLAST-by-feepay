@@ -266,8 +266,6 @@ func (m *Manager) handleEvent(ctx context.Context, accountID, workerID int64, ev
 
 		_, _ = m.db.Pool.Exec(ctx,
 			`UPDATE wa_accounts SET status = 'terputus' WHERE id = $1`, accountID)
-		// Kembalikan nomor yang sedang dikirim ke tersedia
-		m.releaseNumbers(ctx, accountID)
 
 		if cb != nil {
 			cb(accountID)
@@ -280,7 +278,6 @@ func (m *Manager) handleEvent(ctx context.Context, accountID, workerID int64, ev
 		_, _ = m.db.Pool.Exec(ctx,
 			`UPDATE wa_accounts SET status = 'berhenti', stopped_at = now(), stop_reason = 'logged_out' WHERE id = $1`,
 			accountID)
-		m.releaseNumbers(ctx, accountID)
 
 	// Semua event pesan masuk DIABAIKAN — tidak disimpan sesuai aturan privasi
 	case *events.Message:
@@ -309,7 +306,6 @@ func (m *Manager) Disconnect(ctx context.Context, accountID, callerWorkerID int6
 	m.removeSession(accountID)
 	_, _ = m.db.Pool.Exec(ctx,
 		`UPDATE wa_accounts SET status = 'terputus' WHERE id = $1`, accountID)
-	m.releaseNumbers(ctx, accountID)
 	return nil
 }
 
@@ -328,7 +324,6 @@ func (m *Manager) DisconnectAccount(ctx context.Context, accountID int64) error 
 	m.removeSession(accountID)
 	_, _ = m.db.Pool.Exec(ctx,
 		`UPDATE wa_accounts SET status = 'terputus' WHERE id = $1`, accountID)
-	m.releaseNumbers(ctx, accountID)
 	return nil
 }
 
@@ -355,7 +350,6 @@ func (m *Manager) Stop(ctx context.Context, accountID, callerWorkerID int64, rea
 	_, _ = m.db.Pool.Exec(ctx,
 		`UPDATE wa_accounts SET status = 'berhenti', stopped_at = now(), stop_reason = $1 WHERE id = $2`,
 		reason, accountID)
-	m.releaseNumbers(ctx, accountID)
 	return nil
 }
 
@@ -451,16 +445,6 @@ func (m *Manager) checkOwnership(ctx context.Context, accountID, callerWorkerID 
 		return errors.New("akses ditolak: bukan pemilik akun")
 	}
 	return nil
-}
-
-// releaseNumbers mengembalikan nomor berstatus dikirim milik accountID ke tersedia.
-func (m *Manager) releaseNumbers(ctx context.Context, accountID int64) {
-	_, err := m.db.Pool.Exec(ctx,
-		`UPDATE campaign_numbers SET status = 'tersedia', claimed_account_id = NULL, claimed_at = NULL
-		 WHERE status = 'dikirim' AND claimed_account_id = $1`, accountID)
-	if err != nil {
-		slog.Error("wa: gagal melepas nomor", "account_id", accountID, "err", err)
-	}
 }
 
 // --- DBSettingsReader ---
@@ -659,7 +643,6 @@ func (m *Manager) Delete(ctx context.Context, accountID, callerWorkerID int64) e
 		}
 	}
 	m.removeSession(accountID)
-	m.releaseNumbers(ctx, accountID)
 	_, _ = m.db.Pool.Exec(ctx, `UPDATE campaign_numbers SET claimed_account_id = NULL WHERE claimed_account_id = $1`, accountID)
 	_, err := m.db.Pool.Exec(ctx, `DELETE FROM wa_accounts WHERE id = $1`, accountID)
 	return err

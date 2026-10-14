@@ -323,6 +323,9 @@
   "admin.maintenance": "Pemeliharaan",
   "maintenance.title": "Sistem Sedang Dalam Pemeliharaan",
   "maintenance.desc": "Kami sedang melakukan pemeliharaan sistem berkala untuk optimalisasi performa dan keamanan. Layanan pekerja akan segera kembali normal.",
-  "maintenance.refresh_btn": "Muat Ulang Halaman"
+  "maintenance.refresh_btn": "Muat Ulang Halaman",
+  "campaign.requeue_uncertain_btn": "Antrekan ulang nomor hasil tidak pasti",
+  "campaign.requeue_uncertain_warning": "Perhatian: nomor-nomor ini mungkin sudah menerima pesan saat gangguan terjadi. Mengantrekan ulang berpotensi mengirim pesan kedua ke penerima. Lanjutkan hanya jika Anda yakin pesan belum terkirim.",
+  "campaign.requeue_uncertain_success": "%d nomor hasil tidak pasti berhasil dimasukkan kembali ke antrean tersedia."
 }
 

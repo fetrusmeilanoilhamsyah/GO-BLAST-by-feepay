@@ -556,30 +556,39 @@ func (s *Server) HandleAdminCampaignDetail(w http.ResponseWriter, r *http.Reques
 		rows.Close()
 	}
 
+	var uncertainCount int
+	_ = s.DB.Pool.QueryRow(r.Context(), `
+		SELECT COUNT(*) 
+		FROM campaign_numbers 
+		WHERE campaign_id = $1 AND status = 'gagal' AND last_error = 'hasil_tidak_pasti'
+	`, id).Scan(&uncertainCount)
+
 	lang := "id"
 	if u, ok := currentUser(r); ok && u.Language != "" {
 		lang = u.Language
 	}
 
 	data := struct {
-		Lang      string
-		Title     string
-		Theme     string
-		CSRFToken string
-		ActiveNav string
-		Campaign  campaign.Campaign
-		Counts    map[string]int
-		Error     string
-		T         func(string) string
+		Lang           string
+		Title          string
+		Theme          string
+		CSRFToken      string
+		ActiveNav      string
+		Campaign       campaign.Campaign
+		Counts         map[string]int
+		UncertainCount int
+		Error          string
+		T              func(string) string
 	}{
-		Lang:      lang,
-		Title:     c.Name + " - GO BLAST",
-		Theme:     getTheme(r),
-		CSRFToken: getCSRF(r),
-		ActiveNav: "campaigns",
-		Campaign:  c,
-		Counts:    counts,
-		Error:     r.URL.Query().Get("err"),
+		Lang:           lang,
+		Title:          c.Name + " - GO BLAST",
+		Theme:          getTheme(r),
+		CSRFToken:      getCSRF(r),
+		ActiveNav:      "campaigns",
+		Campaign:       c,
+		Counts:         counts,
+		UncertainCount: uncertainCount,
+		Error:          r.URL.Query().Get("err"),
 		T: func(key string) string {
 			return i18n.T(lang, key)
 		},
@@ -861,4 +870,49 @@ func (s *Server) HandleServeUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.ServeFile(w, r, filepath.Join("uploads", filename))
+}
+
+// HandleAdminCampaignRequeueUncertain menangani aksi admin POST /admin/campaigns/{id}/requeue-uncertain (Keputusan H1).
+// Mengubah nomor status gagal dengan last_error hasil_tidak_pasti kembali menjadi tersedia dengan attempts = 0.
+func (s *Server) HandleAdminCampaignRequeueUncertain(w http.ResponseWriter, r *http.Request) {
+	idStr := r.PathValue("id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		http.Error(w, "ID tidak valid", http.StatusBadRequest)
+		return
+	}
+
+	user, ok := currentUser(r)
+	if !ok || user.Role != "admin" {
+		http.Error(w, "Akses ditolak", http.StatusForbidden)
+		return
+	}
+
+	res, err := s.DB.Pool.Exec(r.Context(), `
+		UPDATE campaign_numbers
+		SET status = 'tersedia',
+		    last_error = NULL,
+		    attempts = 0,
+		    claimed_account_id = NULL,
+		    claimed_at = NULL
+		WHERE campaign_id = $1
+		  AND status = 'gagal'
+		  AND last_error = 'hasil_tidak_pasti'
+	`, id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	count := res.RowsAffected()
+
+	// Tulis audit log: admin_id, aksi "campaign_requeue_uncertain", campaign_id, jumlah nomor yang terpengaruh
+	s.logAudit(&user.ID, "campaign_requeue_uncertain", "campaign", strconv.FormatInt(id, 10), fmt.Sprintf(`{"requeued_count":%d}`, count))
+
+	// Beri sinyal ke engine bahwa nomor tersedia bertambah (NotifyCampaignAvailable)
+	if s.Engine != nil {
+		s.Engine.NotifyCampaignAvailable()
+	}
+
+	http.Redirect(w, r, fmt.Sprintf("/admin/campaigns/%d", id), http.StatusSeeOther)
 }

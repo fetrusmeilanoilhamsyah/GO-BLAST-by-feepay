@@ -324,6 +324,9 @@
   "admin.maintenance": "维护与系统",
   "maintenance.title": "系统正在维护中",
   "maintenance.desc": "我们正在进行常规系统维护，以优化系统性能与安全。工单与服务将很快恢复正常。",
-  "maintenance.refresh_btn": "重新加载页面"
+  "maintenance.refresh_btn": "重新加载页面",
+  "campaign.requeue_uncertain_btn": "重新排队不确定结果号码",
+  "campaign.requeue_uncertain_warning": "注意：在发生故障时，这些号码可能已经收到了消息。重新排队可能会向收件人发送重复消息。仅在您确定消息未送达时才继续。",
+  "campaign.requeue_uncertain_success": "%d 个不确定结果的号码已成功重新排入可用队列。"
 }
 
