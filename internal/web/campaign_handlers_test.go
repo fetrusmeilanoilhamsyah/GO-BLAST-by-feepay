@@ -114,8 +114,8 @@ func TestCampaignHandlers(t *testing.T) {
 		}
 	})
 
-	t.Run("Reject tombol_asli in NewPOST, EditPOST, and Preview", func(t *testing.T) {
-		// NewPOST
+	t.Run("Experimental tombol_asli guards in NewPOST, EditPOST, and Preview", func(t *testing.T) {
+		// NewPOST without agreement -> 400
 		bodyNew := new(bytes.Buffer)
 		writerNew := multipart.NewWriter(bodyNew)
 		writerNew.WriteField("name", "Test Tombol Asli")
@@ -127,11 +127,28 @@ func TestCampaignHandlers(t *testing.T) {
 		reqNew.Header.Set("Content-Type", writerNew.FormDataContentType())
 		rrNew := httptest.NewRecorder()
 		withUser(s.HandleAdminCampaignNewPOST)(rrNew, reqNew)
-		if rrNew.Code != http.StatusBadRequest || !bytes.Contains(rrNew.Body.Bytes(), []byte("mode tombol_asli dinonaktifkan")) {
-			t.Errorf("NewPOST expected 400 with 'mode tombol_asli dinonaktifkan', got %d: %s", rrNew.Code, rrNew.Body.String())
+		if rrNew.Code != http.StatusBadRequest || !bytes.Contains(rrNew.Body.Bytes(), []byte("Persetujuan opsi eksperimental")) {
+			t.Errorf("NewPOST expected 400 with 'Persetujuan opsi eksperimental', got %d: %s", rrNew.Code, rrNew.Body.String())
 		}
 
-		// EditPOST
+		// NewPOST with agreement -> 303
+		bodyNewAgree := new(bytes.Buffer)
+		writerNewAgree := multipart.NewWriter(bodyNewAgree)
+		writerNewAgree.WriteField("name", "Test Tombol Asli Valid")
+		writerNewAgree.WriteField("button_mode", "tombol_asli")
+		writerNewAgree.WriteField("agree_experimental_buttons", "1")
+		writerNewAgree.WriteField("body", "Pesan tombol valid")
+		writerNewAgree.Close()
+
+		reqNewAgree := httptest.NewRequest("POST", "/admin/campaigns/new", bodyNewAgree)
+		reqNewAgree.Header.Set("Content-Type", writerNewAgree.FormDataContentType())
+		rrNewAgree := httptest.NewRecorder()
+		withUser(s.HandleAdminCampaignNewPOST)(rrNewAgree, reqNewAgree)
+		if rrNewAgree.Code != http.StatusSeeOther {
+			t.Errorf("NewPOST with agreement expected 303 SeeOther, got %d: %s", rrNewAgree.Code, rrNewAgree.Body.String())
+		}
+
+		// EditPOST without agreement -> 400
 		var campDrafID int64
 		err := pool.QueryRow(context.Background(), "INSERT INTO campaigns (name, status, button_mode, body, elements, created_by) VALUES ('Test Draf', 'draf', 'kartu_link', 'Halo', '{}', $1) RETURNING id", userID).Scan(&campDrafID)
 		if err != nil {
@@ -150,11 +167,11 @@ func TestCampaignHandlers(t *testing.T) {
 		reqEdit.Header.Set("Content-Type", writerEdit.FormDataContentType())
 		rrEdit := httptest.NewRecorder()
 		withUser(s.HandleAdminCampaignEditPOST)(rrEdit, reqEdit)
-		if rrEdit.Code != http.StatusBadRequest || !bytes.Contains(rrEdit.Body.Bytes(), []byte("mode tombol_asli dinonaktifkan")) {
-			t.Errorf("EditPOST expected 400 with 'mode tombol_asli dinonaktifkan', got %d: %s", rrEdit.Code, rrEdit.Body.String())
+		if rrEdit.Code != http.StatusBadRequest || !bytes.Contains(rrEdit.Body.Bytes(), []byte("Persetujuan opsi eksperimental")) {
+			t.Errorf("EditPOST expected 400 with 'Persetujuan opsi eksperimental', got %d: %s", rrEdit.Code, rrEdit.Body.String())
 		}
 
-		// Preview
+		// Preview with tombol_asli -> 200 OK
 		bodyPrev := new(bytes.Buffer)
 		writerPrev := multipart.NewWriter(bodyPrev)
 		writerPrev.WriteField("button_mode", "tombol_asli")
@@ -165,8 +182,8 @@ func TestCampaignHandlers(t *testing.T) {
 		reqPrev.Header.Set("Content-Type", writerPrev.FormDataContentType())
 		rrPrev := httptest.NewRecorder()
 		withUser(s.HandleAdminCampaignPreview)(rrPrev, reqPrev)
-		if rrPrev.Code != http.StatusBadRequest || !bytes.Contains(rrPrev.Body.Bytes(), []byte("mode tombol_asli dinonaktifkan")) {
-			t.Errorf("Preview expected 400 with 'mode tombol_asli dinonaktifkan', got %d: %s", rrPrev.Code, rrPrev.Body.String())
+		if rrPrev.Code != http.StatusOK {
+			t.Errorf("Preview expected 200 OK, got %d: %s", rrPrev.Code, rrPrev.Body.String())
 		}
 	})
 

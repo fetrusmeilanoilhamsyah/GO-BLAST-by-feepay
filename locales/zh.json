@@ -36,7 +36,7 @@
   "campaign.field_name": "活动名称",
   "campaign.field_mode": "消息模式",
   "campaign.mode_card_link_desc": "链接卡片（标题、描述、域名在安卓和苹果上显示）",
-  "campaign.mode_native_btn_desc": "原生按钮（暂不支持：测试中未在接收手机上显示）",
+  "campaign.mode_native_btn_desc": "原生按钮（实验性：最多限制20个号码，部分WhatsApp版本可能无法显示 - perlu review penutur asli）",
   "campaign.field_body": "消息文本（最多1000个字符）",
   "campaign.field_image": "图片（可选，最大1MB，JPEG/PNG）",
   "campaign.image_attached": "已附加图片",
@@ -340,6 +340,14 @@
   "maintenance.refresh_btn": "重新加载页面",
   "campaign.requeue_uncertain_btn": "重新排队不确定结果号码",
   "campaign.requeue_uncertain_warning": "注意：在发生故障时，这些号码可能已经收到了消息。重新排队可能会向收件人发送重复消息。仅在您确定消息未送达时才继续。",
-  "campaign.requeue_uncertain_success": "%d 个不确定结果的号码已成功重新排入可用队列。"
+  "campaign.requeue_uncertain_success": "%d 个不确定结果的号码已成功重新排入可用队列。",
+  "campaign.native_warning_title": "实验模式警告：原生按钮 (Native Flow) (perlu review penutur asli)",
+  "campaign.native_warning_body": "原生按钮模式使用 WhatsApp 内置的交互式消息协议。根据测试，此按钮在某些旧版或特定版本的 WhatsApp 上可能无法正常渲染，并且每个活动严格限制最多 20 个收件人以降低封号风险 (perlu review penutur asli)。",
+  "campaign.native_agree_label": "我了解并同意使用实验性原生按钮模式的风险（最多 20 位收件人） (perlu review penutur asli)。",
+  "campaign.native_must_agree": "在保存包含实验性原生按钮模式的活动之前，您必须勾选风险确认 (perlu review penutur asli)。",
+  "campaign.export_remaining_numbers": "导出剩余号码 (perlu review penutur asli)",
+  "campaign.variable_warnings_title": "消息变量警告 (perlu review penutur asli)",
+  "campaign.variable_warnings_hint": "没有变量数据的号码将使用备用文本（如有）发送或留空 (perlu review penutur asli)。",
+  "numbers.variable_warnings_title": "模板变量警告 (perlu review penutur asli)"
 }
 

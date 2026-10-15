@@ -101,3 +101,26 @@ Kartu 480px terkirim. ID: ...
 | 480 px | diisi agen saat run | diisi pemilik | diisi pemilik |
 
 > **Instruksi pengisian**: Kirim tiga pesan itu ke HP cadangan Anda. Amati apakah thumbnail gambar muncul di chat. Isi kolom "Tampil" dengan Ya / Tidak / Sebagian. Hasilnya akan dipakai untuk menetapkan `ThumbnailSpec` di `DOC_KONSEP` bagian 8.
+
+## 5. Prosedur Uji Ulang Tombol Asli (NativeFlow Interactive Message)
+
+Dalam Tahap H7 (Keputusan P), mode tombol asli dibuka kembali sebagai fitur eksperimental dengan perlindungan pengaman ketat (maksimal 20 nomor per campaign, peringatan sadar risiko, dan pencatatan audit log). Tim atau pemilik dapat memverifikasi ulang kompatibilitas tombol asli di masa depan menggunakan prosedur berikut:
+
+### Persiapan
+1. Pastikan database spike atau sesi whatsmeow telah terhubung (`go run . pair-code <nomor>` atau `pair-qr`).
+2. Siapkan perangkat penerima uji coba (misalnya Android dan iPhone dengan versi aplikasi WhatsApp terkini).
+3. Gunakan nomor uji coba (bukan nomor produksi).
+
+### Perintah Uji
+Jalankan pengujian dari direktori `spike/`:
+```bash
+cd spike
+go run . send-buttons <nomor_tujuan_e164>
+```
+
+### Parameter yang Diamati
+1. **Penerimaan Pesan**: Apakah balon pesan masuk ke obrolan penerima.
+2. **Visibilitas Tombol**: Apakah tombol interaktif (`NativeFlowMessage`) muncul di layar chat, ataukah pesan tampil tanpa tombol / tersembunyi pada versi WhatsApp tertentu.
+3. **Fungsionalitas Tombol**: Apakah aksi tombol (URL, dial telepon, atau copy promo) merespons sentuhan pengguna.
+4. **Kestabilan Sesi**: Pastikan sesi pengirim tidak mengalami `LoggedOut`. (Catatan: Protobuf usang `TemplateMessage` dilarang keras karena memicu pemutusan sesi instan; implementasi harus menggunakan `InteractiveMessage.NativeFlowMessage`).
+

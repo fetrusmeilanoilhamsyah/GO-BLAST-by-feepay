@@ -29,15 +29,14 @@ func TestValidateTemplate(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "Reject tombol_asli",
+			name: "Accept tombol_asli (Keputusan P)",
 			body: "Promo FEEPAY hari ini",
 			mode: ModeTombolAsli,
 			elements: Elements{
 				CSActive: true,
 				CSNumber: "6281234567890",
 			},
-			wantErr: true,
-			errMsg:  "mode tombol_asli dinonaktifkan",
+			wantErr: false,
 		},
 		{
 			name: "Missing FEEPAY (valid)",

@@ -86,3 +86,49 @@ func GetCampaignStats(ctx context.Context, q RowsQueryer) ([]CampaignStatRow, er
 	return campaigns, cRows.Err()
 }
 
+// HasAvailableVariableData memeriksa apakah ada nomor berstatus tersedia yang memiliki nilai untuk variabel tertentu.
+func HasAvailableVariableData(ctx context.Context, q Queryer, campaignID int64, normKey string) (bool, error) {
+	var count int
+	var query string
+	if normKey == "nama" || normKey == "name" {
+		query = "SELECT COUNT(*) FROM campaign_numbers WHERE campaign_id = $1 AND status = 'tersedia' AND (recipient_name IS NOT NULL AND recipient_name != '')"
+		err := q.QueryRow(ctx, query, campaignID).Scan(&count)
+		return count > 0, err
+	}
+	query = "SELECT COUNT(*) FROM campaign_numbers WHERE campaign_id = $1 AND status = 'tersedia' AND (custom_data ? $2)"
+	err := q.QueryRow(ctx, query, campaignID, normKey).Scan(&count)
+	return count > 0, err
+}
+
+// GetAvailableCustomKeys mengambil seluruh kunci custom_data yang ada pada nomor tersedia sebuah kampanye.
+func GetAvailableCustomKeys(ctx context.Context, q RowsQueryer, campaignID int64) ([]string, error) {
+	rows, err := q.Query(ctx, `
+		SELECT DISTINCT jsonb_object_keys(custom_data) 
+		FROM campaign_numbers 
+		WHERE campaign_id = $1 AND status = 'tersedia' AND custom_data IS NOT NULL
+	`, campaignID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var customKeys []string
+	for rows.Next() {
+		var k string
+		if err := rows.Scan(&k); err == nil && k != "" {
+			customKeys = append(customKeys, k)
+		}
+	}
+	return customKeys, rows.Err()
+}
+
+// QueryAvailableExportNumbers mengambil kursor nomor berstatus tersedia untuk ekspor.
+func QueryAvailableExportNumbers(ctx context.Context, q RowsQueryer, campaignID int64) (pgx.Rows, error) {
+	return q.Query(ctx, `
+		SELECT phone_e164, COALESCE(recipient_name, ''), COALESCE(custom_data, '{}'::jsonb) 
+		FROM campaign_numbers 
+		WHERE campaign_id = $1 AND status = 'tersedia' 
+		ORDER BY id ASC
+	`, campaignID)
+}
+

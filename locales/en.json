@@ -36,7 +36,7 @@
   "campaign.field_name": "Campaign Name",
   "campaign.field_mode": "Message Mode",
   "campaign.mode_card_link_desc": "Link Card (title, description, domain appear on Android & iPhone)",
-  "campaign.mode_native_btn_desc": "Native Buttons (unsupported: not visible on recipient phones in testing)",
+  "campaign.mode_native_btn_desc": "Native Buttons (Experimental: limit max 20 numbers, risk of not rendering on certain WhatsApp versions - perlu review penutur asli)",
   "campaign.field_body": "Message Text (max 1000 characters)",
   "campaign.field_image": "Photo (Optional, max 1MB, JPEG/PNG)",
   "campaign.image_attached": "Photo attached",
@@ -340,6 +340,14 @@
   "maintenance.refresh_btn": "Reload Page",
   "campaign.requeue_uncertain_btn": "Requeue uncertain numbers",
   "campaign.requeue_uncertain_warning": "Attention: these numbers may have already received the message when the disruption occurred. Requeueing may send a duplicate message to the recipient. Proceed only if you are certain the message was not delivered.",
-  "campaign.requeue_uncertain_success": "%d uncertain numbers were successfully requeued to available status."
+  "campaign.requeue_uncertain_success": "%d uncertain numbers were successfully requeued to available status.",
+  "campaign.native_warning_title": "Experimental Mode Warning: Native Buttons (Native Flow) (perlu review penutur asli)",
+  "campaign.native_warning_body": "Native buttons mode uses WhatsApp built-in Interactive Messages. Based on spike testing, these buttons might not render on certain/older WhatsApp versions and are strictly limited to 20 recipients per campaign to mitigate sender ban risk (perlu review penutur asli).",
+  "campaign.native_agree_label": "I understand and agree to the risks of using experimental native buttons mode (max 20 recipients) (perlu review penutur asli).",
+  "campaign.native_must_agree": "You must check the risk agreement before saving a campaign with experimental native buttons mode (perlu review penutur asli).",
+  "campaign.export_remaining_numbers": "Export Remaining Numbers (perlu review penutur asli)",
+  "campaign.variable_warnings_title": "Message Variable Warnings (perlu review penutur asli)",
+  "campaign.variable_warnings_hint": "Numbers without variable data will be sent using fallback text (if any) or left blank (perlu review penutur asli).",
+  "numbers.variable_warnings_title": "Template Variable Warnings (perlu review penutur asli)"
 }
 

@@ -9,6 +9,7 @@
             <div style="flex: 1 1 320px; min-width: 0; background-color: var(--color-card); padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px var(--color-shadow); box-sizing: border-box;">
             <form id="campaignForm" method="POST" enctype="multipart/form-data">
                 <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+                {{if .Campaign.ID}}<input type="hidden" name="id" value="{{.Campaign.ID}}">{{end}}
                 
                 <div class="field">
                     <label>{{ call .T "campaign.field_name" }}</label>
@@ -19,8 +20,20 @@
                     <label>{{ call .T "campaign.field_mode" }}</label>
                     <select name="button_mode" id="modeSelect" class="input">
                         <option value="kartu_link" {{if eq .Campaign.ButtonMode "kartu_link"}}selected{{end}}>{{ call .T "campaign.mode_card_link_desc" }}</option>
-                        <option value="tombol_asli" {{if eq .Campaign.ButtonMode "tombol_asli"}}selected{{end}} disabled>{{ call .T "campaign.mode_native_btn_desc" }}</option>
+                        <option value="tombol_asli" {{if eq .Campaign.ButtonMode "tombol_asli"}}selected{{end}}>{{ call .T "campaign.mode_native_btn_desc" }}</option>
                     </select>
+                    <div id="nativeFlowWarning" style="display: {{if eq .Campaign.ButtonMode "tombol_asli"}}block{{else}}none{{end}}; margin-top: 10px; padding: 12px; background-color: var(--color-surface-muted); border: 1px solid var(--color-danger); border-radius: 6px;">
+                        <div style="color: var(--color-danger); font-weight: bold; font-size: 13px; margin-bottom: 6px;">
+                            {{ call .T "campaign.native_warning_title" }}
+                        </div>
+                        <div style="color: var(--color-text); font-size: 12px; line-height: 1.4; margin-bottom: 8px;">
+                            {{ call .T "campaign.native_warning_body" }}
+                        </div>
+                        <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--color-danger); cursor: pointer; font-weight: 600;">
+                            <input type="checkbox" name="agree_experimental_buttons" id="agreeNativeFlow" value="1" {{if eq .Campaign.ButtonMode "tombol_asli"}}checked{{end}}>
+                            {{ call .T "campaign.native_agree_label" }}
+                        </label>
+                    </div>
                 </div>
 
                 <div class="field">
@@ -171,6 +184,27 @@ document.addEventListener('DOMContentLoaded', function() {
             clearTimeout(timeout);
             timeout = setTimeout(loadPreview, 800);
         });
+    });
+
+    const modeSelect = document.getElementById('modeSelect');
+    const nativeFlowWarning = document.getElementById('nativeFlowWarning');
+    const agreeNativeFlow = document.getElementById('agreeNativeFlow');
+
+    function updateModeWarning() {
+        if (modeSelect.value === 'tombol_asli') {
+            nativeFlowWarning.style.display = 'block';
+        } else {
+            nativeFlowWarning.style.display = 'none';
+        }
+    }
+    modeSelect.addEventListener('change', updateModeWarning);
+
+    document.getElementById('campaignForm').addEventListener('submit', function(e) {
+        if (modeSelect.value === 'tombol_asli' && !agreeNativeFlow.checked) {
+            e.preventDefault();
+            alert('{{ call .T "campaign.native_must_agree" }}');
+            agreeNativeFlow.focus();
+        }
     });
 
     // Initial load

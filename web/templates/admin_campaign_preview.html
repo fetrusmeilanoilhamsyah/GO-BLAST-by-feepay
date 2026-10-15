@@ -76,13 +76,23 @@
 </head>
 <body>
     <div class="bubble">
-        {{if .ImagePath}}
+        {{if .ImageURI}}
         <div style="margin-bottom: 8px;">
-            <img src="/{{.ImagePath}}" alt="Attached Image" style="max-width: 100%; max-height: 300px; border-radius: 6px; display: block; object-fit: contain;">
+            <img src="{{.ImageURI}}" alt="Attached Image" style="max-width: 100%; max-height: 300px; border-radius: 6px; display: block; object-fit: contain;">
         </div>
         {{end}}
 
         <div class="text">{{.Text}}</div>
+
+        {{if .ThumbnailURI}}
+        <div style="margin-top: 10px; border: 1px solid var(--wa-buttons-border); border-radius: 6px; overflow: hidden; background-color: var(--wa-input-box-bg);">
+            <img src="{{.ThumbnailURI}}" alt="Thumbnail" style="width: 100%; max-height: 160px; object-fit: cover; display: block;">
+            <div style="padding: 8px 10px;">
+                <div style="font-size: 13px; font-weight: bold; color: var(--wa-bubble-text);">Pratinjau Tautan</div>
+                <div style="font-size: 11px; color: var(--wa-button-text);">Kartu Link (Thumbnail 300px)</div>
+            </div>
+        </div>
+        {{end}}
 
         {{if .Buttons}}
         <div class="buttons">

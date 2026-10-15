@@ -643,11 +643,11 @@ func TestRepeatedRenderFailureStopsAccount(t *testing.T) {
 		t.Fatalf("setup account: %v", err)
 	}
 
-	// Buat campaign dengan template tidak valid (tombol_asli ditolak oleh ValidateTemplate)
+	// Buat campaign dengan template tidak valid (body kosong ditolak oleh ValidateTemplate)
 	var campID, batchID int64
 	err = pool.QueryRow(ctx,
 		`INSERT INTO campaigns (name, status, button_mode, body, elements, created_by)
-		 VALUES ('Camp Corrupt', 'berjalan', 'tombol_asli', 'Halo', '{}', $1) RETURNING id`,
+		 VALUES ('Camp Corrupt', 'berjalan', 'kartu_link', '', '{}', $1) RETURNING id`,
 		workerID,
 	).Scan(&campID)
 	if err != nil {

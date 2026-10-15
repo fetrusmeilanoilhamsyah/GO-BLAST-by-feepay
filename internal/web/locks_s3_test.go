@@ -440,7 +440,7 @@ func TestHealthChecks_AllNine_OkAndFail(t *testing.T) {
 	} else if sCount > wCount {
 		for i := 0; i < int(sCount-wCount); i++ {
 			_, err := database.Pool.Exec(ctx,
-				`INSERT INTO ledger_entries (user_id, amount, currency, kind, description)
+				`INSERT INTO ledger_entries (user_id, amount, currency, kind, note)
 				 VALUES ($1, 100, 'IDR', 'upah', 'sync upah test')`, adminID,
 			)
 			if err != nil {

@@ -109,8 +109,9 @@ type Server struct {
 	WorkerAPIPollingLimiter  *ratelimit.Limiter
 	PublicRouteLimiter       *ratelimit.Limiter
 	StaticRouteLimiter       *ratelimit.Limiter
-	AdminGlobalLimiter       *ratelimit.Limiter
-	AdminTOTPVerifyLimiter   *ratelimit.Limiter
+	AdminGlobalLimiter                *ratelimit.Limiter
+	AdminTOTPVerifyLimiter            *ratelimit.Limiter
+	AdminCampaignExportNumbersLimiter *ratelimit.Limiter
 }
 
 func (s *Server) isProd() bool {
@@ -536,6 +537,14 @@ func NewServer(database *db.DB, env string, waMgr *wa.Manager, workCtrl WorkCont
 			MaxKeys:    config.MaxLimiterKeys,
 			FailClosed: true,
 		}),
+		AdminCampaignExportNumbersLimiter: ratelimit.NewLimiter(ratelimit.Config{
+			Layer:      "admin_campaign_export_numbers",
+			Rate:       rate.Every(config.AdminCampaignExportNumbersWindow / time.Duration(config.AdminCampaignExportNumbersAttempts)),
+			Burst:      config.AdminCampaignExportNumbersAttempts,
+			Window:     config.AdminCampaignExportNumbersWindow,
+			MaxKeys:    config.MaxLimiterKeys,
+			FailClosed: true,
+		}),
 	}
 	if eng, ok := workCtrl.(*engine.Engine); ok {
 		srv.Engine = eng
@@ -777,6 +786,7 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	handle("GET /admin/campaigns/{id}/numbers/upload", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.RequireStepUp(s.HandleAdminCampaignNumbersGET), "admin"))))
 	handle("POST /admin/campaigns/{id}/numbers/preview", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.RequireStepUp(s.HandleAdminCampaignNumbersPreview), "admin"))))
 	handle("POST /admin/campaigns/{id}/numbers/confirm", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.RequireStepUp(s.HandleAdminCampaignNumbersConfirm), "admin"))))
+	handle("GET /admin/campaigns/{id}/numbers/export", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.RequireStepUp(s.HandleAdminCampaignExportNumbers), "admin"))))
 	handle("GET /admin/campaigns/{id}/numbers/rejected/{previewId}", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignNumbersRejected, "admin"))))
 
 	// Tahap 11: Worker Panel

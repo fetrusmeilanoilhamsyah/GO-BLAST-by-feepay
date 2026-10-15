@@ -37,6 +37,19 @@
         </div>
     </div>
 
+    {{if .Stats.VariableWarnings}}
+    <div style="background-color: var(--color-surface-muted); border: 1px solid var(--color-warning); border-radius: 8px; padding: 16px; margin-bottom: 24px;">
+        <div style="font-weight: bold; color: var(--color-warning); margin-bottom: 8px; font-size: 14px;">
+            {{ call .T "numbers.variable_warnings_title" }}
+        </div>
+        <ul style="margin: 0; padding-left: 20px; font-size: 13px; color: var(--color-text);">
+            {{range .Stats.VariableWarnings}}
+            <li style="margin-bottom: 4px;">{{.}}</li>
+            {{end}}
+        </ul>
+    </div>
+    {{end}}
+
     {{if .Stats.CountryCodes}}
     <!-- COUNTRY CODE BREAKDOWN -->
     <div style="background-color: var(--color-card); border-radius: 8px; padding: 20px; margin-bottom: 24px; border: 1px solid var(--color-border);">

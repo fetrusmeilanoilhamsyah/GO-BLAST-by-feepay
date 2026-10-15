@@ -77,11 +77,13 @@ func (b *SendLatencyBucket) Snapshot() map[string]uint64 {
 // Metrics mengumpulkan seluruh metrik pengiriman atomik tanpa dependensi luar.
 type Metrics struct {
 	ClaimedCount    atomic.Uint64
-	SentCount       atomic.Uint64
-	GagalCount      atomic.Uint64
-	PanicCount      atomic.Uint64
-	LostClaimsCount atomic.Uint64
-	BackoffCount    atomic.Uint64
+	SentCount           atomic.Uint64
+	SentCountCardLink   atomic.Uint64
+	SentCountNativeFlow atomic.Uint64
+	GagalCount          atomic.Uint64
+	PanicCount          atomic.Uint64
+	LostClaimsCount     atomic.Uint64
+	BackoffCount        atomic.Uint64
 
 	// Penghitung metrik referral (H6)
 	ReferralPaidCount            atomic.Uint64
@@ -121,6 +123,8 @@ type EngineStats struct {
 	ActiveWorkers             int               `json:"active_workers"`
 	ClaimedCount              uint64            `json:"claimed_count"`
 	SentCount                 uint64            `json:"sent_count"`
+	SentCountCardLink         uint64            `json:"sent_count_card_link"`
+	SentCountNativeFlow       uint64            `json:"sent_count_native_flow"`
 	GagalCount                uint64            `json:"gagal_count"`
 	PanicCount                uint64            `json:"panic_count"`
 	LostClaimsCount           uint64            `json:"lost_claims_count"`
@@ -143,6 +147,8 @@ func (e *Engine) Stats() EngineStats {
 		ActiveWorkers:             active,
 		ClaimedCount:              e.metrics.ClaimedCount.Load(),
 		SentCount:                 e.metrics.SentCount.Load(),
+		SentCountCardLink:         e.metrics.SentCountCardLink.Load(),
+		SentCountNativeFlow:       e.metrics.SentCountNativeFlow.Load(),
 		GagalCount:                e.metrics.GagalCount.Load(),
 		PanicCount:                e.metrics.PanicCount.Load(),
 		LostClaimsCount:           e.metrics.LostClaimsCount.Load(),

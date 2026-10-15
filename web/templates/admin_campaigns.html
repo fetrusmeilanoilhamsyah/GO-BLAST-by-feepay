@@ -41,8 +41,8 @@
                     </td>
                     <td style="padding: 15px;">
                         <div style="display: inline-flex; align-items: center; gap: 6px;">
-                            <span style="padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: bold; color: var(--color-on-primary); background-color: {{if eq .Status "draf"}}var(--color-status-draft){{else if eq .Status "berjalan"}}var(--color-status-running){{else}}var(--color-status-done){{end}};">
-                                {{.Status}}
+                            <span style="padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: bold; color: var(--color-on-primary); background-color: {{if eq .Status "draf"}}{{if .StartedAt}}var(--color-warning){{else}}var(--color-status-draft){{end}}{{else if eq .Status "berjalan"}}var(--color-status-running){{else}}var(--color-status-done){{end}};">
+                                {{if and (eq .Status "draf") .StartedAt}}Dijeda{{else}}{{.Status}}{{end}}
                             </span>
                             {{if .ArchivedAt}}
                             <span style="padding: 2px 8px; border-radius: 12px; font-size: 11px; background-color: var(--color-surface-muted); color: var(--color-muted); border: 1px solid var(--color-border);">
@@ -58,6 +58,14 @@
                             <a href="/admin/campaigns/{{.ID}}" class="link-action" style="color: var(--color-accent);">Detail</a>
                             {{if not .ArchivedAt}}
                                 {{if eq .Status "draf"}}
+                                {{if .StartedAt}}
+                                <form method="POST" action="/admin/campaigns/{{.ID}}/start" style="display: inline; margin: 0;">
+                                    <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                                    <button type="submit" class="btn btn-primary" style="padding: 2px 8px; font-size: 11px; cursor: pointer;">
+                                        Lanjutkan
+                                    </button>
+                                </form>
+                                {{end}}
                                 <a href="/admin/campaigns/{{.ID}}/edit" class="link-action" style="color: var(--color-accent);">{{ call $.T "campaign.action_edit" }}</a>
                                 <a href="/admin/campaigns/{{.ID}}/numbers" class="link-action" style="color: var(--color-warning);">{{ call $.T "campaign.action_numbers" }}</a>
                                 {{else}}
@@ -112,8 +120,8 @@
                     <div class="admin-card-sub">#{{.ID}} &bull; {{.CreatedAt.Format "02 Jan 06 15:04"}}</div>
                 </div>
                 <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 4px;">
-                    <span style="padding: 3px 8px; border-radius: 12px; font-size: 11px; font-weight: bold; color: var(--color-on-primary); background-color: {{if eq .Status "draf"}}var(--color-status-draft){{else if eq .Status "berjalan"}}var(--color-status-running){{else}}var(--color-status-done){{end}};">
-                        {{.Status}}
+                    <span style="padding: 3px 8px; border-radius: 12px; font-size: 11px; font-weight: bold; color: var(--color-on-primary); background-color: {{if eq .Status "draf"}}{{if .StartedAt}}var(--color-warning){{else}}var(--color-status-draft){{end}}{{else if eq .Status "berjalan"}}var(--color-status-running){{else}}var(--color-status-done){{end}};">
+                        {{if and (eq .Status "draf") .StartedAt}}Dijeda{{else}}{{.Status}}{{end}}
                     </span>
                     {{if .ArchivedAt}}
                     <span style="padding: 2px 6px; border-radius: 10px; font-size: 10px; background-color: var(--color-surface-muted); color: var(--color-muted); border: 1px solid var(--color-border);">
@@ -134,6 +142,12 @@
                 <a href="/admin/campaigns/{{.ID}}" class="btn btn-secondary" style="flex: 1; padding: 6px 10px; font-size: 12px; text-decoration: none; text-align: center; border-radius: 6px;">Detail</a>
                 {{if not .ArchivedAt}}
                     {{if eq .Status "draf"}}
+                    {{if .StartedAt}}
+                    <form method="POST" action="/admin/campaigns/{{.ID}}/start" style="display: inline; margin: 0; flex: 1;">
+                        <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                        <button type="submit" class="btn btn-primary" style="width: 100%; padding: 6px 10px; font-size: 12px; cursor: pointer; border-radius: 6px;">Lanjutkan</button>
+                    </form>
+                    {{end}}
                     <a href="/admin/campaigns/{{.ID}}/edit" class="btn btn-secondary" style="flex: 1; padding: 6px 10px; font-size: 12px; text-decoration: none; text-align: center; border-radius: 6px;">{{ call $.T "campaign.action_edit" }}</a>
                     <a href="/admin/campaigns/{{.ID}}/numbers" class="btn btn-secondary" style="flex: 1; padding: 6px 10px; font-size: 12px; text-decoration: none; text-align: center; border-radius: 6px; color: var(--color-warning); border-color: var(--color-warning);">{{ call $.T "campaign.action_numbers" }}</a>
                     {{else}}

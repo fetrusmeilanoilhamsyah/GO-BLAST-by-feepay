@@ -12,10 +12,12 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"goblast/internal/config"
 	"goblast/internal/numbers"
 	"goblast/internal/safe"
 )
@@ -26,14 +28,22 @@ func IsValidPreviewID(id string) bool {
 	return previewIDRegex.MatchString(id)
 }
 
+type VariableWarning struct {
+	Variable   string `json:"variable"`
+	EmptyCount int    `json:"empty_count"`
+	TotalCount int    `json:"total_count"`
+	Message    string `json:"message"`
+}
+
 type UploadStats struct {
-	Total         int            `json:"total"`
-	Accepted      int            `json:"accepted"`
-	DupInFile     int            `json:"dup_in_file"`
-	DupInCampaign int            `json:"dup_in_campaign"`
-	Invalid       int            `json:"invalid"`
-	Ambiguous     int            `json:"ambiguous"`
-	CountryCodes  map[string]int `json:"country_codes"`
+	Total            int               `json:"total"`
+	Accepted         int               `json:"accepted"`
+	DupInFile        int               `json:"dup_in_file"`
+	DupInCampaign    int               `json:"dup_in_campaign"`
+	Invalid          int               `json:"invalid"`
+	Ambiguous        int               `json:"ambiguous"`
+	CountryCodes     map[string]int    `json:"country_codes"`
+	VariableWarnings []VariableWarning `json:"variable_warnings,omitempty"`
 }
 
 type PreviewData struct {
@@ -52,9 +62,9 @@ type RejectedRow struct {
 // ProcessPreview reads the raw uploaded data, normalizes it, checks DB for duplicates,
 // generates a preview ID, and saves the rejected list to a CSV file.
 func ProcessPreview(ctx context.Context, db *pgxpool.Pool, campaignID int64, rawData []byte, filename string, defaultCC string) (PreviewData, error) {
-	var status string
+	var status, buttonMode, body string
 	var archivedAt *time.Time
-	err := db.QueryRow(ctx, "SELECT status, archived_at FROM campaigns WHERE id = $1", campaignID).Scan(&status, &archivedAt)
+	err := db.QueryRow(ctx, "SELECT status, button_mode, body, archived_at FROM campaigns WHERE id = $1", campaignID).Scan(&status, &buttonMode, &body, &archivedAt)
 	if err != nil {
 		return PreviewData{}, fmt.Errorf("campaign tidak ditemukan: %w", err)
 	}
@@ -135,6 +145,46 @@ func ProcessPreview(ctx context.Context, db *pgxpool.Pool, campaignID int64, raw
 			Name:       item.Name,
 			CustomData: item.CustomData,
 		})
+	}
+
+	if buttonMode == ModeTombolAsli {
+		totalAfter := len(existing) + stats.Accepted
+		if totalAfter > config.MaxRecipientsNativeFlow {
+			return PreviewData{}, fmt.Errorf("mode tombol asli dibatasi maksimal %d penerima (saat ini: %d, setelah unggah: %d)", config.MaxRecipientsNativeFlow, len(existing), totalAfter)
+		}
+	}
+
+	tmplVars := FindTemplateVariables(body)
+	for _, v := range tmplVars {
+		emptyCount := 0
+		for _, row := range validNumbers {
+			val := ""
+			switch v {
+			case "nama", "name":
+				if row.Name != "" {
+					val = row.Name
+				} else if row.CustomData != nil {
+					val = row.CustomData["nama"]
+				}
+			case "phone", "nomor":
+				val = row.Phone
+			default:
+				if row.CustomData != nil {
+					val = row.CustomData[v]
+				}
+			}
+			if strings.TrimSpace(val) == "" {
+				emptyCount++
+			}
+		}
+		if emptyCount > 0 {
+			stats.VariableWarnings = append(stats.VariableWarnings, VariableWarning{
+				Variable:   "{" + v + "}",
+				EmptyCount: emptyCount,
+				TotalCount: len(validNumbers),
+				Message:    fmt.Sprintf("Catatan: %d nomor tidak memiliki nilai untuk {%s}, akan memakai nilai default atau dikosongkan.", emptyCount, v),
+			})
+		}
 	}
 
 	// Generate ID
@@ -247,10 +297,10 @@ func ConfirmUpload(ctx context.Context, db *pgxpool.Pool, campaignID int64, user
 		return fmt.Errorf("gagal mengatur timeout lokal: %w", err)
 	}
 
-	// Check campaign status
-	var status string
+	// Check campaign status and button_mode
+	var status, buttonMode string
 	var archivedAt *time.Time
-	err = tx.QueryRow(ctx, "SELECT status, archived_at FROM campaigns WHERE id = $1 FOR UPDATE", campaignID).Scan(&status, &archivedAt)
+	err = tx.QueryRow(ctx, "SELECT status, button_mode, archived_at FROM campaigns WHERE id = $1 FOR UPDATE", campaignID).Scan(&status, &buttonMode, &archivedAt)
 	if err != nil {
 		return fmt.Errorf("campaign tidak ditemukan")
 	}
@@ -259,6 +309,14 @@ func ConfirmUpload(ctx context.Context, db *pgxpool.Pool, campaignID int64, user
 	}
 	if status != "draf" && status != "berjalan" {
 		return fmt.Errorf("nomor hanya bisa ditambahkan ke campaign draf atau berjalan")
+	}
+
+	if buttonMode == ModeTombolAsli {
+		var currentCount int
+		_ = tx.QueryRow(ctx, "SELECT COUNT(*) FROM campaign_numbers WHERE campaign_id = $1", campaignID).Scan(&currentCount)
+		if currentCount+len(validNumbers) > config.MaxRecipientsNativeFlow {
+			return fmt.Errorf("mode tombol asli dibatasi maksimal %d penerima (saat ini: %d, akan ditambah: %d)", config.MaxRecipientsNativeFlow, currentCount, len(validNumbers))
+		}
 	}
 
 	// Insert number_batch

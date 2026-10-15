@@ -35,7 +35,7 @@
   "campaign.field_name": "Nama Campaign",
   "campaign.field_mode": "Mode Pesan",
   "campaign.mode_card_link_desc": "Kartu Link (judul, deskripsi, domain tampil di Android & iPhone)",
-  "campaign.mode_native_btn_desc": "Tombol Asli (belum didukung: tidak tampil di HP penerima pada uji)",
+  "campaign.mode_native_btn_desc": "Tombol Asli (Eksperimental: batas maks 20 nomor, risiko tidak tampil di beberapa versi WhatsApp)",
   "campaign.field_body": "Teks Pesan (max 1000 karakter)",
   "campaign.field_image": "Foto (Opsional, max 1MB, JPEG/PNG)",
   "campaign.image_attached": "Foto terlampir",
@@ -339,6 +339,14 @@
   "maintenance.refresh_btn": "Muat Ulang Halaman",
   "campaign.requeue_uncertain_btn": "Antrekan ulang nomor hasil tidak pasti",
   "campaign.requeue_uncertain_warning": "Perhatian: nomor-nomor ini mungkin sudah menerima pesan saat gangguan terjadi. Mengantrekan ulang berpotensi mengirim pesan kedua ke penerima. Lanjutkan hanya jika Anda yakin pesan belum terkirim.",
-  "campaign.requeue_uncertain_success": "%d nomor hasil tidak pasti berhasil dimasukkan kembali ke antrean tersedia."
+  "campaign.requeue_uncertain_success": "%d nomor hasil tidak pasti berhasil dimasukkan kembali ke antrean tersedia.",
+  "campaign.native_warning_title": "Peringatan Mode Eksperimental: Tombol Asli (Native Flow)",
+  "campaign.native_warning_body": "Mode tombol asli menggunakan protokol Interactive Message bawaan WhatsApp. Berdasarkan pengujian spike, tombol ini berisiko tidak dirender pada perangkat WhatsApp versi lama/tertentu dan dibatasi maksimal 20 nomor per campaign untuk memitigasi risiko pemblokiran nomor pengirim.",
+  "campaign.native_agree_label": "Saya memahami dan menyetujui risiko penggunaan mode tombol asli eksperimental (maks. 20 penerima).",
+  "campaign.native_must_agree": "Anda harus mencentang persetujuan risiko sebelum menyimpan campaign dengan mode tombol asli eksperimental.",
+  "campaign.export_remaining_numbers": "Ekspor Sisa Nomor",
+  "campaign.variable_warnings_title": "Peringatan Variabel Pesan",
+  "campaign.variable_warnings_hint": "Nomor tanpa data variabel akan dikirim menggunakan teks fallback (jika ada) atau dikosongkan.",
+  "numbers.variable_warnings_title": "Peringatan Variabel Template"
 }
 

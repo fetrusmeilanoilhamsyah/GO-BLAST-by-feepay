@@ -306,9 +306,36 @@ func TestH6_AdminWallet_IncludesReferralInSpent(t *testing.T) {
 		testutil.CleanupTestData(pool, []int64{workerID}, nil)
 	}()
 
+	var cID int64
+	err = pool.QueryRow(ctx, "INSERT INTO campaigns (name, status, button_mode, body, elements, created_by) VALUES ('Camp Ref', 'berjalan', 'kartu_link', 'Halo', '{}', $1) RETURNING id", workerID).Scan(&cID)
+	if err != nil {
+		t.Fatalf("insert campaign failed: %v", err)
+	}
+	var bID int64
+	err = pool.QueryRow(ctx, "INSERT INTO number_batches (campaign_id, filename, uploaded_by) VALUES ($1, 'test.csv', $2) RETURNING id", cID, workerID).Scan(&bID)
+	if err != nil {
+		t.Fatalf("insert batch failed: %v", err)
+	}
+	var cnID int64
+	err = pool.QueryRow(ctx, "INSERT INTO campaign_numbers (campaign_id, batch_id, phone_e164, country_code, status) VALUES ($1, $2, '6289912345678', '62', 'terkirim') RETURNING id", cID, bID).Scan(&cnID)
+	if err != nil {
+		t.Fatalf("insert campaign_number failed: %v", err)
+	}
+	defer func() {
+		_, _ = pool.Exec(ctx, "DELETE FROM campaign_numbers WHERE id = $1", cnID)
+		_, _ = pool.Exec(ctx, "DELETE FROM number_batches WHERE id = $1", bID)
+		_, _ = pool.Exec(ctx, "DELETE FROM campaigns WHERE id = $1", cID)
+	}()
+
 	// Masukkan baris upah dan baris referral ke ledger_entries
-	_, _ = pool.Exec(ctx, `INSERT INTO ledger_entries (user_id, kind, currency, amount, note) VALUES ($1, 'upah', 'IDR', 1000, 'test upah')`, workerID)
-	_, _ = pool.Exec(ctx, `INSERT INTO ledger_entries (user_id, kind, currency, amount, note) VALUES ($1, 'referral', 'IDR', 500, 'test referral')`, workerID)
+	_, err = pool.Exec(ctx, `INSERT INTO ledger_entries (user_id, kind, currency, amount, note) VALUES ($1, 'upah', 'IDR', 1000, 'test upah')`, workerID)
+	if err != nil {
+		t.Fatalf("insert upah failed: %v", err)
+	}
+	_, err = pool.Exec(ctx, `INSERT INTO ledger_entries (user_id, kind, currency, amount, campaign_number_id, source_user_id, note) VALUES ($1, 'referral', 'IDR', 500, $2, $3, 'test referral')`, workerID, cnID, workerID)
+	if err != nil {
+		t.Fatalf("insert referral failed: %v", err)
+	}
 
 	wallet, err := srv.fetchWalletData(ctx)
 	if err != nil {

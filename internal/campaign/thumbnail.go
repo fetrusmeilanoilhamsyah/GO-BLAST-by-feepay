@@ -114,3 +114,36 @@ func GenerateThumbnail(imagePath string, targetW int, quality int) ([]byte, erro
 
 	return buf.Bytes(), nil
 }
+
+// GenerateThumbnailFromBytes membuat thumbnail JPEG dari bytes gambar langsung di memori.
+func GenerateThumbnailFromBytes(data []byte, targetW, quality int) ([]byte, error) {
+	if len(data) == 0 {
+		return nil, nil
+	}
+	src, _, err := image.Decode(bytes.NewReader(data))
+	if err != nil {
+		return nil, fmt.Errorf("decode gambar: %w", err)
+	}
+
+	srcBounds := src.Bounds()
+	srcW := srcBounds.Dx()
+	srcH := srcBounds.Dy()
+	if srcW <= 0 || srcH <= 0 {
+		return nil, fmt.Errorf("dimensi gambar tidak valid: %dx%d", srcW, srcH)
+	}
+
+	targetH := targetW * srcH / srcW
+	if targetH < 1 {
+		targetH = 1
+	}
+
+	dst := image.NewRGBA(image.Rect(0, 0, targetW, targetH))
+	draw.BiLinear.Scale(dst, dst.Bounds(), src, src.Bounds(), draw.Over, nil)
+
+	var buf bytes.Buffer
+	if err := jpeg.Encode(&buf, dst, &jpeg.Options{Quality: quality}); err != nil {
+		return nil, fmt.Errorf("encode jpeg: %w", err)
+	}
+
+	return buf.Bytes(), nil
+}

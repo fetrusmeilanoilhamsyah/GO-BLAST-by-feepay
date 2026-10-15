@@ -170,6 +170,7 @@ func splitLineFields(line string) (string, string, map[string]string) {
 			custom[fmt.Sprintf("col%d", i)] = parts[i]
 		}
 		custom["usn"] = parts[2]
+		custom["username"] = parts[2]
 		custom["id"] = parts[2]
 	}
 
@@ -195,6 +196,7 @@ func ReadCSV(data []byte) ([]Item, error) {
 	phoneColIdx := -1
 	nameColIdx := -1
 	usnColIdx := -1
+	idColIdx := -1
 	header := records[0]
 	hasHeader := false
 	for i, h := range header {
@@ -205,14 +207,13 @@ func ReadCSV(data []byte) ([]Item, error) {
 		} else if lowerH == "nama" || lowerH == "name" || lowerH == "full_name" || lowerH == "fullname" || lowerH == "kontak" || lowerH == "contact" || lowerH == "customer" {
 			nameColIdx = i
 			hasHeader = true
-		} else if lowerH == "username" || lowerH == "usn" || lowerH == "id" || lowerH == "user_id" {
+		} else if lowerH == "username" || lowerH == "usn" {
 			usnColIdx = i
 			hasHeader = true
+		} else if lowerH == "id" || lowerH == "user_id" || lowerH == "userid" {
+			idColIdx = i
+			hasHeader = true
 		}
-	}
-
-	if nameColIdx == -1 && usnColIdx != -1 {
-		nameColIdx = usnColIdx
 	}
 
 	startIndex := 0
@@ -249,17 +250,30 @@ func ReadCSV(data []byte) ([]Item, error) {
 						}
 						colName := fmt.Sprintf("col%d", cIdx)
 						if cIdx < len(header) {
-							colName = strings.ToLower(strings.TrimSpace(header[cIdx]))
+							colName = NormalizeCustomKey(header[cIdx])
 						}
 						custom[colName] = tVal
 					}
 				}
 			}
-			if usnColIdx >= 0 && usnColIdx != nameColIdx && usnColIdx < len(row) {
-				if custom == nil {
-					custom = make(map[string]string)
+			if usnColIdx >= 0 && usnColIdx < len(row) {
+				val := strings.TrimSpace(row[usnColIdx])
+				if val != "" {
+					if custom == nil {
+						custom = make(map[string]string)
+					}
+					custom["usn"] = val
+					custom["username"] = val
 				}
-				custom["usn"] = strings.TrimSpace(row[usnColIdx])
+			}
+			if idColIdx >= 0 && idColIdx < len(row) {
+				val := strings.TrimSpace(row[idColIdx])
+				if val != "" {
+					if custom == nil {
+						custom = make(map[string]string)
+					}
+					custom["id"] = val
+				}
 			}
 		} else {
 			if len(row) == 1 {
@@ -353,6 +367,7 @@ func ReadXLSX(data []byte) ([]Item, error) {
 	phoneColIdx := -1
 	nameColIdx := -1
 	usnColIdx := -1
+	idColIdx := -1
 	hasHeader := false
 	header := rows[0]
 	for i, h := range header {
@@ -363,14 +378,13 @@ func ReadXLSX(data []byte) ([]Item, error) {
 		} else if lowerH == "nama" || lowerH == "name" || lowerH == "full_name" || lowerH == "fullname" || lowerH == "kontak" || lowerH == "contact" || lowerH == "customer" {
 			nameColIdx = i
 			hasHeader = true
-		} else if lowerH == "username" || lowerH == "usn" || lowerH == "id" || lowerH == "user_id" {
+		} else if lowerH == "username" || lowerH == "usn" {
 			usnColIdx = i
 			hasHeader = true
+		} else if lowerH == "id" || lowerH == "user_id" || lowerH == "userid" {
+			idColIdx = i
+			hasHeader = true
 		}
-	}
-
-	if nameColIdx == -1 && usnColIdx != -1 {
-		nameColIdx = usnColIdx
 	}
 
 	startIndex := 0
@@ -409,17 +423,30 @@ func ReadXLSX(data []byte) ([]Item, error) {
 						}
 						colName := fmt.Sprintf("col%d", cIdx)
 						if cIdx < len(header) {
-							colName = strings.ToLower(strings.TrimSpace(header[cIdx]))
+							colName = NormalizeCustomKey(header[cIdx])
 						}
 						custom[colName] = tVal
 					}
 				}
 			}
-			if usnColIdx >= 0 && usnColIdx != nameColIdx && usnColIdx < len(row) {
-				if custom == nil {
-					custom = make(map[string]string)
+			if usnColIdx >= 0 && usnColIdx < len(row) {
+				val := strings.TrimSpace(row[usnColIdx])
+				if val != "" {
+					if custom == nil {
+						custom = make(map[string]string)
+					}
+					custom["usn"] = val
+					custom["username"] = val
 				}
-				custom["usn"] = strings.TrimSpace(row[usnColIdx])
+			}
+			if idColIdx >= 0 && idColIdx < len(row) {
+				val := strings.TrimSpace(row[idColIdx])
+				if val != "" {
+					if custom == nil {
+						custom = make(map[string]string)
+					}
+					custom["id"] = val
+				}
 			}
 		} else {
 			if len(row) == 1 {
@@ -466,4 +493,27 @@ func ReadXLSX(data []byte) ([]Item, error) {
 		}
 	}
 	return items, nil
+}
+
+// NormalizeCustomKey menormalisasi nama variabel/kolom menjadi huruf kecil (a-z, 0-9, _)
+// serta memetakan alias umum (usn, username, user -> usn; id, userid, user_id -> id; nama, name -> nama).
+func NormalizeCustomKey(k string) string {
+	k = strings.ToLower(strings.TrimSpace(k))
+	switch k {
+	case "username", "user", "usn":
+		return "usn"
+	case "id", "userid", "user_id":
+		return "id"
+	case "nama", "name":
+		return "nama"
+	}
+	var sb strings.Builder
+	for _, r := range k {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '_' {
+			sb.WriteRune(r)
+		} else {
+			sb.WriteRune('_')
+		}
+	}
+	return strings.Trim(sb.String(), "_")
 }

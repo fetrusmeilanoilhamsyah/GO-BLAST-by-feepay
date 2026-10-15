@@ -2,6 +2,7 @@ package wa
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -10,14 +11,22 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+// Button mendefinisikan tombol interaktif pesan WhatsApp.
+type Button struct {
+	Type    string // "cta_url", "cta_call", "cta_copy", "quick_reply"
+	Text    string // label tombol
+	Payload string // URL, nomor telepon, kode promo, atau ID balasan
+}
+
 // OutMessage adalah pesan yang dikirim ke WhatsApp.
 type OutMessage struct {
 	Text    string
 	Preview *Preview // nil jika tidak ada preview
+	Buttons []Button // daftar tombol jika mode tombol_asli
+	Mode    string   // "kartu_link", "tombol_asli", "teks_biasa"
 }
 
 // Preview untuk mode kartu_link.
-// TODO: konfirmasi ThumbnailSpec setelah uji send-card-thumb (lihat spike/HASIL.md bagian 4)
 // Saat ini: lebar 300px, kualitas 70.
 type Preview struct {
 	Title       string
@@ -37,13 +46,121 @@ type Sender interface {
 	Send(ctx context.Context, accountID int64, phone string, msg OutMessage) (Result, error)
 }
 
+// MessageBuilder menyusun waProto.Message dari wa.OutMessage.
+type MessageBuilder interface {
+	Build(msg OutMessage) (*waProto.Message, error)
+}
+
+// DefaultMessageBuilder implementasi baku MessageBuilder yang mendukung
+// tombol_asli (NativeFlowMessage), kartu_link (ExtendedTextMessage), dan teks_biasa (Conversation).
+// TemplateMessage usang DILARANG KERAS di sini sesuai instruksi anti-blokir WhatsApp.
+type DefaultMessageBuilder struct{}
+
+// Build membangun waProto.Message berdasarkan OutMessage.
+func (b *DefaultMessageBuilder) Build(msg OutMessage) (*waProto.Message, error) {
+	if msg.Mode == "tombol_asli" || len(msg.Buttons) > 0 {
+		if len(msg.Buttons) > 10 {
+			return nil, fmt.Errorf("jumlah tombol melebihi batas maksimal 10 (diberikan: %d)", len(msg.Buttons))
+		}
+
+		protoButtons := make([]*waProto.InteractiveMessage_NativeFlowMessage_NativeFlowButton, 0, len(msg.Buttons))
+		for _, btn := range msg.Buttons {
+			var name string
+			var paramsMap map[string]string
+
+			switch btn.Type {
+			case "cta_url", "url":
+				name = "cta_url"
+				paramsMap = map[string]string{
+					"display_text": btn.Text,
+					"url":          btn.Payload,
+					"merchant_url": btn.Payload,
+				}
+			case "cta_call", "phone":
+				name = "cta_call"
+				paramsMap = map[string]string{
+					"display_text": btn.Text,
+					"phone_number": btn.Payload,
+				}
+			case "cta_copy", "copy":
+				name = "cta_copy"
+				paramsMap = map[string]string{
+					"display_text": btn.Text,
+					"copy_code":    btn.Payload,
+				}
+			case "quick_reply":
+				name = "quick_reply"
+				paramsMap = map[string]string{
+					"display_text": btn.Text,
+					"id":           btn.Payload,
+				}
+			default:
+				return nil, fmt.Errorf("tipe tombol tidak didukung: %s", btn.Type)
+			}
+
+			paramsJSON, err := json.Marshal(paramsMap)
+			if err != nil {
+				return nil, fmt.Errorf("gagal serialize params tombol: %w", err)
+			}
+
+			protoButtons = append(protoButtons, &waProto.InteractiveMessage_NativeFlowMessage_NativeFlowButton{
+				Name:             proto.String(name),
+				ButtonParamsJSON: proto.String(string(paramsJSON)),
+			})
+		}
+
+		interactive := &waProto.InteractiveMessage{
+			Body: &waProto.InteractiveMessage_Body{
+				Text: proto.String(msg.Text),
+			},
+			InteractiveMessage: &waProto.InteractiveMessage_NativeFlowMessage_{
+				NativeFlowMessage: &waProto.InteractiveMessage_NativeFlowMessage{
+					Buttons:        protoButtons,
+					MessageVersion: proto.Int32(1),
+				},
+			},
+		}
+
+		return &waProto.Message{
+			InteractiveMessage: interactive,
+		}, nil
+	}
+
+	if msg.Preview != nil {
+		// Mode kartu_link: kirim dengan extended text message (link preview)
+		ep := &waProto.ExtendedTextMessage{
+			Text:          proto.String(msg.Text),
+			Title:         proto.String(msg.Preview.Title),
+			Description:   proto.String(msg.Preview.Description),
+			MatchedText:   proto.String(msg.Preview.URL),
+			PreviewType:   waProto.ExtendedTextMessage_NONE.Enum(),
+			JPEGThumbnail: msg.Preview.Thumbnail,
+		}
+		return &waProto.Message{ExtendedTextMessage: ep}, nil
+	}
+
+	// Pesan teks biasa
+	return &waProto.Message{
+		Conversation: proto.String(msg.Text),
+	}, nil
+}
+
 // RealSender implementasi nyata menggunakan Manager.
 type RealSender struct {
-	mgr *Manager
+	mgr     *Manager
+	builder MessageBuilder
 }
 
 func NewRealSender(mgr *Manager) *RealSender {
-	return &RealSender{mgr: mgr}
+	return &RealSender{
+		mgr:     mgr,
+		builder: &DefaultMessageBuilder{},
+	}
+}
+
+// SetBuilder memungkinkan penggantian implementasi MessageBuilder jika diperlukan.
+func (s *RealSender) SetBuilder(b MessageBuilder) {
+	s.builder = b
 }
 
 // Send mengirim pesan ke nomor phone (E.164 tanpa +) menggunakan sesi accountID.
@@ -58,24 +175,13 @@ func (s *RealSender) Send(ctx context.Context, accountID int64, phone string, ms
 
 	jid := types.NewJID(phone, types.DefaultUserServer)
 
-	var waMsg *waProto.Message
-	if msg.Preview != nil {
-		// Mode kartu_link: kirim dengan extended text message (link preview)
-		// Kirim hanya JPEGThumbnail (diuji di spike), tanpa pemanggilan Client.Upload per pesan
-		ep := &waProto.ExtendedTextMessage{
-			Text:          proto.String(msg.Text),
-			Title:         proto.String(msg.Preview.Title),
-			Description:   proto.String(msg.Preview.Description),
-			MatchedText:   proto.String(msg.Preview.URL),
-			PreviewType:   waProto.ExtendedTextMessage_NONE.Enum(),
-			JPEGThumbnail: msg.Preview.Thumbnail,
-		}
-		waMsg = &waProto.Message{ExtendedTextMessage: ep}
-	} else {
-		// Pesan teks biasa
-		waMsg = &waProto.Message{
-			Conversation: proto.String(msg.Text),
-		}
+	builder := s.builder
+	if builder == nil {
+		builder = &DefaultMessageBuilder{}
+	}
+	waMsg, err := builder.Build(msg)
+	if err != nil {
+		return Result{}, fmt.Errorf("gagal membangun pesan: %w", err)
 	}
 
 	resp, err := sess.Client.SendMessage(ctx, jid, waMsg)
@@ -96,4 +202,3 @@ func maskPhone(phone string) string {
 	}
 	return phone[:2] + "****" + phone[len(phone)-2:]
 }
-

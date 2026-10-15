@@ -73,10 +73,7 @@ type Message struct {
 }
 
 func ValidateTemplate(body string, mode string, elements Elements, defaultCC ...string) error {
-	if mode == ModeTombolAsli {
-		return errors.New("mode tombol_asli dinonaktifkan")
-	}
-	if mode != ModeKartuLink {
+	if mode != ModeKartuLink && mode != ModeTombolAsli {
 		return errors.New("mode tidak valid")
 	}
 
@@ -148,28 +145,97 @@ func checkURL(u string) error {
 	return nil
 }
 
+// Recipient memuat data penerima pesan untuk pengisian variabel template.
+type Recipient struct {
+	Phone      string            `json:"phone"`
+	Name       string            `json:"name"`
+	CustomData map[string]string `json:"custom_data"`
+}
+
+// Template membungkus konfigurasi template kampanye untuk rendering pesan.
+type Template struct {
+	Body       string   `json:"body"`
+	ImagePath  string   `json:"image_path"`
+	Elements   Elements `json:"elements"`
+	ButtonMode string   `json:"button_mode"`
+}
+
 var variableRegex = regexp.MustCompile(`\{\{?([a-zA-Z0-9_]+)(?:\|([^}]+))?\}?\}`)
 
+// SanitizeVariableValue membersihkan nilai variabel:
+// 1. Menghapus karakter kontrol (ASCII < 32 atau 127) dan baris baru (\r, \n)
+// 2. Memotong panjang maksimal 60 karakter (runes)
+// 3. Menetralkan karakter format WhatsApp (*, _, ~, `) agar nama tidak merusak format pesan.
+func SanitizeVariableValue(val string) string {
+	if val == "" {
+		return ""
+	}
+	var sb strings.Builder
+	count := 0
+	for _, r := range val {
+		// Hapus karakter kontrol dan baris baru
+		if r < 32 || r == 127 {
+			continue
+		}
+		// Netralkan karakter format WhatsApp
+		if r == '*' || r == '_' || r == '~' || r == '`' {
+			continue
+		}
+		sb.WriteRune(r)
+		count++
+		if count >= 60 {
+			break
+		}
+	}
+	return strings.TrimSpace(sb.String())
+}
+
+// NormalizeCustomKey menormalisasi nama variabel/kolom menjadi huruf kecil (a-z, 0-9, _)
+// serta memetakan alias umum (usn, username, user -> usn/username; id, userid, user_id -> id; nama, name -> nama/name).
+func NormalizeCustomKey(k string) string {
+	return numbers.NormalizeCustomKey(k)
+}
+
+// FindTemplateVariables mengembalikan daftar nama variabel unik yang dipakai di dalam body template.
+func FindTemplateVariables(body string) []string {
+	matches := variableRegex.FindAllStringSubmatch(body, -1)
+	seen := make(map[string]bool)
+	var result []string
+	for _, m := range matches {
+		if len(m) >= 2 {
+			k := NormalizeCustomKey(m[1])
+			if !seen[k] {
+				seen[k] = true
+				result = append(result, k)
+			}
+		}
+	}
+	return result
+}
+
 // ReplaceVariables substitutes template placeholders such as {nama}, {{name}}, {nama|Kak}, {usn}, {id}.
-// If a variable is found in vars, it is replaced with its value.
-// If a variable is missing or empty:
-// - If a fallback is provided ({nama|Kak}), the fallback is used ("Kak").
-// - If no fallback is provided, the placeholder is removed, and double spaces or spaces before punctuation are tidied up.
+// Selalu dijalankan untuk setiap pesan:
+// - Jika variabel ada di vars, diganti dengan nilainya yang sudah disanitasi.
+// - Jika tidak ada di vars, gunakan fallback jika tersedia ({nama|Kak} -> "Kak").
+// - Jika tidak ada fallback, placeholder dihapus bersih dan spasi sebelum tanda baca dirapikan.
 func ReplaceVariables(body string, vars map[string]string) string {
 	lookup := make(map[string]string)
 	for k, v := range vars {
-		lookup[strings.ToLower(strings.TrimSpace(k))] = strings.TrimSpace(v)
+		sanitizedKey := NormalizeCustomKey(k)
+		lookup[sanitizedKey] = SanitizeVariableValue(v)
 	}
 
-	// Aliases: if "nama" is provided, also set "name" and vice-versa
+	// Sinkronisasi alias baku
 	if val, ok := lookup["nama"]; ok && val != "" {
-		if _, hasName := lookup["name"]; !hasName {
-			lookup["name"] = val
-		}
+		lookup["name"] = val
 	} else if val, ok := lookup["name"]; ok && val != "" {
-		if _, hasNama := lookup["nama"]; !hasNama {
-			lookup["nama"] = val
-		}
+		lookup["nama"] = val
+	}
+
+	if val, ok := lookup["usn"]; ok && val != "" {
+		lookup["username"] = val
+	} else if val, ok := lookup["username"]; ok && val != "" {
+		lookup["usn"] = val
 	}
 
 	replaced := variableRegex.ReplaceAllStringFunc(body, func(match string) string {
@@ -177,10 +243,10 @@ func ReplaceVariables(body string, vars map[string]string) string {
 		if len(sub) < 2 {
 			return match
 		}
-		varName := strings.ToLower(sub[1])
+		varName := NormalizeCustomKey(sub[1])
 		fallback := ""
 		if len(sub) >= 3 {
-			fallback = strings.TrimSpace(sub[2])
+			fallback = SanitizeVariableValue(sub[2])
 		}
 
 		if val, ok := lookup[varName]; ok && val != "" {
@@ -209,10 +275,29 @@ func ReplaceVariables(body string, vars map[string]string) string {
 	return strings.Join(lines, "\n")
 }
 
-func Render(body string, imagePath string, elements Elements, mode string, recipientVars ...map[string]string) Message {
-	if len(recipientVars) > 0 && len(recipientVars[0]) > 0 {
-		body = ReplaceVariables(body, recipientVars[0])
+// RenderForRecipient menyusun pesan menggunakan satu jalur kode terpadu untuk pratinjau dan kirim.
+func RenderForRecipient(tmpl Template, r Recipient) Message {
+	vars := make(map[string]string)
+	for k, v := range r.CustomData {
+		vars[k] = v
 	}
+	if r.Name != "" {
+		vars["nama"] = r.Name
+		vars["name"] = r.Name
+	}
+	if r.Phone != "" {
+		vars["phone"] = r.Phone
+		vars["nomor"] = r.Phone
+	}
+	return Render(tmpl.Body, tmpl.ImagePath, tmpl.Elements, tmpl.ButtonMode, vars)
+}
+
+func Render(body string, imagePath string, elements Elements, mode string, recipientVars ...map[string]string) Message {
+	var vars map[string]string
+	if len(recipientVars) > 0 {
+		vars = recipientVars[0]
+	}
+	body = ReplaceVariables(body, vars)
 
 	msg := Message{
 		ImagePath: imagePath,

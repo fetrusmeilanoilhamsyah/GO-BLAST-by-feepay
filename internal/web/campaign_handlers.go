@@ -2,10 +2,12 @@ package web
 
 import (
 	"crypto/rand"
+	"encoding/csv"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html/template"
 	"io"
 	"log/slog"
 	"net/http"
@@ -17,6 +19,7 @@ import (
 	"time"
 
 	"goblast/internal/campaign"
+	"goblast/internal/config"
 	"goblast/internal/i18n"
 )
 
@@ -28,7 +31,7 @@ func (s *Server) HandleAdminCampaigns(w http.ResponseWriter, r *http.Request) {
 
 	showArchived := r.URL.Query().Get("show_archived") == "1" || r.URL.Query().Get("archived") == "1"
 
-	query := "SELECT id, name, status, button_mode, created_at, archived_at FROM campaigns"
+	query := "SELECT id, name, status, button_mode, created_at, archived_at, started_at FROM campaigns"
 	if !showArchived {
 		query += " WHERE archived_at IS NULL"
 	}
@@ -45,7 +48,7 @@ func (s *Server) HandleAdminCampaigns(w http.ResponseWriter, r *http.Request) {
 	var campaigns []campaign.Campaign
 	for rows.Next() {
 		var c campaign.Campaign
-		if err := rows.Scan(&c.ID, &c.Name, &c.Status, &c.ButtonMode, &c.CreatedAt, &c.ArchivedAt); err != nil {
+		if err := rows.Scan(&c.ID, &c.Name, &c.Status, &c.ButtonMode, &c.CreatedAt, &c.ArchivedAt, &c.StartedAt); err != nil {
 			continue
 		}
 		campaigns = append(campaigns, c)
@@ -159,8 +162,10 @@ func (s *Server) HandleAdminCampaignNewPOST(w http.ResponseWriter, r *http.Reque
 
 	mode := r.FormValue("button_mode")
 	if mode == campaign.ModeTombolAsli {
-		http.Error(w, "mode tombol_asli dinonaktifkan", http.StatusBadRequest)
-		return
+		if r.FormValue("agree_experimental_buttons") != "1" {
+			http.Error(w, "Persetujuan opsi eksperimental tombol asli wajib dicentang", http.StatusBadRequest)
+			return
+		}
 	}
 
 	body := r.FormValue("body")
@@ -186,42 +191,22 @@ func (s *Server) HandleAdminCampaignNewPOST(w http.ResponseWriter, r *http.Reque
 	file, header, err := r.FormFile("image")
 	if err == nil {
 		defer file.Close()
-		if header.Size > 1<<20 {
-			http.Error(w, "Ukuran file maksimum 1 MB", http.StatusBadRequest)
+		lr := io.LimitReader(file, campaign.MaxImageUploadBytes+1)
+		imgData, readErr := io.ReadAll(lr)
+		if readErr != nil {
+			http.Error(w, "Gagal membaca berkas gambar", http.StatusInternalServerError)
 			return
 		}
-
-		buff := make([]byte, 512)
-		if _, err = file.Read(buff); err != nil {
-			http.Error(w, "Gagal membaca file", http.StatusInternalServerError)
+		if len(imgData) > campaign.MaxImageUploadBytes {
+			http.Error(w, "Ukuran file melebihi batas (maksimal 5 MB)", http.StatusBadRequest)
 			return
 		}
-		fileType := http.DetectContentType(buff)
-		var ext string
-		if fileType == "image/jpeg" {
-			ext = ".jpg"
-		} else if fileType == "image/png" {
-			ext = ".png"
-		} else {
-			http.Error(w, "Hanya menerima gambar JPEG atau PNG", http.StatusBadRequest)
+		savedPath, saveErr := campaign.ProcessAndSaveCampaignImage(imgData, header.Filename)
+		if saveErr != nil {
+			http.Error(w, saveErr.Error(), http.StatusBadRequest)
 			return
 		}
-		file.Seek(0, io.SeekStart)
-
-		b := make([]byte, 16)
-		rand.Read(b)
-		filename := hex.EncodeToString(b) + ext
-
-		os.MkdirAll("uploads", 0755)
-		fullPath := "uploads/" + filename
-		out, err := os.Create(fullPath)
-		if err != nil {
-			http.Error(w, "Gagal menyimpan file", http.StatusInternalServerError)
-			return
-		}
-		defer out.Close()
-		io.Copy(out, file)
-		imagePath = &fullPath
+		imagePath = &savedPath
 	}
 
 	elementsJSON, _ := json.Marshal(elements)
@@ -348,8 +333,10 @@ func (s *Server) HandleAdminCampaignEditPOST(w http.ResponseWriter, r *http.Requ
 
 	mode := r.FormValue("button_mode")
 	if mode == campaign.ModeTombolAsli {
-		http.Error(w, "mode tombol_asli dinonaktifkan", http.StatusBadRequest)
-		return
+		if r.FormValue("agree_experimental_buttons") != "1" {
+			http.Error(w, "Persetujuan opsi eksperimental tombol asli wajib dicentang", http.StatusBadRequest)
+			return
+		}
 	}
 
 	body := r.FormValue("body")
@@ -379,42 +366,22 @@ func (s *Server) HandleAdminCampaignEditPOST(w http.ResponseWriter, r *http.Requ
 	file, header, err := r.FormFile("image")
 	if err == nil {
 		defer file.Close()
-		if header.Size > 1<<20 {
-			http.Error(w, "Ukuran file maksimum 1 MB", http.StatusBadRequest)
+		lr := io.LimitReader(file, campaign.MaxImageUploadBytes+1)
+		imgData, readErr := io.ReadAll(lr)
+		if readErr != nil {
+			http.Error(w, "Gagal membaca berkas gambar", http.StatusInternalServerError)
 			return
 		}
-
-		buff := make([]byte, 512)
-		if _, err = file.Read(buff); err != nil {
-			http.Error(w, "Gagal membaca file", http.StatusInternalServerError)
+		if len(imgData) > campaign.MaxImageUploadBytes {
+			http.Error(w, "Ukuran file melebihi batas (maksimal 5 MB)", http.StatusBadRequest)
 			return
 		}
-		fileType := http.DetectContentType(buff)
-		var ext string
-		if fileType == "image/jpeg" {
-			ext = ".jpg"
-		} else if fileType == "image/png" {
-			ext = ".png"
-		} else {
-			http.Error(w, "Hanya menerima gambar JPEG atau PNG", http.StatusBadRequest)
+		savedPath, saveErr := campaign.ProcessAndSaveCampaignImage(imgData, header.Filename)
+		if saveErr != nil {
+			http.Error(w, saveErr.Error(), http.StatusBadRequest)
 			return
 		}
-		file.Seek(0, io.SeekStart)
-
-		b := make([]byte, 16)
-		rand.Read(b)
-		filename := hex.EncodeToString(b) + ext
-
-		os.MkdirAll("uploads", 0755)
-		fullPath := "uploads/" + filename
-		out, err := os.Create(fullPath)
-		if err != nil {
-			http.Error(w, "Gagal menyimpan file", http.StatusInternalServerError)
-			return
-		}
-		defer out.Close()
-		io.Copy(out, file)
-		imagePath = &fullPath
+		imagePath = &savedPath
 	} else if r.FormValue("remove_image") == "on" {
 		imagePath = nil
 	}
@@ -449,9 +416,8 @@ func (s *Server) HandleAdminCampaignPreview(w http.ResponseWriter, r *http.Reque
 	}
 
 	mode := r.FormValue("button_mode")
-	if mode == campaign.ModeTombolAsli {
-		http.Error(w, "mode tombol_asli dinonaktifkan", http.StatusBadRequest)
-		return
+	if mode == "" {
+		mode = campaign.ModeKartuLink
 	}
 
 	body := r.FormValue("body")
@@ -468,16 +434,64 @@ func (s *Server) HandleAdminCampaignPreview(w http.ResponseWriter, r *http.Reque
 		PromoURL:      r.FormValue("promo_url"),
 	}
 
+	if r.FormValue("existing_image_path") != "" {
+		http.Error(w, "Field existing_image_path tidak diizinkan", http.StatusBadRequest)
+		return
+	}
+
 	if err := campaign.ValidateTemplate(body, mode, elements); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	imagePath := r.FormValue("existing_image_path")
-	if imagePath != "" {
-		if !strings.HasPrefix(imagePath, "uploads/") || strings.Contains(imagePath, "..") {
-			http.Error(w, "Image path tidak valid", http.StatusBadRequest)
+	var imageURI string
+	var thumbURI string
+
+	file, _, err := r.FormFile("image")
+	if err == nil {
+		defer file.Close()
+		lr := io.LimitReader(file, campaign.MaxImageUploadBytes+1)
+		imgData, readErr := io.ReadAll(lr)
+		if readErr != nil {
+			http.Error(w, "Gagal membaca berkas gambar", http.StatusInternalServerError)
 			return
+		}
+		if len(imgData) > campaign.MaxImageUploadBytes {
+			http.Error(w, "Ukuran file melebihi batas (maksimal 5 MB)", http.StatusBadRequest)
+			return
+		}
+		uri, dataErr := campaign.ImageDataURI(imgData)
+		if dataErr != nil {
+			http.Error(w, dataErr.Error(), http.StatusBadRequest)
+			return
+		}
+		imageURI = uri
+
+		if mode == campaign.ModeKartuLink {
+			thumbBytes, _ := campaign.GenerateThumbnailFromBytes(imgData, campaign.DefaultThumbWidth, campaign.DefaultThumbQuality)
+			if len(thumbBytes) > 0 {
+				thumbURI, _ = campaign.ImageDataURI(thumbBytes)
+			}
+		}
+	} else if r.FormValue("remove_image") != "on" {
+		// Jika tidak ada upload file baru dan tidak dihapus, cek apakah mengedit campaign yang sudah ada
+		if idStr := r.FormValue("id"); idStr != "" {
+			if campID, parseErr := strconv.ParseInt(idStr, 10, 64); parseErr == nil && campID > 0 {
+				var dbImagePath *string
+				_ = s.DB.Pool.QueryRow(r.Context(), "SELECT image_path FROM campaigns WHERE id = $1", campID).Scan(&dbImagePath)
+				if dbImagePath != nil && *dbImagePath != "" {
+					uri, fileErr := campaign.ImageFileToDataURI(*dbImagePath)
+					if fileErr == nil {
+						imageURI = uri
+					}
+					if mode == campaign.ModeKartuLink {
+						thumbBytes, _ := campaign.GetOrCreateThumbnail(*dbImagePath, campaign.DefaultThumbWidth, campaign.DefaultThumbQuality)
+						if len(thumbBytes) > 0 {
+							thumbURI, _ = campaign.ImageDataURI(thumbBytes)
+						}
+					}
+				}
+			}
 		}
 	}
 
@@ -492,7 +506,19 @@ func (s *Server) HandleAdminCampaignPreview(w http.ResponseWriter, r *http.Reque
 		sampleVars["name"] = pName
 	}
 
-	msg := campaign.Render(body, imagePath, elements, mode, sampleVars)
+	tmpl := campaign.Template{
+		Body:       body,
+		ImagePath:  imageURI,
+		ButtonMode: mode,
+		Elements:   elements,
+	}
+	rec := campaign.Recipient{
+		Name:       sampleVars["nama"],
+		Phone:      "081234567890",
+		CustomData: sampleVars,
+	}
+
+	msg := campaign.RenderForRecipient(tmpl, rec)
 
 	lang := "id"
 	if u, ok := currentUser(r); ok && u.Language != "" {
@@ -501,11 +527,15 @@ func (s *Server) HandleAdminCampaignPreview(w http.ResponseWriter, r *http.Reque
 
 	data := struct {
 		campaign.Message
-		Lang string
-		T    func(string) string
+		ImageURI     template.URL
+		ThumbnailURI template.URL
+		Lang         string
+		T            func(string) string
 	}{
-		Message: msg,
-		Lang:    lang,
+		Message:      msg,
+		ImageURI:     template.URL(imageURI),
+		ThumbnailURI: template.URL(thumbURI),
+		Lang:         lang,
 		T: func(key string) string {
 			return i18n.T(lang, key)
 		},
@@ -573,34 +603,52 @@ func (s *Server) HandleAdminCampaignDetail(w http.ResponseWriter, r *http.Reques
 		WHERE campaign_id = $1 AND status = 'gagal' AND last_error = 'hasil_tidak_pasti'
 	`, id).Scan(&uncertainCount)
 
+	var variableWarnings []string
+	tmplVars := campaign.FindTemplateVariables(c.Body)
+	if len(tmplVars) > 0 && counts["tersedia"] > 0 {
+		var missingVars []string
+		for _, v := range tmplVars {
+			normKey := campaign.NormalizeCustomKey(v)
+			hasData, err := campaign.HasAvailableVariableData(r.Context(), s.DB.Pool, id, normKey)
+			if err == nil && !hasData {
+				missingVars = append(missingVars, v)
+			}
+		}
+		if len(missingVars) > 0 {
+			variableWarnings = append(variableWarnings, fmt.Sprintf("Variabel {%s} digunakan dalam template pesan tetapi tidak ditemukan pada data nomor yang tersedia.", strings.Join(missingVars, ", ")))
+		}
+	}
+
 	lang := "id"
 	if u, ok := currentUser(r); ok && u.Language != "" {
 		lang = u.Language
 	}
 
 	data := struct {
-		Lang           string
-		Title          string
-		Theme          string
-		CSRFToken      string
-		ActiveNav      string
-		Campaign       campaign.Campaign
-		Counts         map[string]int
-		UncertainCount int
-		Error          string
-		Nonce          string
-		T              func(string) string
+		Lang             string
+		Title            string
+		Theme            string
+		CSRFToken        string
+		ActiveNav        string
+		Campaign         campaign.Campaign
+		Counts           map[string]int
+		UncertainCount   int
+		VariableWarnings []string
+		Error            string
+		Nonce            string
+		T                func(string) string
 	}{
-		Lang:           lang,
-		Title:          c.Name + " - GO BLAST",
-		Theme:          getTheme(r),
-		CSRFToken:      getCSRF(r),
-		ActiveNav:      "campaigns",
-		Campaign:       c,
-		Counts:         counts,
-		UncertainCount: uncertainCount,
-		Error:          r.URL.Query().Get("err"),
-		Nonce:          getNonce(r),
+		Lang:             lang,
+		Title:            c.Name + " - GO BLAST",
+		Theme:            getTheme(r),
+		CSRFToken:        getCSRF(r),
+		ActiveNav:        "campaigns",
+		Campaign:         c,
+		Counts:           counts,
+		UncertainCount:   uncertainCount,
+		VariableWarnings: variableWarnings,
+		Error:            r.URL.Query().Get("err"),
+		Nonce:            getNonce(r),
 		T: func(key string) string {
 			return i18n.T(lang, key)
 		},
@@ -617,9 +665,9 @@ func (s *Server) HandleAdminCampaignStart(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	var status string
+	var status, buttonMode string
 	var archivedAt *time.Time
-	err = s.DB.Pool.QueryRow(r.Context(), "SELECT status, archived_at FROM campaigns WHERE id = $1 FOR UPDATE", id).Scan(&status, &archivedAt)
+	err = s.DB.Pool.QueryRow(r.Context(), "SELECT status, button_mode, archived_at FROM campaigns WHERE id = $1 FOR UPDATE", id).Scan(&status, &buttonMode, &archivedAt)
 	if err != nil {
 		http.NotFound(w, r)
 		return
@@ -633,6 +681,15 @@ func (s *Server) HandleAdminCampaignStart(w http.ResponseWriter, r *http.Request
 	if status != campaign.StatusDraf {
 		http.Error(w, "Campaign hanya bisa dimulai dari status draf", http.StatusBadRequest)
 		return
+	}
+
+	if buttonMode == campaign.ModeTombolAsli {
+		var totalNumbers int
+		_ = s.DB.Pool.QueryRow(r.Context(), "SELECT COUNT(*) FROM campaign_numbers WHERE campaign_id = $1", id).Scan(&totalNumbers)
+		if totalNumbers > config.MaxRecipientsNativeFlow {
+			http.Error(w, fmt.Sprintf("Mode tombol asli dibatasi maksimal %d penerima (campaign ini memiliki %d nomor)", config.MaxRecipientsNativeFlow, totalNumbers), http.StatusBadRequest)
+			return
+		}
 	}
 
 	availableCount, err := campaign.CampaignAvailableCount(r.Context(), s.DB.Pool, id)
@@ -656,7 +713,8 @@ func (s *Server) HandleAdminCampaignStart(w http.ResponseWriter, r *http.Request
 	}
 
 	user, _ := currentUser(r)
-	s.logAudit(&user.ID, "campaign_start", "campaign", strconv.FormatInt(id, 10), "")
+	auditMeta := fmt.Sprintf("mode: %s", buttonMode)
+	s.logAudit(&user.ID, "campaign_start", "campaign", strconv.FormatInt(id, 10), auditMeta)
 
 	http.Redirect(w, r, fmt.Sprintf("/admin/campaigns/%d", id), http.StatusSeeOther)
 }
@@ -938,3 +996,112 @@ func (s *Server) HandleAdminCampaignRequeueUncertain(w http.ResponseWriter, r *h
 
 	http.Redirect(w, r, fmt.Sprintf("/admin/campaigns/%d", id), http.StatusSeeOther)
 }
+
+// HandleAdminCampaignExportNumbers menangani GET /admin/campaigns/{id}/numbers/export (Keputusan R).
+// Mengekspor hanya nomor berstatus 'tersedia' dalam format CSV yang siap diimpor ke campaign lain.
+func (s *Server) HandleAdminCampaignExportNumbers(w http.ResponseWriter, r *http.Request) {
+	idStr := r.PathValue("id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		http.Error(w, "ID tidak valid", http.StatusBadRequest)
+		return
+	}
+
+	user, ok := currentUser(r)
+	if !ok || user.Role != "admin" {
+		http.Error(w, "Akses ditolak: khusus admin", http.StatusForbidden)
+		return
+	}
+
+	if s.AdminCampaignExportNumbersLimiter != nil {
+		key := strconv.FormatInt(user.ID, 10)
+		if allowed, wait := s.AdminCampaignExportNumbersLimiter.Take(key); !allowed {
+			waitMins := int(wait.Minutes()) + 1
+			http.Error(w, fmt.Sprintf("Batas ekspor tercapai (maksimal 5 kali per jam). Coba lagi dalam %d menit.", waitMins), http.StatusTooManyRequests)
+			return
+		}
+	}
+
+	var name, status string
+	err = s.DB.Pool.QueryRow(r.Context(), "SELECT name, status FROM campaigns WHERE id = $1", id).Scan(&name, &status)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+
+	if status == campaign.StatusBerjalan {
+		http.Error(w, "Nomor tidak bisa diekspor saat campaign sedang berjalan. Jeda campaign terlebih dahulu.", http.StatusBadRequest)
+		return
+	}
+
+	// Ambil semua kunci unik custom_data di nomor campaign ini
+	customKeys, err := campaign.GetAvailableCustomKeys(r.Context(), s.DB.Pool, id)
+	if err != nil {
+		customKeys = nil
+	}
+
+	rows, err := campaign.QueryAvailableExportNumbers(r.Context(), s.DB.Pool, id)
+	if err != nil {
+		slog.Error("Gagal mengambil sisa nomor campaign", "err", err, "id", id)
+		http.Error(w, "Terjadi kesalahan sistem", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	rndBytes := make([]byte, 4)
+	rand.Read(rndBytes)
+	exportFilename := fmt.Sprintf("sisa_nomor_campaign_%d_%s.csv", id, hex.EncodeToString(rndBytes))
+
+	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", exportFilename))
+	w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
+	w.Header().Set("Pragma", "no-cache")
+
+	cw := csv.NewWriter(w)
+
+	// Tulis header
+	header := []string{"nomor", "nama"}
+	header = append(header, customKeys...)
+	_ = cw.Write(header)
+
+	exportedCount := 0
+	for rows.Next() {
+		var phone, recName string
+		var rawCustom []byte
+		if err := rows.Scan(&phone, &recName, &rawCustom); err != nil {
+			continue
+		}
+
+		var cMap map[string]string
+		if len(rawCustom) > 0 {
+			_ = json.Unmarshal(rawCustom, &cMap)
+		}
+
+		record := []string{
+			sanitizeCSVCell(phone),
+			sanitizeCSVCell(recName),
+		}
+		for _, k := range customKeys {
+			val := ""
+			if cMap != nil {
+				val = cMap[k]
+			}
+			record = append(record, sanitizeCSVCell(val))
+		}
+
+		_ = cw.Write(record)
+		exportedCount++
+	}
+	cw.Flush()
+
+	s.logAudit(&user.ID, "campaign_export_remaining_numbers", "campaign", strconv.FormatInt(id, 10), fmt.Sprintf("berhasil mengekspor %d nomor tersedia", exportedCount))
+}
+
+func sanitizeCSVCell(v string) string {
+	trimmed := strings.TrimSpace(v)
+	if strings.HasPrefix(trimmed, "=") || strings.HasPrefix(trimmed, "+") || strings.HasPrefix(trimmed, "-") || strings.HasPrefix(trimmed, "@") {
+		return "'" + v
+	}
+	return v
+}
+

@@ -99,6 +99,7 @@ type ClaimedNumber struct {
 	PhoneE164     string
 	Attempts      int
 	RecipientName string
+	CustomData    map[string]string
 }
 
 // Engine mengelola pengiriman pesan otomatis per akun WhatsApp pekerja.
@@ -605,16 +606,20 @@ func (e *Engine) ClaimNextNumber(ctx context.Context, accountID int64) (*Claimed
 			FOR UPDATE SKIP LOCKED
 			LIMIT 1
 		)
-		RETURNING id, campaign_id, phone_e164, attempts, COALESCE(recipient_name, '')
+		RETURNING id, campaign_id, phone_e164, attempts, COALESCE(recipient_name, ''), COALESCE(custom_data, '{}'::jsonb)
 	`, campaign.ClaimableWhere)
 
 	var cn ClaimedNumber
+	var customDataRaw []byte
 	err := e.db.Pool.QueryRow(ctx, query, accountID).Scan(
-		&cn.ID, &cn.CampaignID, &cn.PhoneE164, &cn.Attempts, &cn.RecipientName,
+		&cn.ID, &cn.CampaignID, &cn.PhoneE164, &cn.Attempts, &cn.RecipientName, &customDataRaw,
 	)
 	e.metrics.ClaimLatency.Record(time.Since(start))
 	if err != nil {
 		return nil, err
+	}
+	if len(customDataRaw) > 0 {
+		_ = json.Unmarshal(customDataRaw, &cn.CustomData)
 	}
 
 	e.metrics.ClaimedCount.Add(1)
@@ -698,12 +703,15 @@ func (e *Engine) RecordSuccessAtomic(ctx context.Context, numberID, accountID, w
 				FROM users u_sender
 				LEFT JOIN users u_ref ON u_ref.id = u_sender.referred_by
 				WHERE u_sender.id = $3
-			) AS skip_reason
-		FROM updated;
+			) AS skip_reason,
+			c.button_mode
+		FROM updated
+		JOIN campaigns c ON c.id = updated.campaign_id;
 	`
 	var upahID, referralID sql.NullInt64
 	var skipReason sql.NullString
-	err := e.db.Pool.QueryRow(recordCtx, query, numberID, accountID, workerID, wageRate, refRate).Scan(&upahID, &referralID, &skipReason)
+	var btnMode sql.NullString
+	err := e.db.Pool.QueryRow(recordCtx, query, numberID, accountID, workerID, wageRate, refRate).Scan(&upahID, &referralID, &skipReason, &btnMode)
 	e.metrics.RecordLatency.Record(time.Since(start))
 
 	if err != nil {
@@ -711,10 +719,16 @@ func (e *Engine) RecordSuccessAtomic(ctx context.Context, numberID, accountID, w
 			// Periksa apakah baris nomor gagal diperbarui karena klaim hilang
 			var currentAccount sql.NullInt64
 			var currentStatus string
-			_ = e.db.Pool.QueryRow(recordCtx, `SELECT claimed_account_id, status FROM campaign_numbers WHERE id = $1`, numberID).Scan(&currentAccount, &currentStatus)
+			var dbMode sql.NullString
+			_ = e.db.Pool.QueryRow(recordCtx, `SELECT cn.claimed_account_id, cn.status, c.button_mode FROM campaign_numbers cn JOIN campaigns c ON c.id = cn.campaign_id WHERE cn.id = $1`, numberID).Scan(&currentAccount, &currentStatus, &dbMode)
 
 			if currentStatus == "terkirim" {
 				e.metrics.SentCount.Add(1)
+				if dbMode.String == campaign.ModeTombolAsli {
+					e.metrics.SentCountNativeFlow.Add(1)
+				} else {
+					e.metrics.SentCountCardLink.Add(1)
+				}
 				return nil
 			}
 
@@ -726,8 +740,14 @@ func (e *Engine) RecordSuccessAtomic(ctx context.Context, numberID, accountID, w
 		// Jika err bukan ErrNoRows, mungkin ON CONFLICT DO NOTHING mengembalikan 0 row tapi updated berhasil
 		// Verifikasi apakah nomor statusnya terkirim
 		var currentStatus string
-		if qErr := e.db.Pool.QueryRow(recordCtx, `SELECT status FROM campaign_numbers WHERE id = $1`, numberID).Scan(&currentStatus); qErr == nil && currentStatus == "terkirim" {
+		var dbMode sql.NullString
+		if qErr := e.db.Pool.QueryRow(recordCtx, `SELECT cn.status, c.button_mode FROM campaign_numbers cn JOIN campaigns c ON c.id = cn.campaign_id WHERE cn.id = $1`, numberID).Scan(&currentStatus, &dbMode); qErr == nil && currentStatus == "terkirim" {
 			e.metrics.SentCount.Add(1)
+			if dbMode.String == campaign.ModeTombolAsli {
+				e.metrics.SentCountNativeFlow.Add(1)
+			} else {
+				e.metrics.SentCountCardLink.Add(1)
+			}
 			return nil
 		}
 		return err
@@ -745,6 +765,11 @@ func (e *Engine) RecordSuccessAtomic(ctx context.Context, numberID, accountID, w
 	}
 
 	e.metrics.SentCount.Add(1)
+	if btnMode.String == campaign.ModeTombolAsli {
+		e.metrics.SentCountNativeFlow.Add(1)
+	} else {
+		e.metrics.SentCountCardLink.Add(1)
+	}
 	return nil
 }
 
@@ -1071,7 +1096,7 @@ func (e *Engine) runWorker(ctx context.Context, accountID, workerID int64) {
 		currentNumberID = claimed.ID
 
 		// 4. Siapkan pesan campaign (Cache memori dengan TTL 15s)
-		msg, err := e.buildCampaignMessage(ctx, claimed.CampaignID, claimed.RecipientName)
+		msg, err := e.buildCampaignMessage(ctx, *claimed)
 		if err != nil {
 			consecutiveBuildFailures++
 			slog.Error("engine: gagal menyusun pesan campaign", "campaign_id", claimed.CampaignID, "err", err)
@@ -1160,29 +1185,39 @@ func (e *Engine) runWorker(ctx context.Context, accountID, workerID int64) {
 	}
 }
 
-// buildCampaignMessage mengambil metadata campaign dengan cache memori TTL 15s.
-func (e *Engine) buildCampaignMessage(ctx context.Context, campaignID int64, recipientName string) (wa.OutMessage, error) {
-	cItem, ok := e.campaignCache.Get(campaignID)
+// buildCampaignMessage mengambil metadata campaign dengan cache memori TTL 15s dan merender pesan terpadu.
+func (e *Engine) buildCampaignMessage(ctx context.Context, claimed ClaimedNumber) (wa.OutMessage, error) {
+	cItem, ok := e.campaignCache.Get(claimed.CampaignID)
 	if !ok {
 		var err error
-		cItem, err = fetchCampaignFromDB(ctx, e.db, campaignID)
+		cItem, err = fetchCampaignFromDB(ctx, e.db, claimed.CampaignID)
 		if err != nil {
 			return wa.OutMessage{}, err
 		}
-		e.campaignCache.Set(campaignID, cItem)
+		e.campaignCache.Set(claimed.CampaignID, cItem)
 	}
 
 	if err := campaign.ValidateTemplate(cItem.Body, cItem.ButtonMode, cItem.Elements); err != nil {
 		return wa.OutMessage{}, fmt.Errorf("validasi template: %w", err)
 	}
 
-	var recVars map[string]string
-	if recipientName != "" {
-		recVars = map[string]string{"nama": recipientName, "name": recipientName}
+	tmpl := campaign.Template{
+		Body:       cItem.Body,
+		ImagePath:  cItem.ImagePath,
+		ButtonMode: cItem.ButtonMode,
+		Elements:   cItem.Elements,
+	}
+	rec := campaign.Recipient{
+		Name:       claimed.RecipientName,
+		Phone:      claimed.PhoneE164,
+		CustomData: claimed.CustomData,
 	}
 
-	cMsg := campaign.Render(cItem.Body, cItem.ImagePath, cItem.Elements, cItem.ButtonMode, recVars)
-	out := wa.OutMessage{Text: cMsg.Text}
+	cMsg := campaign.RenderForRecipient(tmpl, rec)
+	out := wa.OutMessage{
+		Text: cMsg.Text,
+		Mode: cItem.ButtonMode,
+	}
 	if cMsg.Preview != nil {
 		out.Preview = &wa.Preview{
 			Title:       cMsg.Preview.Title,
@@ -1190,6 +1225,13 @@ func (e *Engine) buildCampaignMessage(ctx context.Context, campaignID int64, rec
 			URL:         cMsg.Preview.URL,
 			Thumbnail:   cMsg.Preview.Thumbnail,
 		}
+	}
+	for _, b := range cMsg.Buttons {
+		out.Buttons = append(out.Buttons, wa.Button{
+			Type:    b.Type,
+			Text:    b.Text,
+			Payload: b.Payload,
+		})
 	}
 	return out, nil
 }
