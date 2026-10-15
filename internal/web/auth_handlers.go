@@ -350,7 +350,7 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		password := r.FormValue("password")
 		lang := r.FormValue("language")
 		lang = validateLang(lang)
-		referralCode := strings.TrimSpace(r.FormValue("referral_code"))
+		referralCode := sanitizeReferralCode(r.FormValue("referral_code"))
 		agreeTerms := r.FormValue("agree_terms")
 
 		if username == "" {
@@ -404,19 +404,22 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		hash, err := auth.HashPassword(password)
-		if err != nil {
-			http.Error(w, "Internal server error", http.StatusInternalServerError)
-			return
-		}
-
+		// Validasi kode referral jika diisi: harus ada pemiliknya, jika tidak tolak pendaftaran
 		var referredBy *int64
 		if referralCode != "" {
 			var refID int64
 			err := s.DB.Pool.QueryRow(r.Context(), "SELECT id FROM users WHERE referral_code = $1", referralCode).Scan(&refID)
-			if err == nil {
-				referredBy = &refID
+			if err != nil {
+				s.renderRegister(w, r, i18n.T(lang, "auth.referral_not_found"))
+				return
 			}
+			referredBy = &refID
+		}
+
+		hash, err := auth.HashPassword(password)
+		if err != nil {
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
 		}
 
 		displayName := username
@@ -465,6 +468,21 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// sanitizeReferralCode membersihkan kode referral dan membatasi panjangnya maksimal 50 karakter alfanumerik.
+func sanitizeReferralCode(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if len(raw) > 50 {
+		raw = raw[:50]
+	}
+	var sb strings.Builder
+	for _, r := range raw {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' || r == '-' {
+			sb.WriteRune(r)
+		}
+	}
+	return sb.String()
+}
+
 func (s *Server) renderRegister(w http.ResponseWriter, r *http.Request, errMsg string) {
 	lang := validateLang(r.URL.Query().Get("lang"))
 	if lang == "id" {
@@ -485,6 +503,11 @@ func (s *Server) renderRegister(w http.ResponseWriter, r *http.Request, errMsg s
 		turnstileSiteKey = s.Turnstile.SiteKey
 	}
 
+	refCode := sanitizeReferralCode(r.URL.Query().Get("ref"))
+	if refCode == "" {
+		refCode = sanitizeReferralCode(r.FormValue("referral_code"))
+	}
+
 	data := map[string]interface{}{
 		"Lang":             lang,
 		"Title":            i18n.T(lang, "auth.register_title"),
@@ -492,6 +515,7 @@ func (s *Server) renderRegister(w http.ResponseWriter, r *http.Request, errMsg s
 		"CSRFToken":        csrfToken,
 		"FormToken":        formToken,
 		"TurnstileSiteKey": turnstileSiteKey,
+		"ReferralCode":     refCode,
 		"Nonce":            getNonce(r),
 		"Theme":            getTheme(r),
 		"T": func(key string) string {

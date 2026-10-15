@@ -9,9 +9,9 @@ Nomor tahap mengacu ke tabel "Daftar Tahap" di bawah.
 
 ## Posisi sekarang
 
-- **Fase**: 1 (MVP)
-- **Terakhir dikerjakan**: Tahap H5b — Keamanan akses: batas per endpoint, CS, TOTP admin, audit handler. Mengatasi temuan K6, K9, K12 (admin) & audit menyeluruh. Rate limiter token bucket per-endpoint pada seluruh rute POST dan GET JSON (tiket, keamanan, finansial, akun WA, engine ctrl, API polling, admin, publik); validasi ketat URL CS & Telegram wajib skema `https://`; penegakan logout wajib POST (`POST /logout` + CSRF, GET mengembalikan 405 Method Not Allowed); implementasi TOTP admin RFC 6238 (HMAC-SHA1, 30s, 6 digit, +/-1 step, anti-replay `totp_last_step`, 10 recovery codes SHA-256) dengan alur setup wajib, verifikasi login, step-up verification 5 menit untuk aksi sensitif, dan CLI subcommand darurat `goblast reset-totp --email <email>`; eliminasi total kebocoran error internal database (`err.Error()`) di 21 handler admin, campaign handlers, auth handlers, dan wa handlers digantikan pesan aman i18n & `slog.Error`; pengamanan unggahan file via magic bytes XLSX (`PK\x03\x04`) dan gambar kampanye (1 MB); guard tests AST rute & SQL, IDOR, dan lifecycle TOTP. Seluruh tes 16 paket lulus 100%. Sesuai Aturan 7: flag `-race` tidak dapat dijalankan di mesin lokal Windows ini karena compiler CGO/gcc tidak tersedia.
-- **Sedang dikerjakan**: Berikutnya Tahap H6 — Referral (tahap 18 dikerjakan lebih awal).
+- **Fase**: 1 (MVP) & Fase 2 (Tahap 18 dimajukan)
+- **Terakhir dikerjakan**: Tahap H6 — Referral (tahap 18 dikerjakan lebih awal). Bonus referral dibayar otomatis per pesan terkirim via CTE atomik tunggal (mengatasi Temuan B2 & Keputusan D 14 Okt 2026). Perlindungan anti-fraud terverifikasi: referral satu tingkat ketat (A ajak B, B ajak C: pesan C hanya membayar B bukan A; A tidak mendapat apa pun dari C), tolak pendaftaran jika kode referral tidak ditemukan di DB, sanitasi kode referral (maks 50 karakter alfanumerik, _, -), tolak self-referral, skip bonus jika status referrer non-aktif/dibekukan, skip bonus jika pengundang dan pengirim berbagi payout_dest_hash identik (tercatat di metrik engine), rate_snapshot abadi di ledger_entries, panel pekerja (/worker/referral) menampilkan 4 kartu metrik (total rekan, rekan aktif sent >= 1, bonus hari ini Asia/Jakarta WIB, total bonus) dan tabel rekan dengan username tersamar (MaskUsername: 2 karakter pertama + tanda bintang) tanpa membocorkan nomor telepon atau email, panel admin (/admin/workers/{id}) menampilkan pengundang, daftar downline beserta status bonus ditahan, dan deteksi kelompok multi-akun rekening sama tanpa membuka data mentah rekening/tujuan. Seluruh tes engine, web, dan 16 paket repositori lulus 100%. Sesuai Aturan 7: flag -race tidak dapat dijalankan di mesin lokal Windows ini karena compiler CGO/gcc tidak tersedia.
+- **Sedang dikerjakan**: Berikutnya Tahap H7 — Format pesan dan siklus campaign.
 - **Blocker**: Tidak ada.
 
 ---
@@ -72,7 +72,7 @@ Daftar resmi. Agen hanya boleh mengubah kolom Status, dan hanya untuk tahap yang
 | H4 | Pengelola sesi WhatsApp | Selesai |
 | H5a | Keamanan akses: login, rate limit, sesi, header, Turnstile | Selesai |
 | H5b | Keamanan akses: batas per endpoint, CS, TOTP admin, audit handler | Selesai |
-| H6 | Referral (tahap 18 dikerjakan lebih awal) | Belum |
+| H6 | Referral (tahap 18 dikerjakan lebih awal) | Selesai |
 | H7 | Format pesan dan siklus campaign | Belum |
 | H8 | Arsip yang jelas, retensi data, dan pembersihan server | Belum |
 | H9 | Backup aman dan pemulihan | Belum |
@@ -83,7 +83,7 @@ Daftar resmi. Agen hanya boleh mengubah kolom Status, dan hanya untuk tahap yang
 | 15 | Review keamanan dan uji beban | Belum |
 | 16 | Deploy ke VPS | Belum |
 | 17 | Review gabungan sebelum rilis | Belum |
-| 18 | Referral (fase 2) | Belum |
+| 18 | Referral (fase 2) | Selesai |
 | 19 | Penanda klik (fase 2) | Belum |
 | 20 | Anti-curang dan batas multi-nomor (fase 2) | Belum |
 
@@ -290,6 +290,30 @@ Langkah uji sambung dan putus satu nomor cadangan:
 ## Log kerja
 
 Terbaru di atas. Format: `tanggal: ringkasan satu baris` (Log Tahap 0 - 5 diarsipkan di [ARSIP_PROGRES.md](ARSIP_PROGRES.md)).
+
+- 2026-10-15: **Tahap H6 & Tahap 18 selesai** — Referral otomatis satu tingkat & pencegahan kecurangan:
+  1. Engine pembayaran referral otomatis (Temuan B2 & Keputusan D): Diimplementasikan langsung ke dalam transaksi atomik pengiriman pesan sukses (`RecordSuccessAtomic` / CTE tunggal satu round trip ke database). Membayar bonus per pesan sukses (`rate_referral`) ke pengundang pekerja (`u_sender.referred_by`), mencatat snapshot nilai `rate_snapshot` di `ledger_entries` jenis `referral`, menyertakan `source_user_id = u_sender.id`.
+  2. Contoh kasus pemilik terverifikasi via tes konkurensi (`TestH6_FindingB2_OwnerExample_ABC`): Pekerja A mengajak B; B mengirim 100 pesan dengan rate Rp50 -> A mendapat Rp5.000. Pekerja B mengajak C; pesan C membayar bonus referral ke B, bukan ke A (A tidak mendapat apa pun dari pesan C). Terbukti ketat satu tingkat (*strictly single-tier*).
+  3. Pencegahan kecurangan & proteksi multi-akun (Anti-Fraud Guard):
+     - Pencegahan self-referral dan siklus referral.
+     - Penolakan bonus otomatis jika akun pengundang berstatus non-aktif atau dibekukan (`status NOT IN ('active', 'aktif')`).
+     - Penolakan bonus otomatis jika pengundang dan pekerja berbagi rekening tujuan penarikan yang identik (`u_ref.payout_dest_hash = u_sender.payout_dest_hash`), dicatat ke metrik engine `ReferralSkippedSameDestCount` tanpa mencatat entri buku besar (buku besar tetap bersih dari entri gagal).
+     - Idempotensi terjamin: constraint unik parsial `ON CONFLICT (campaign_number_id) WHERE kind = 'referral' DO NOTHING` mencegah duplikasi bonus referral pada nomor pesan yang sama meskipun terjadi retry atau eksekusi paralel.
+  4. Pendaftaran pekerja (`/register`):
+     - Sanitasi ketat parameter `ref` dan kolom input `referral_code` (maksimal 50 karakter alfanumerik, garis bawah, dan tanda hubung via `sanitizeReferralCode`).
+     - Tautan undangan `/register?ref=KODE` otomatis mengisi kolom referral di formulir pendaftaran secara aman.
+     - Penolakan pendaftaran jika kode referral tidak ditemukan di database (`auth.referral_not_found`), mencegah akun pekerja terbuat dengan pengundang palsu/cacat.
+  5. Panel pekerja (`/worker/referral`):
+     - Grid 4 metrik ringkas: Total Rekan Bergabung, Rekan Aktif (mengirim minimal 1 pesan / memiliki entri upah buku besar), Bonus Hari Ini (dihitung berdasarkan awal hari zona waktu Asia/Jakarta WIB), dan Total Akumulasi Bonus Referral.
+     - Daftar downline/rekan yang diajak menampilkan username tersamar (`MaskUsername`: 2 huruf pertama + bintang), jumlah pesan terkirim rekan, dan total bonus yang dihasilkan bagi pekerja.
+     - Privasi penuh: 0 nomor telepon customer atau alamat email rekan yang dibocorkan ke peramban.
+     - Penghapusan teks lama "belum dihitung otomatis" di kamus ID, EN, ZH (versi EN & ZH ditandai "perlu review penutur asli").
+  6. Panel admin (`/admin/workers/{id}`):
+     - Informasi profil pekerja menampilkan nama pengundang (`ReferrerUsername` dan tautan ID).
+     - Tabel "Rekan yang Diajak (Referral Downline)" menyajikan daftar seluruh pekerja yang diajak beserta status akun, total pesan terkirim, bonus dihasilkan, dan penanda "Rekening Sama (Ditahan)".
+     - Banner peringatan deteksi multi-akun: mendeteksi pekerja lain yang memiliki hash tujuan penarikan sama (`payout_dest_hash`) tanpa membocorkan nomor rekening/data mentah rekening.
+     - Laporan dompet admin (`/admin/wallet`): total beban modal (`spent_idr`) menjumlahkan seluruh baris upah dan bonus referral buku besar.
+  7. Verifikasi pengujian: 8 pengujian engine (`internal/engine/referral_h6_test.go`) dan 6 pengujian web (`internal/web/referral_h6_test.go`) lulus 100%. Seluruh 16 paket dalam repositori lulus 100% (`go test -p 1 ./...`). Biner `cmd/goblast` terkompilasi bersih. Catatan kepatuhan Aturan 7: pengujian `-race` tidak dapat dijalankan di mesin lokal Windows ini karena compiler CGO/gcc tidak tersedia.
 
 - 2026-10-15: **Tahap H5b selesai** — Keamanan akses bagian dua (batas per endpoint, CS, TOTP admin, audit handler):
   1. Batas laju per endpoint (Rate Limiting per Endpoint): Semua rute POST dan GET JSON dilindungi token bucket `internal/ratelimit` tanpa blokir permanen (Worker Ticket: 3/10m & 10/hari per user; Worker Security: 5/15m per user; Worker Financial: 10/jam per user; Worker Account: 20/jam per user & 60/jam per IP; Worker Work Controller: 30/menit per user; Worker API Polling: 120/menit per IP; Public Route: 60/menit per IP; Static Assets: 300/menit per IP; Admin Global: 300/menit; Admin TOTP Verify: 5/15m).

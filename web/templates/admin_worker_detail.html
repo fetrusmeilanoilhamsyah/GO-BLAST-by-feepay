@@ -94,6 +94,27 @@
     </div>
     {{end}}
 
+    {{if .SameDestWorkers}}
+    <!-- Banner Deteksi Potensi Kecurangan Multi-Akun (Rekening Sama) -->
+    <div class="card" style="margin-bottom: 24px; padding: 18px 20px; border: 1px solid var(--color-warning); border-radius: 10px; background: var(--color-surface-muted);">
+        <div style="display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 700; color: var(--color-warning); margin-bottom: 6px;">
+            <span>Indikasi Multi-Akun / Rekening Sama</span>
+            <span class="badge badge-warning" style="font-size: 11px;">Deteksi Fraud Payout Hash</span>
+        </div>
+        <p style="font-size: 13px; color: var(--color-text); margin: 0 0 10px 0; line-height: 1.5;">
+            Tujuan penarikan (rekening bank/e-wallet/crypto) pekerja ini identik dengan akun pekerja lain berikut. Bonus referral antar akun dalam kelompok rekening sama otomatis ditahan oleh sistem.
+        </p>
+        <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+            {{range .SameDestWorkers}}
+            <a href="/admin/workers/{{.ID}}" class="badge badge-secondary" style="padding: 6px 12px; font-size: 12px; text-decoration: none; display: inline-flex; align-items: center; gap: 6px;">
+                <span>#{{.ID}} <strong>{{.Username}}</strong></span>
+                <span style="font-size: 10px; opacity: 0.8;">({{.Status}})</span>
+            </a>
+            {{end}}
+        </div>
+    </div>
+    {{end}}
+
     <!-- GRID ATAS: RINGKASAN SALDO & PROFIL -->
     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin-bottom: 24px;">
         <!-- Profil Pekerja -->
@@ -113,6 +134,16 @@
                 <div style="display: flex; justify-content: space-between;">
                     <span style="color: var(--color-muted);">Nama Tampilan:</span>
                     <span style="color: var(--color-text);">{{.Worker.DisplayName}}</span>
+                </div>
+                <div style="display: flex; justify-content: space-between;">
+                    <span style="color: var(--color-muted);">Pengundang:</span>
+                    <span style="font-weight: 600; color: var(--color-text);">
+                        {{if .ReferrerID}}
+                        <a href="/admin/workers/{{.ReferrerID}}" style="color: var(--color-link); text-decoration: none;">{{.ReferrerUsername}}</a>
+                        {{else}}
+                        <em style="color: var(--color-muted);">(Daftar mandiri)</em>
+                        {{end}}
+                    </span>
                 </div>
                 <div style="display: flex; justify-content: space-between;">
                     <span style="color: var(--color-muted);">Kode Referral:</span>
@@ -319,6 +350,101 @@
             </div>
             {{end}}
         </div>
+    </div>
+
+    <!-- REKAN YANG DIAJAK (REFERRAL DOWNLINE) -->
+    <div class="card" style="margin-bottom: 24px; padding: 20px; border: 1px solid var(--color-border); border-radius: 10px; background: var(--color-card);">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 10px;">
+            <div>
+                <h2 style="font-size: 16px; font-weight: 700; color: var(--color-text); margin: 0;">
+                    Rekan yang Diajak (Referral Downline)
+                </h2>
+                <div style="font-size: 12px; color: var(--color-muted); margin-top: 2px;">
+                    Total: {{len .Referees}} orang &bull; Total Bonus Didapat: Rp {{.TotalRefereeBonusFormatted}}
+                </div>
+            </div>
+        </div>
+
+        {{if .Referees}}
+        <div class="desktop-only responsive-table-container">
+            <table class="responsive-table">
+                <thead>
+                    <tr>
+                        <th style="padding: 10px 14px;">ID</th>
+                        <th style="padding: 10px 14px;">Username</th>
+                        <th style="padding: 10px 14px;">Status</th>
+                        <th style="padding: 10px 14px;">Pesan Terkirim</th>
+                        <th style="padding: 10px 14px;">Bonus Dihasilkan</th>
+                        <th style="padding: 10px 14px;">Status Rekening</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range .Referees}}
+                    <tr>
+                        <td style="padding: 10px 14px;">#{{.ID}}</td>
+                        <td style="padding: 10px 14px;">
+                            <a href="/admin/workers/{{.ID}}" style="color: var(--color-link); font-weight: 600; text-decoration: none;">{{.Username}}</a>
+                        </td>
+                        <td style="padding: 10px 14px;">
+                            <span class="badge {{if eq .Status "active"}}badge-success{{else if eq .Status "frozen"}}badge-danger{{else}}badge-muted{{end}}" style="font-size: 11px;">{{.Status}}</span>
+                        </td>
+                        <td style="padding: 10px 14px;">{{.SentCount}} pesan</td>
+                        <td style="padding: 10px 14px; font-weight: 700; color: var(--color-text);">Rp {{.BonusEarnedFormatted}}</td>
+                        <td style="padding: 10px 14px;">
+                            {{if .SamePayoutDest}}
+                            <span class="badge badge-warning" style="font-size: 11px;" title="Bonus referral tidak dibayar karena rekening tujuan identik dengan pengundang">
+                                Rekening Sama (Ditahan)
+                            </span>
+                            {{else}}
+                            <span class="badge badge-success" style="font-size: 11px;">Normal</span>
+                            {{end}}
+                        </td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="mobile-only admin-card-list">
+            {{range .Referees}}
+            <div class="admin-card-item">
+                <div class="admin-card-header">
+                    <div>
+                        <a href="/admin/workers/{{.ID}}" style="color: var(--color-link); font-weight: 700; text-decoration: none;">{{.Username}}</a>
+                        <span style="font-size: 12px; color: var(--color-muted);">#{{.ID}}</span>
+                    </div>
+                    <div>
+                        <span class="badge {{if eq .Status "active"}}badge-success{{else if eq .Status "frozen"}}badge-danger{{else}}badge-muted{{end}}" style="font-size: 10px;">{{.Status}}</span>
+                    </div>
+                </div>
+                <div class="admin-card-grid">
+                    <div class="admin-card-field">
+                        <span class="admin-card-field-label">Pesan Terkirim</span>
+                        <span class="admin-card-field-val">{{.SentCount}}</span>
+                    </div>
+                    <div class="admin-card-field">
+                        <span class="admin-card-field-label">Bonus Dihasilkan</span>
+                        <span class="admin-card-field-val" style="font-weight: 700;">Rp {{.BonusEarnedFormatted}}</span>
+                    </div>
+                    <div class="admin-card-field">
+                        <span class="admin-card-field-label">Rekening</span>
+                        <span class="admin-card-field-val">
+                            {{if .SamePayoutDest}}
+                            <span class="badge badge-warning" style="font-size: 10px;">Rekening Sama</span>
+                            {{else}}
+                            <span class="badge badge-success" style="font-size: 10px;">Normal</span>
+                            {{end}}
+                        </span>
+                    </div>
+                </div>
+            </div>
+            {{end}}
+        </div>
+        {{else}}
+        <div style="text-align: center; padding: 24px; color: var(--color-muted); font-size: 13px;">
+            Pekerja belum memiliki rekan yang bergabung melalui kode referralnya.
+        </div>
+        {{end}}
     </div>
 
     <!-- TABEL RIWAYAT PENARIKAN -->

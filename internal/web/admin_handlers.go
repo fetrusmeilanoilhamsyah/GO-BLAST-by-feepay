@@ -2495,6 +2495,24 @@ type WorkerDetailInfo struct {
 	CreatedAt    string
 }
 
+type AdminWorkerRefereeItem struct {
+	ID                   int64
+	Username             string
+	Status               string
+	SentCount            int64
+	BonusEarned          int64
+	BonusEarnedFormatted string
+	SamePayoutDest       bool
+}
+
+type AdminWorkerSameDestItem struct {
+	ID        int64
+	Username  string
+	Role      string
+	Status    string
+	CreatedAt string
+}
+
 type AdminWorkerDetailViewData struct {
 	Lang                    string
 	Title                   string
@@ -2505,6 +2523,11 @@ type AdminWorkerDetailViewData struct {
 	Error                   string
 	ResetPasswordNotice     string
 	Worker                  WorkerDetailInfo
+	ReferrerID              int64
+	ReferrerUsername        string
+	Referees                []AdminWorkerRefereeItem
+	TotalRefereeBonusFormatted string
+	SameDestWorkers         []AdminWorkerSameDestItem
 	BalanceIDRFormatted     string
 	BalanceUSDTFormatted    string
 	TotalWageIDRFormatted   string
@@ -2543,19 +2566,21 @@ func (s *Server) HandleAdminWorkerDetailGET(w http.ResponseWriter, r *http.Reque
 	var payoutMethod, payoutAccName, payoutDestEnc *string
 	var createdAt time.Time
 	var emailPtr *string
+	var referredBy *int64
+	var payoutDestHash string
 
 	err = s.DB.Pool.QueryRow(ctx, `
 		SELECT id, email, COALESCE(username, ''), COALESCE(display_name, ''),
 		       role, status, language, referral_code,
 		       payout_method, payout_account_name, payout_dest_encrypted, created_at,
-		       COALESCE(freeze_reason, '')
+		       COALESCE(freeze_reason, ''), referred_by, COALESCE(payout_dest_hash, '')
 		FROM users
 		WHERE id = $1 AND role = 'worker'
 	`, workerID).Scan(
 		&wInfo.ID, &emailPtr, &wInfo.Username, &wInfo.DisplayName,
 		&wInfo.Role, &wInfo.Status, &wInfo.Language, &wInfo.ReferralCode,
 		&payoutMethod, &payoutAccName, &payoutDestEnc, &createdAt,
-		&wInfo.FreezeReason,
+		&wInfo.FreezeReason, &referredBy, &payoutDestHash,
 	)
 	wInfo.Currency = "IDR"
 	if err != nil {
@@ -2682,35 +2707,109 @@ func (s *Server) HandleAdminWorkerDetailGET(w http.ResponseWriter, r *http.Reque
 		}
 	}
 
+	// 7. Data Pengundang & Rekan Referral
+	var referrerID int64
+	var referrerUsername string
+	if referredBy != nil && *referredBy > 0 {
+		referrerID = *referredBy
+		_ = s.DB.Pool.QueryRow(ctx, "SELECT username FROM users WHERE id = $1", referrerID).Scan(&referrerUsername)
+	}
+
+	refRows, err := s.DB.Pool.Query(ctx, `
+		SELECT 
+			u.id, 
+			u.username, 
+			u.status,
+			COALESCE(sent.cnt, 0) AS sent_count,
+			COALESCE(ref_bonus.total_bonus, 0) AS bonus_earned,
+			(u.payout_dest_hash IS NOT NULL AND u.payout_dest_hash != '' AND u.payout_dest_hash = $2) AS same_payout_dest
+		FROM users u
+		LEFT JOIN (
+			SELECT user_id, COUNT(*) AS cnt 
+			FROM ledger_entries 
+			WHERE kind = 'upah' 
+			GROUP BY user_id
+		) sent ON sent.user_id = u.id
+		LEFT JOIN (
+			SELECT source_user_id, SUM(amount) AS total_bonus 
+			FROM ledger_entries 
+			WHERE user_id = $1 AND kind = 'referral' AND source_user_id IS NOT NULL 
+			GROUP BY source_user_id
+		) ref_bonus ON ref_bonus.source_user_id = u.id
+		WHERE u.referred_by = $1
+		ORDER BY u.id DESC
+	`, workerID, payoutDestHash)
+
+	var referees []AdminWorkerRefereeItem
+	var totalRefBonus int64
+	if err == nil {
+		defer refRows.Close()
+		for refRows.Next() {
+			var rItem AdminWorkerRefereeItem
+			if err := refRows.Scan(&rItem.ID, &rItem.Username, &rItem.Status, &rItem.SentCount, &rItem.BonusEarned, &rItem.SamePayoutDest); err == nil {
+				rItem.BonusEarnedFormatted = formatIDR(rItem.BonusEarned)
+				totalRefBonus += rItem.BonusEarned
+				referees = append(referees, rItem)
+			}
+		}
+	}
+
+	// 8. Kelompok Multi-Akun (Rekening Sama Berdasarkan Payout Dest Hash)
+	var sameDestWorkers []AdminWorkerSameDestItem
+	if payoutDestHash != "" {
+		sdRows, err := s.DB.Pool.Query(ctx, `
+			SELECT id, username, role, status, created_at
+			FROM users
+			WHERE payout_dest_hash = $1 AND id != $2
+			ORDER BY id ASC
+		`, payoutDestHash, workerID)
+		if err == nil {
+			defer sdRows.Close()
+			for sdRows.Next() {
+				var sd AdminWorkerSameDestItem
+				var t time.Time
+				if err := sdRows.Scan(&sd.ID, &sd.Username, &sd.Role, &sd.Status, &t); err == nil {
+					sd.CreatedAt = t.Format("02 Jan 2006")
+					sameDestWorkers = append(sameDestWorkers, sd)
+				}
+			}
+		}
+	}
+
 	lang := "id"
 	if admin.Language != "" {
 		lang = admin.Language
 	}
 
 	viewData := AdminWorkerDetailViewData{
-		Lang:                    lang,
-		Title:                   fmt.Sprintf("Detail Pekerja %s - GO BLAST", wInfo.Username),
-		Theme:                   getTheme(r),
-		CSRFToken:               getCSRF(r),
-		Nonce:                   getNonce(r),
-		ActiveNav:               "workers",
-		Message:                 r.URL.Query().Get("msg"),
-		Error:                   r.URL.Query().Get("err"),
-		ResetPasswordNotice:     r.URL.Query().Get("reset_pwd"),
-		Worker:                  wInfo,
-		BalanceIDRFormatted:     formatIDR(balanceIDR),
-		BalanceUSDTFormatted:    formatUSDT(balanceUSDT),
-		TotalWageIDRFormatted:   formatIDR(totalWageIDR),
-		TotalWithdrawnIDR:       formatIDR(totalWithdrawnIDR),
-		TotalWithdrawnUSDT:      formatUSDT(totalWithdrawnUSDT),
-		PendingWithdrawalsCount: pendingWithdrawals,
-		PayoutMethod:            pMethod,
-		PayoutAccountName:       pAccName,
-		PayoutDestMasked:        pDestMasked,
-		PayoutDestDecrypted:     pDestDecrypted,
-		Accounts:                accounts,
-		Withdrawals:             withdrawals,
-		LedgerEntries:           ledgerEntries,
+		Lang:                       lang,
+		Title:                      fmt.Sprintf("Detail Pekerja %s - GO BLAST", wInfo.Username),
+		Theme:                      getTheme(r),
+		CSRFToken:                  getCSRF(r),
+		Nonce:                      getNonce(r),
+		ActiveNav:                  "workers",
+		Message:                    r.URL.Query().Get("msg"),
+		Error:                      r.URL.Query().Get("err"),
+		ResetPasswordNotice:        r.URL.Query().Get("reset_pwd"),
+		Worker:                     wInfo,
+		ReferrerID:                 referrerID,
+		ReferrerUsername:           referrerUsername,
+		Referees:                   referees,
+		TotalRefereeBonusFormatted: formatIDR(totalRefBonus),
+		SameDestWorkers:            sameDestWorkers,
+		BalanceIDRFormatted:        formatIDR(balanceIDR),
+		BalanceUSDTFormatted:       formatUSDT(balanceUSDT),
+		TotalWageIDRFormatted:      formatIDR(totalWageIDR),
+		TotalWithdrawnIDR:          formatIDR(totalWithdrawnIDR),
+		TotalWithdrawnUSDT:         formatUSDT(totalWithdrawnUSDT),
+		PendingWithdrawalsCount:    pendingWithdrawals,
+		PayoutMethod:               pMethod,
+		PayoutAccountName:          pAccName,
+		PayoutDestMasked:           pDestMasked,
+		PayoutDestDecrypted:        pDestDecrypted,
+		Accounts:                   accounts,
+		Withdrawals:                withdrawals,
+		LedgerEntries:              ledgerEntries,
 		T: func(key string) string {
 			return i18n.T(lang, key)
 		},

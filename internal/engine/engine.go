@@ -43,6 +43,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"goblast/internal/campaign"
 	"goblast/internal/config"
 	"goblast/internal/db"
@@ -208,18 +209,47 @@ func (e *Engine) refreshSettings(ctx context.Context) {
 	}
 
 	// 3. Baca rate_referral
-	if e.settings != nil {
-		if v, ok, err := e.settings.GetInt(ctx, "rate_referral"); err == nil && ok {
-			snap.RateReferral = int64(v)
-		}
-	} else if e.db != nil && e.db.Pool != nil {
-		var v int64
-		if err := e.db.Pool.QueryRow(ctx, "SELECT (value->>'IDR')::bigint FROM settings WHERE key = 'rate_referral'").Scan(&v); err == nil {
-			snap.RateReferral = v
-		}
+	rateRef, okRef, errRef := e.readRateReferralFromDB(ctx)
+	if errRef == nil && okRef {
+		snap.RateReferral = rateRef
 	}
 
 	e.settingsCache.Set(snap)
+}
+
+func (e *Engine) readRateReferralFromDB(ctx context.Context) (int64, bool, error) {
+	if e.settings != nil {
+		var val int64
+		okJSON, err := e.settings.GetJSON(ctx, "rate_referral", &val)
+		if err == nil && okJSON && val >= 0 {
+			return val, true, nil
+		}
+
+		vInt, okInt, errInt := e.settings.GetInt(ctx, "rate_referral")
+		if errInt == nil && okInt && vInt >= 0 {
+			return int64(vInt), true, nil
+		}
+
+		var legacyMap map[string]int64
+		okMap, errMap := e.settings.GetJSON(ctx, "rate_referral", &legacyMap)
+		if errMap == nil && okMap && legacyMap != nil {
+			if idr, exists := legacyMap["IDR"]; exists && idr >= 0 {
+				return idr, true, nil
+			}
+		}
+	} else if e.db != nil && e.db.Pool != nil {
+		var val int64
+		err := e.db.Pool.QueryRow(ctx, "SELECT (value)::bigint FROM settings WHERE key = 'rate_referral'").Scan(&val)
+		if err == nil && val >= 0 {
+			return val, true, nil
+		}
+		err = e.db.Pool.QueryRow(ctx, "SELECT (value->>'IDR')::bigint FROM settings WHERE key = 'rate_referral'").Scan(&val)
+		if err == nil && val >= 0 {
+			return val, true, nil
+		}
+	}
+
+	return 0, false, nil
 }
 
 func (e *Engine) readRateWageFromDB(ctx context.Context) (int64, bool, error) {
@@ -591,12 +621,23 @@ func (e *Engine) ClaimNextNumber(ctx context.Context, accountID int64) (*Claimed
 	return &cn, nil
 }
 
-// RecordSuccessAtomic mencatat keberhasilan pengiriman (terkirim) dan entri upah buku besar
+// RecordSuccessAtomic mencatat keberhasilan pengiriman (terkirim), entri upah buku besar,
+// dan entri bonus referral untuk referrer (jika ada, aktif, dan bukan kecurangan payout_dest_hash sama)
 // dalam satu round trip database (CTE) atomik dan idempoten.
 // Memverifikasi kepemilikan: WHERE id = $1 AND status = 'dikirim' AND claimed_account_id = $2.
-func (e *Engine) RecordSuccessAtomic(ctx context.Context, numberID, accountID, workerID, rate int64) error {
+func (e *Engine) RecordSuccessAtomic(ctx context.Context, numberID, accountID, workerID, wageRate int64, referralRate ...int64) error {
 	recordCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 	defer cancel()
+
+	refRate := int64(0)
+	if len(referralRate) > 0 {
+		refRate = referralRate[0]
+	} else {
+		refRate = e.settingsCache.Get().RateReferral
+		if refRate <= 0 {
+			refRate, _, _ = e.readRateReferralFromDB(recordCtx)
+		}
+	}
 
 	start := time.Now()
 	query := `
@@ -605,36 +646,102 @@ func (e *Engine) RecordSuccessAtomic(ctx context.Context, numberID, accountID, w
 			SET status = 'terkirim', sent_at = now()
 			WHERE id = $1 AND status = 'dikirim' AND claimed_account_id = $2
 			RETURNING id, campaign_id
+		),
+		ins_upah AS (
+			INSERT INTO ledger_entries (user_id, kind, currency, amount, rate_snapshot, campaign_number_id, note)
+			SELECT $3::bigint, 'upah', 'IDR', $4::bigint, $4::bigint, updated.id, 'upah pesan terkirim'
+			FROM updated
+			ON CONFLICT (campaign_number_id) WHERE kind = 'upah' DO NOTHING
+			RETURNING id
+		),
+		ins_referral AS (
+			INSERT INTO ledger_entries (user_id, kind, currency, amount, rate_snapshot, campaign_number_id, source_user_id, note)
+			SELECT 
+				u_ref.id, 
+				'referral', 
+				'IDR', 
+				$5::bigint, 
+				$5::bigint, 
+				updated.id, 
+				$3::bigint, 
+				'bonus referral'
+			FROM updated
+			CROSS JOIN users u_sender
+			JOIN users u_ref ON u_ref.id = u_sender.referred_by
+			WHERE u_sender.id = $3::bigint
+			  AND $5::bigint > 0
+			  AND u_ref.status IN ('active', 'aktif')
+			  AND (
+				  u_sender.payout_dest_hash IS NULL 
+				  OR u_sender.payout_dest_hash = ''
+				  OR u_ref.payout_dest_hash IS NULL
+				  OR u_ref.payout_dest_hash = ''
+				  OR u_ref.payout_dest_hash <> u_sender.payout_dest_hash
+			  )
+			ON CONFLICT (campaign_number_id) WHERE kind = 'referral' DO NOTHING
+			RETURNING id
 		)
-		INSERT INTO ledger_entries (user_id, kind, currency, amount, rate_snapshot, campaign_number_id, note)
-		SELECT $3, 'upah', 'IDR', $4, $5, updated.id, 'upah pesan terkirim'
-		FROM updated
-		ON CONFLICT (campaign_number_id) WHERE kind = 'upah' DO NOTHING
-		RETURNING id;
+		SELECT 
+			(SELECT id FROM ins_upah) AS upah_id,
+			(SELECT id FROM ins_referral) AS referral_id,
+			(
+				SELECT CASE 
+					WHEN u_ref.id IS NOT NULL 
+					     AND u_sender.payout_dest_hash IS NOT NULL 
+					     AND u_sender.payout_dest_hash <> '' 
+					     AND u_ref.payout_dest_hash = u_sender.payout_dest_hash 
+					THEN 'same_payout_dest'
+					WHEN u_ref.id IS NOT NULL AND u_ref.status NOT IN ('active', 'aktif')
+					THEN 'referrer_inactive'
+					ELSE 'none'
+				END
+				FROM users u_sender
+				LEFT JOIN users u_ref ON u_ref.id = u_sender.referred_by
+				WHERE u_sender.id = $3
+			) AS skip_reason
+		FROM updated;
 	`
-	var ledgerID int64
-	err := e.db.Pool.QueryRow(recordCtx, query, numberID, accountID, workerID, rate, rate).Scan(&ledgerID)
+	var upahID, referralID sql.NullInt64
+	var skipReason sql.NullString
+	err := e.db.Pool.QueryRow(recordCtx, query, numberID, accountID, workerID, wageRate, refRate).Scan(&upahID, &referralID, &skipReason)
 	e.metrics.RecordLatency.Record(time.Since(start))
 
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if errors.Is(err, sql.ErrNoRows) || errors.Is(err, pgx.ErrNoRows) {
 			// Periksa apakah baris nomor gagal diperbarui karena klaim hilang
 			var currentAccount sql.NullInt64
 			var currentStatus string
 			_ = e.db.Pool.QueryRow(recordCtx, `SELECT claimed_account_id, status FROM campaign_numbers WHERE id = $1`, numberID).Scan(&currentAccount, &currentStatus)
 
+			if currentStatus == "terkirim" {
+				e.metrics.SentCount.Add(1)
+				return nil
+			}
+
 			slog.Warn("klaim hilang", "number_id", numberID, "expected_account", accountID, "current_account", currentAccount.Int64, "status", currentStatus)
 			e.metrics.LostClaimsCount.Add(1)
 			return fmt.Errorf("klaim hilang atau nomor bukan milik akun ini")
 		}
+
 		// Jika err bukan ErrNoRows, mungkin ON CONFLICT DO NOTHING mengembalikan 0 row tapi updated berhasil
-		// Mari verifikasi apakah nomor statusnya terkirim
+		// Verifikasi apakah nomor statusnya terkirim
 		var currentStatus string
 		if qErr := e.db.Pool.QueryRow(recordCtx, `SELECT status FROM campaign_numbers WHERE id = $1`, numberID).Scan(&currentStatus); qErr == nil && currentStatus == "terkirim" {
 			e.metrics.SentCount.Add(1)
 			return nil
 		}
 		return err
+	}
+
+	if referralID.Valid {
+		e.metrics.ReferralPaidCount.Add(1)
+	} else if skipReason.Valid {
+		if skipReason.String == "same_payout_dest" {
+			e.metrics.ReferralSkippedSameDestCount.Add(1)
+			e.metrics.ReferralSkippedFraudCount.Add(1)
+		} else if skipReason.String == "referrer_inactive" {
+			e.metrics.ReferralSkippedInactiveCount.Add(1)
+		}
 	}
 
 	e.metrics.SentCount.Add(1)
@@ -645,9 +752,13 @@ func (e *Engine) RecordSuccessAtomic(ctx context.Context, numberID, accountID, w
 // dengan timeout 10 detik, coba ulang 3 kali.
 func (e *Engine) RecordWithRetry(ctx context.Context, numberID, workerID int64) error {
 	snap := e.settingsCache.Get()
-	rate := snap.RateWage
-	if rate <= 0 {
-		rate, _, _ = e.readRateWageFromDB(ctx)
+	rateWage := snap.RateWage
+	if rateWage <= 0 {
+		rateWage, _, _ = e.readRateWageFromDB(ctx)
+	}
+	rateRef := snap.RateReferral
+	if rateRef <= 0 {
+		rateRef, _, _ = e.readRateReferralFromDB(ctx)
 	}
 
 	// Cari claimed_account_id dari DB
@@ -658,10 +769,10 @@ func (e *Engine) RecordWithRetry(ctx context.Context, numberID, workerID int64) 
 	var lastErr error
 
 	for attempt := 0; attempt <= len(delays); attempt++ {
-		if rate <= 0 {
+		if rateWage <= 0 {
 			lastErr = fmt.Errorf("rate upah belum diisi admin")
 		} else {
-			err := e.RecordSuccessAtomic(ctx, numberID, accountID, workerID, rate)
+			err := e.RecordSuccessAtomic(ctx, numberID, accountID, workerID, rateWage, rateRef)
 			if err == nil {
 				return nil
 			}
@@ -691,16 +802,20 @@ func (e *Engine) RecordSuccessAndLedger(ctx context.Context, numberID, workerID 
 	_ = e.db.Pool.QueryRow(ctx, `SELECT COALESCE(claimed_account_id, 0) FROM campaign_numbers WHERE id = $1`, numberID).Scan(&accountID)
 
 	snap := e.settingsCache.Get()
-	rate := snap.RateWage
-	if rate <= 0 {
+	rateWage := snap.RateWage
+	if rateWage <= 0 {
 		var err error
-		rate, _, err = e.readRateWageFromDB(ctx)
-		if err != nil || rate <= 0 {
+		rateWage, _, err = e.readRateWageFromDB(ctx)
+		if err != nil || rateWage <= 0 {
 			return fmt.Errorf("rate upah belum diisi admin")
 		}
 	}
+	rateRef := snap.RateReferral
+	if rateRef <= 0 {
+		rateRef, _, _ = e.readRateReferralFromDB(ctx)
+	}
 
-	return e.RecordSuccessAtomic(ctx, numberID, accountID, workerID, rate)
+	return e.RecordSuccessAtomic(ctx, numberID, accountID, workerID, rateWage, rateRef)
 }
 
 // HandleSendResult menangani hasil kirim sesuai klasifikasi Classify.
@@ -718,7 +833,7 @@ func (e *Engine) HandleSendResult(ctx context.Context, accountID, numberID, work
 	switch class {
 	case ClassTerkirim:
 		snap := e.settingsCache.Get()
-		_ = e.RecordSuccessAtomic(statusCtx, numberID, accountID, workerID, snap.RateWage)
+		_ = e.RecordSuccessAtomic(statusCtx, numberID, accountID, workerID, snap.RateWage, snap.RateReferral)
 
 	case ClassPastiBelumTerkirim:
 		// Nomor kembali tersedia, dan attempts yang tadi ditambah klaim dikurangi lagi

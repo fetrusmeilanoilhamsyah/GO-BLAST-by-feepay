@@ -80,6 +80,22 @@ func MaskDestination(dest, method string) string {
 	return dest[:prefixLen] + strings.Repeat("*", maskLen) + dest[len(dest)-suffixLen:]
 }
 
+// MaskUsername menyamarkan nama pengguna untuk privasi daftar rekan/downline (2 karakter pertama + tanda bintang).
+func MaskUsername(uname string) string {
+	uname = strings.TrimSpace(uname)
+	if uname == "" {
+		return ""
+	}
+	if len(uname) <= 2 {
+		return uname + "****"
+	}
+	maskLen := len(uname) - 2
+	if maskLen < 4 {
+		maskLen = 4
+	}
+	return uname[:2] + strings.Repeat("*", maskLen)
+}
+
 func currentUser(r *http.Request) (UserSession, bool) {
 	if val := r.Context().Value(userContextKey); val != nil {
 		if u, ok := val.(UserSession); ok {

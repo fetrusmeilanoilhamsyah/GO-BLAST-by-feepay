@@ -75,6 +75,13 @@ type WorkerBroadcastView struct {
 	CreatedAt string
 }
 
+type WorkerRefereeView struct {
+	ID                   int64
+	MaskedUsername       string
+	SentCount            int64
+	BonusEarnedFormatted string
+}
+
 type CSLinks struct {
 	CSWhatsAppURL      string
 	CSTelegramURL      string
@@ -1202,7 +1209,25 @@ func (s *Server) HandleWorkerReferralGET(w http.ResponseWriter, r *http.Request)
 	var friendsCount int64
 	_ = s.DB.Pool.QueryRow(ctx, "SELECT COUNT(*) FROM users WHERE referred_by = $1", user.ID).Scan(&friendsCount)
 
-	// 3. Total bonus referral didapat
+	// 3. Jumlah rekan aktif (mengirim minimal 1 pesan / memiliki entri upah di buku besar)
+	var activeFriendsCount int64
+	_ = s.DB.Pool.QueryRow(ctx, `
+		SELECT COUNT(DISTINCT u.id)
+		FROM users u
+		JOIN ledger_entries le ON le.user_id = u.id AND le.kind = 'upah'
+		WHERE u.referred_by = $1
+	`, user.ID).Scan(&activeFriendsCount)
+
+	// 4. Bonus referral hari ini (Asia/Jakarta)
+	startOfTodayWIB := timeutil.GetJakartaStartOfDay()
+	var todayBonus int64
+	_ = s.DB.Pool.QueryRow(ctx, `
+		SELECT COALESCE(SUM(amount), 0)
+		FROM ledger_entries
+		WHERE user_id = $1 AND kind = 'referral' AND currency = 'IDR' AND created_at >= $2
+	`, user.ID, startOfTodayWIB).Scan(&todayBonus)
+
+	// 5. Total bonus referral didapat
 	var totalBonus int64
 	_ = s.DB.Pool.QueryRow(ctx, `
 		SELECT COALESCE(SUM(amount), 0)
@@ -1210,7 +1235,46 @@ func (s *Server) HandleWorkerReferralGET(w http.ResponseWriter, r *http.Request)
 		WHERE user_id = $1 AND kind = 'referral' AND currency = 'IDR'
 	`, user.ID).Scan(&totalBonus)
 
-	// 4. Riwayat komisi referral (20 entri terakhir)
+	// 6. Daftar rekan yang diajak dengan username tersamar
+	refRows, err := s.DB.Pool.Query(ctx, `
+		SELECT 
+			u.id, 
+			u.username,
+			COALESCE(sent.cnt, 0) AS sent_count,
+			COALESCE(ref_bonus.total_bonus, 0) AS bonus_earned
+		FROM users u
+		LEFT JOIN (
+			SELECT user_id, COUNT(*) AS cnt 
+			FROM ledger_entries 
+			WHERE kind = 'upah' 
+			GROUP BY user_id
+		) sent ON sent.user_id = u.id
+		LEFT JOIN (
+			SELECT source_user_id, SUM(amount) AS total_bonus 
+			FROM ledger_entries 
+			WHERE user_id = $1 AND kind = 'referral' AND source_user_id IS NOT NULL 
+			GROUP BY source_user_id
+		) ref_bonus ON ref_bonus.source_user_id = u.id
+		WHERE u.referred_by = $1
+		ORDER BY u.id DESC
+	`, user.ID)
+
+	var refereeList []WorkerRefereeView
+	if err == nil {
+		defer refRows.Close()
+		for refRows.Next() {
+			var refItem WorkerRefereeView
+			var rawUname string
+			var bonusEarned int64
+			if err := refRows.Scan(&refItem.ID, &rawUname, &refItem.SentCount, &bonusEarned); err == nil {
+				refItem.MaskedUsername = MaskUsername(rawUname)
+				refItem.BonusEarnedFormatted = formatIDR(bonusEarned)
+				refereeList = append(refereeList, refItem)
+			}
+		}
+	}
+
+	// 7. Riwayat komisi referral (20 entri terakhir)
 	rows, err := s.DB.Pool.Query(ctx, `
 		SELECT id, kind, amount, currency, created_at, COALESCE(note, '')
 		FROM ledger_entries
@@ -1227,6 +1291,7 @@ func (s *Server) HandleWorkerReferralGET(w http.ResponseWriter, r *http.Request)
 			var t time.Time
 			if err := rows.Scan(&item.ID, &item.Kind, &item.Amount, &item.Currency, &t, &item.Note); err == nil {
 				item.CreatedAt = t.Format("02 Jan 2006 15:04")
+				item.AmountFormatted = formatIDR(item.Amount)
 				bonusList = append(bonusList, item)
 			}
 		}
@@ -1234,33 +1299,43 @@ func (s *Server) HandleWorkerReferralGET(w http.ResponseWriter, r *http.Request)
 
 	data := struct {
 		CSLinks
-		Lang         string
-		Title        string
-		Theme        string
-		CSRFToken    string
-		ActiveNav    string
-		User         UserSession
-		ReferralCode string
-		ReferralLink string
-		FriendsCount int64
-		TotalBonus   int64
-		BonusList    []WorkerActivityView
-		Nonce        string
-		T            func(string) string
+		Lang                string
+		Title               string
+		Theme               string
+		CSRFToken           string
+		ActiveNav           string
+		User                UserSession
+		ReferralCode        string
+		ReferralLink        string
+		FriendsCount        int64
+		ActiveFriendsCount  int64
+		TodayBonus          int64
+		TodayBonusFormatted string
+		TotalBonus          int64
+		TotalBonusFormatted string
+		RefereeList         []WorkerRefereeView
+		BonusList           []WorkerActivityView
+		Nonce               string
+		T                   func(string) string
 	}{
-		CSLinks:      s.csLinks(r.Context()),
-		Lang:         lang,
-		Title:        i18n.T(lang, "nav.referral"),
-		Theme:        getTheme(r),
-		CSRFToken:    getCSRF(r),
-		Nonce:        getNonce(r),
-		ActiveNav:    "referral",
-		User:         user,
-		ReferralCode: referralCode,
-		ReferralLink: referralLink,
-		FriendsCount: friendsCount,
-		TotalBonus:   totalBonus,
-		BonusList:    bonusList,
+		CSLinks:             s.csLinks(r.Context()),
+		Lang:                lang,
+		Title:               i18n.T(lang, "nav.referral"),
+		Theme:               getTheme(r),
+		CSRFToken:           getCSRF(r),
+		Nonce:               getNonce(r),
+		ActiveNav:           "referral",
+		User:                user,
+		ReferralCode:        referralCode,
+		ReferralLink:        referralLink,
+		FriendsCount:        friendsCount,
+		ActiveFriendsCount:  activeFriendsCount,
+		TodayBonus:          todayBonus,
+		TodayBonusFormatted: formatIDR(todayBonus),
+		TotalBonus:          totalBonus,
+		TotalBonusFormatted: formatIDR(totalBonus),
+		RefereeList:         refereeList,
+		BonusList:           bonusList,
 		T: func(key string) string {
 			return i18n.T(lang, key)
 		},

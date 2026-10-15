@@ -10,24 +10,38 @@
                 </div>
             </div>
 
-            <!-- STATISTIK REFERRAL -->
-            <div class="stat-grid">
+            <!-- STATISTIK REFERRAL (4 KARTU) -->
+            <div class="stat-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
                 <div class="stat-card">
                     <div class="stat-label">{{ call .T "worker.referral_friends_count" }}</div>
                     <div class="stat-value">{{.FriendsCount}} Orang</div>
-                    <p style="margin: 6px 0 0 0; font-size: 12px; color: var(--color-muted);">Rekan tingkat 1 yang terdaftar</p>
+                    <p style="margin: 6px 0 0 0; font-size: 12px; color: var(--color-muted);">Rekan terdaftar melalui kode Anda</p>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-label">{{ call .T "worker.referral_active_friends" }}</div>
+                    <div class="stat-value">{{.ActiveFriendsCount}} Orang</div>
+                    <p style="margin: 6px 0 0 0; font-size: 12px; color: var(--color-muted);">Kirim minimal 1 pesan</p>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-label">{{ call .T "worker.referral_bonus_today" }}</div>
+                    <div class="stat-value">
+                        Rp {{.TodayBonusFormatted}}
+                    </div>
+                    <p style="margin: 6px 0 0 0; font-size: 12px; color: var(--color-muted);">Hari ini (WIB)</p>
                 </div>
 
                 <div class="stat-card">
                     <div class="stat-label">{{ call .T "worker.total_referral" }}</div>
                     <div class="stat-value">
-                        Rp {{.TotalBonus}}
+                        Rp {{.TotalBonusFormatted}}
                     </div>
-                    <p style="margin: 6px 0 0 0; font-size: 12px; color: var(--color-muted);">Tahap 18 (segera aktif)</p>
+                    <p style="margin: 6px 0 0 0; font-size: 12px; color: var(--color-muted);">Total akumulasi bonus</p>
                 </div>
             </div>
 
-            <!-- PEMBERITAHUAN TAHAP 18 -->
+            <!-- PEMBERITAHUAN ATURAN REFERRAL -->
             <div style="background-color: var(--color-surface-muted); border: 1px solid var(--color-border); border-left: 4px solid var(--color-primary); padding: 12px 16px; border-radius: 6px; margin-bottom: 24px; font-size: 13px; color: var(--color-text); line-height: 1.5;">
                 {{ call .T "worker.referral_pending_notice" }}
             </div>
@@ -60,6 +74,60 @@
                 </div>
             </div>
 
+            <!-- DAFTAR REKAN YANG DIAJAK -->
+            <div class="card" style="margin: 0 0 24px 0; padding: 24px;">
+                <h3 style="margin-top: 0; margin-bottom: 16px; font-size: 18px;">{{ call .T "worker.referral_list_title" }}</h3>
+
+                <div class="desktop-only responsive-table-container">
+                    <table class="responsive-table">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>{{ call .T "worker.referral_th_username" }}</th>
+                                <th>{{ call .T "worker.referral_th_messages" }}</th>
+                                <th>{{ call .T "worker.referral_th_bonus" }}</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {{range .RefereeList}}
+                            <tr>
+                                <td>{{.ID}}</td>
+                                <td style="font-weight: 600; font-family: monospace;">{{.MaskedUsername}}</td>
+                                <td>{{.SentCount}} pesan</td>
+                                <td style="font-weight: bold; color: var(--color-success);">Rp {{.BonusEarnedFormatted}}</td>
+                            </tr>
+                            {{else}}
+                            <tr>
+                                <td colspan="4" style="text-align: center; padding: 28px; color: var(--color-muted);">
+                                    {{ call $.T "worker.referral_empty_list" }}
+                                </td>
+                            </tr>
+                            {{end}}
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="mobile-only account-card-list">
+                    {{range .RefereeList}}
+                    <div class="account-card-item">
+                        <div class="account-card-header">
+                            <span style="font-size: 13px; font-weight: 700; font-family: monospace;">{{.MaskedUsername}}</span>
+                            <div style="font-size: 14px; font-weight: 800; color: var(--color-success);">
+                                Rp {{.BonusEarnedFormatted}}
+                            </div>
+                        </div>
+                        <div style="margin-top: 4px; font-size: 12px; color: var(--color-muted);">
+                            {{.SentCount}} pesan terkirim
+                        </div>
+                    </div>
+                    {{else}}
+                    <div class="account-card-item" style="padding: 24px 16px; text-align: center; color: var(--color-muted); font-size: 13px;">
+                        {{ call $.T "worker.referral_empty_list" }}
+                    </div>
+                    {{end}}
+                </div>
+            </div>
+
             <!-- RIWAYAT KOMISI REFERRAL -->
             <div class="card" style="margin: 0; padding: 24px;">
                 <h3 style="margin-top: 0; margin-bottom: 16px; font-size: 18px;">{{ call .T "worker.referral_history_title" }}</h3>
@@ -80,7 +148,7 @@
                             <tr>
                                 <td>{{.ID}}</td>
                                 <td style="font-weight: bold; color: var(--color-text);">
-                                    +{{.Amount}} {{.Currency}}
+                                    +{{.AmountFormatted}} {{.Currency}}
                                 </td>
                                 <td style="font-size: 13px; color: var(--color-muted);">{{.CreatedAt}}</td>
                                 <td style="font-size: 13px;">{{.Note}}</td>
@@ -103,7 +171,7 @@
                         <div class="account-card-header">
                             <span style="font-size: 12px; color: var(--color-muted); font-weight: 600;">#{{.ID}}</span>
                             <div style="font-size: 15px; font-weight: 800; color: var(--color-success);">
-                                +{{.Amount}} {{.Currency}}
+                                +{{.AmountFormatted}} {{.Currency}}
                             </div>
                         </div>
                         {{if .Note}}

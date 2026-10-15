@@ -46,7 +46,7 @@
 
         <div style="margin-bottom: 15px;">
             <label style="display: block; margin-bottom: 5px; font-size: 13px; font-weight: 500;">{{ call .T "auth.referral_code" }}</label>
-            <input type="text" name="referral_code" placeholder="Kode referral (opsional)" style="width: 100%; padding: 10px 12px; box-sizing: border-box; background-color: var(--color-input-bg); color: var(--color-input-text); border: 1px solid var(--color-border); border-radius: 6px; font-size: 14px;">
+            <input type="text" name="referral_code" value="{{ .ReferralCode }}" placeholder="Kode referral (opsional)" style="width: 100%; padding: 10px 12px; box-sizing: border-box; background-color: var(--color-input-bg); color: var(--color-input-text); border: 1px solid var(--color-border); border-radius: 6px; font-size: 14px;">
         </div>
 
         <div style="margin-bottom: 20px;">

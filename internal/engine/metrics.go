@@ -83,6 +83,12 @@ type Metrics struct {
 	LostClaimsCount atomic.Uint64
 	BackoffCount    atomic.Uint64
 
+	// Penghitung metrik referral (H6)
+	ReferralPaidCount            atomic.Uint64
+	ReferralSkippedSameDestCount atomic.Uint64
+	ReferralSkippedInactiveCount atomic.Uint64
+	ReferralSkippedFraudCount    atomic.Uint64
+
 	// Penghitung per kelas hasil
 	ClassTerkirim           atomic.Uint64
 	ClassPastiBelumTerkirim atomic.Uint64
@@ -112,17 +118,19 @@ func (m *Metrics) IncClass(c ResultClass) {
 
 // EngineStats adalah representasi snapshot data metrik JSON untuk admin.
 type EngineStats struct {
-	ActiveWorkers   int               `json:"active_workers"`
-	ClaimedCount    uint64            `json:"claimed_count"`
-	SentCount       uint64            `json:"sent_count"`
-	GagalCount      uint64            `json:"gagal_count"`
-	PanicCount      uint64            `json:"panic_count"`
-	LostClaimsCount uint64            `json:"lost_claims_count"`
-	BackoffCount    uint64            `json:"backoff_count"`
-	ClassCounts     map[string]uint64 `json:"class_counts"`
-	ClaimLatency    map[string]uint64 `json:"claim_latency"`
-	RecordLatency   map[string]uint64 `json:"record_latency"`
-	SendLatency     map[string]uint64 `json:"send_latency"`
+	ActiveWorkers             int               `json:"active_workers"`
+	ClaimedCount              uint64            `json:"claimed_count"`
+	SentCount                 uint64            `json:"sent_count"`
+	GagalCount                uint64            `json:"gagal_count"`
+	PanicCount                uint64            `json:"panic_count"`
+	LostClaimsCount           uint64            `json:"lost_claims_count"`
+	BackoffCount              uint64            `json:"backoff_count"`
+	ReferralPaidCount         uint64            `json:"referral_paid_count"`
+	ReferralSkippedFraudCount uint64            `json:"referral_skipped_fraud_count"`
+	ClassCounts               map[string]uint64 `json:"class_counts"`
+	ClaimLatency              map[string]uint64 `json:"claim_latency"`
+	RecordLatency             map[string]uint64 `json:"record_latency"`
+	SendLatency               map[string]uint64 `json:"send_latency"`
 }
 
 // Stats mengembalikan salinan data metrik engine saat ini.
@@ -132,13 +140,15 @@ func (e *Engine) Stats() EngineStats {
 	e.mu.Unlock()
 
 	return EngineStats{
-		ActiveWorkers:   active,
-		ClaimedCount:    e.metrics.ClaimedCount.Load(),
-		SentCount:       e.metrics.SentCount.Load(),
-		GagalCount:      e.metrics.GagalCount.Load(),
-		PanicCount:      e.metrics.PanicCount.Load(),
-		LostClaimsCount: e.metrics.LostClaimsCount.Load(),
-		BackoffCount:    e.metrics.BackoffCount.Load(),
+		ActiveWorkers:             active,
+		ClaimedCount:              e.metrics.ClaimedCount.Load(),
+		SentCount:                 e.metrics.SentCount.Load(),
+		GagalCount:                e.metrics.GagalCount.Load(),
+		PanicCount:                e.metrics.PanicCount.Load(),
+		LostClaimsCount:           e.metrics.LostClaimsCount.Load(),
+		BackoffCount:              e.metrics.BackoffCount.Load(),
+		ReferralPaidCount:         e.metrics.ReferralPaidCount.Load(),
+		ReferralSkippedFraudCount: e.metrics.ReferralSkippedFraudCount.Load(),
 		ClassCounts: map[string]uint64{
 			"terkirim":             e.metrics.ClassTerkirim.Load(),
 			"pasti_belum_terkirim": e.metrics.ClassPastiBelumTerkirim.Load(),
