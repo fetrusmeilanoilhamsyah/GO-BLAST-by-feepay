@@ -683,7 +683,7 @@ func (s *Server) HandleAdminCampaignStart(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	if buttonMode == campaign.ModeTombolAsli {
+	if buttonMode == campaign.ModeTombolAsli && config.MaxRecipientsNativeFlow > 0 {
 		var totalNumbers int
 		_ = s.DB.Pool.QueryRow(r.Context(), "SELECT COUNT(*) FROM campaign_numbers WHERE campaign_id = $1", id).Scan(&totalNumbers)
 		if totalNumbers > config.MaxRecipientsNativeFlow {

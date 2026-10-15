@@ -214,8 +214,8 @@ var (
 	// AdminStepUpDuration durasi keabsahan step-up TOTP untuk aksi sensitif (5 menit).
 	AdminStepUpDuration = 5 * time.Minute
 
-	// MaxRecipientsNativeFlow batas maksimal penerima campaign mode tombol_asli (20).
-	MaxRecipientsNativeFlow = 20
+	// MaxRecipientsNativeFlow batas maksimal penerima campaign mode tombol_asli (0 = tanpa batas, keputusan pemilik).
+	MaxRecipientsNativeFlow = 0
 
 	// AdminCampaignExportNumbersAttempts batas ekspor sisa nomor per admin per jam (5).
 	AdminCampaignExportNumbersAttempts = 5

@@ -147,7 +147,7 @@ func ProcessPreview(ctx context.Context, db *pgxpool.Pool, campaignID int64, raw
 		})
 	}
 
-	if buttonMode == ModeTombolAsli {
+	if buttonMode == ModeTombolAsli && config.MaxRecipientsNativeFlow > 0 {
 		totalAfter := len(existing) + stats.Accepted
 		if totalAfter > config.MaxRecipientsNativeFlow {
 			return PreviewData{}, fmt.Errorf("mode tombol asli dibatasi maksimal %d penerima (saat ini: %d, setelah unggah: %d)", config.MaxRecipientsNativeFlow, len(existing), totalAfter)
@@ -311,7 +311,7 @@ func ConfirmUpload(ctx context.Context, db *pgxpool.Pool, campaignID int64, user
 		return fmt.Errorf("nomor hanya bisa ditambahkan ke campaign draf atau berjalan")
 	}
 
-	if buttonMode == ModeTombolAsli {
+	if buttonMode == ModeTombolAsli && config.MaxRecipientsNativeFlow > 0 {
 		var currentCount int
 		_ = tx.QueryRow(ctx, "SELECT COUNT(*) FROM campaign_numbers WHERE campaign_id = $1", campaignID).Scan(&currentCount)
 		if currentCount+len(validNumbers) > config.MaxRecipientsNativeFlow {
