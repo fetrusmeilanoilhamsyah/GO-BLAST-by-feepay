@@ -57,6 +57,7 @@ func (s *Server) HandleAdminCampaignNumbersGET(w http.ResponseWriter, r *http.Re
 		Theme     string
 		CSRFToken string
 		Campaign  campaign.Campaign
+		Nonce     string
 		T         func(string) string
 	}{
 		ActiveNav: "campaigns",
@@ -65,6 +66,7 @@ func (s *Server) HandleAdminCampaignNumbersGET(w http.ResponseWriter, r *http.Re
 		Theme:     getTheme(r),
 		CSRFToken: getCSRF(r),
 		Campaign:  c,
+		Nonce:     getNonce(r),
 		T: func(key string) string {
 			return i18n.T(lang, key)
 		},
@@ -154,6 +156,7 @@ func (s *Server) HandleAdminCampaignNumbersPreview(w http.ResponseWriter, r *htt
 		PreviewID   string
 		Stats       campaign.UploadStats
 		HasRejected bool
+		Nonce       string
 		T           func(string) string
 	}{
 		ActiveNav:   "campaigns",
@@ -165,6 +168,7 @@ func (s *Server) HandleAdminCampaignNumbersPreview(w http.ResponseWriter, r *htt
 		PreviewID:   preview.ID,
 		Stats:       preview.Stats,
 		HasRejected: hasRejected,
+		Nonce:       getNonce(r),
 		T: func(key string) string {
 			return i18n.T(lang, key)
 		},

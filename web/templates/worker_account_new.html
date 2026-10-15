@@ -48,7 +48,7 @@
             </div>
 
             <div style="margin-top: 16px;">
-                <button type="button" onclick="showPairingCodeSection()" style="background: none; border: none; color: var(--color-link); font-size: 14px; cursor: pointer; text-decoration: underline;">
+                <button type="button" id="btn-show-code" style="background: none; border: none; color: var(--color-link); font-size: 14px; cursor: pointer; text-decoration: underline;">
                     {{ call .T "wa.mode_code" }} (Tautkan dengan nomor HP) &rarr;
                 </button>
             </div>
@@ -77,7 +77,7 @@
             <form method="POST" action="/worker/accounts/{{.ActiveAccountID}}/pair" style="max-width: 380px; margin: 16px auto 0; text-align: left;">
                 <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
                 <label for="phone" style="display: block; font-weight: bold; font-size: 13px; margin-bottom: 6px;">{{ call .T "wa.phone_label" }}</label>
-                <div style="display: flex; gap: 8px;">
+                <div style="flex: 1; display: flex; gap: 8px;">
                     <input type="text" id="phone" name="phone" placeholder="08123456789 atau 62812..." required style="flex: 1; padding: 8px 12px; border: 1px solid var(--color-border); border-radius: 4px; background-color: var(--color-input-bg); color: var(--color-input-text); box-sizing: border-box; font-size: 14px;">
                     <button type="submit" style="padding: 8px 16px; background-color: var(--color-primary); color: var(--color-on-primary); border: none; border-radius: 4px; font-weight: bold; font-size: 13px; cursor: pointer;">
                         Dapatkan Kode
@@ -86,7 +86,7 @@
             </form>
 
             <div style="margin-top: 16px;">
-                <button type="button" onclick="showQRSection()" style="background: none; border: none; color: var(--color-link); font-size: 14px; cursor: pointer; text-decoration: underline;">
+                <button type="button" id="btn-show-qr" style="background: none; border: none; color: var(--color-link); font-size: 14px; cursor: pointer; text-decoration: underline;">
                     &larr; Kembali ke Pindai Kode QR
                 </button>
             </div>
@@ -128,7 +128,7 @@
         </form>
 
         <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--color-border); text-align: right;">
-            <form method="POST" action="/worker/accounts/{{.ActiveAccountID}}/delete" onsubmit="return confirm('Apakah Anda yakin ingin membatalkan dan menghapus akun ini?');" style="display: inline;">
+            <form method="POST" action="/worker/accounts/{{.ActiveAccountID}}/delete" id="form-delete-account" style="display: inline;">
                 <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
                 <button type="submit" style="background: none; border: 1px solid var(--color-danger); color: var(--color-danger); padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px;">
                     Batalkan &amp; Hapus Akun Ini
@@ -138,7 +138,7 @@
     </div>
 </div>
 
-<script>
+<script nonce="{{ .Nonce }}">
     function showPairingCodeSection() {
         document.getElementById('section-qr').style.display = 'none';
         document.getElementById('section-pairing-code').style.display = 'block';
@@ -148,6 +148,23 @@
         document.getElementById('section-pairing-code').style.display = 'none';
         document.getElementById('section-qr').style.display = 'block';
     }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        var btnCode = document.getElementById('btn-show-code');
+        if (btnCode) btnCode.addEventListener('click', showPairingCodeSection);
+
+        var btnQR = document.getElementById('btn-show-qr');
+        if (btnQR) btnQR.addEventListener('click', showQRSection);
+
+        var delForm = document.getElementById('form-delete-account');
+        if (delForm) {
+            delForm.addEventListener('submit', function(e) {
+                if (!confirm('Apakah Anda yakin ingin membatalkan dan menghapus akun ini?')) {
+                    e.preventDefault();
+                }
+            });
+        }
+    });
 
     const accountId = {{.ActiveAccountID}};
     const pollInterval = setInterval(async () => {

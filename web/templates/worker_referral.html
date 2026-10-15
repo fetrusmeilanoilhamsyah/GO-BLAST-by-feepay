@@ -50,7 +50,7 @@
                     <label for="ref-link-input" style="font-weight: 600; font-size: 14px;">Tautan Undangan:</label>
                     <div style="display: flex; gap: 8px; flex-wrap: wrap;">
                         <input type="text" id="ref-link-input" class="input" value="{{.ReferralLink}}" readonly style="flex: 1; min-width: 240px; background-color: var(--color-surface-muted);">
-                        <button type="button" id="copy-btn" onclick="copyReferralLink()" class="btn btn-primary" style="padding: 10px 20px; font-weight: bold; cursor: pointer;">
+                        <button type="button" id="copy-btn" class="btn btn-primary" style="padding: 10px 20px; font-weight: bold; cursor: pointer;">
                             {{ call .T "worker.referral_copy" }}
                         </button>
                     </div>
@@ -125,7 +125,7 @@
     </main>
 </div>
 
-<script>
+<script nonce="{{ .Nonce }}">
 function copyReferralLink() {
     const input = document.getElementById('ref-link-input');
     input.select();
@@ -149,5 +149,10 @@ function showFeedback() {
         btn.innerText = '{{ call .T "worker.referral_copy" }}';
     }, 2500);
 }
+
+document.addEventListener('DOMContentLoaded', function() {
+    var btn = document.getElementById('copy-btn');
+    if (btn) btn.addEventListener('click', copyReferralLink);
+});
 </script>
 {{end}}

@@ -161,7 +161,7 @@ func TestWorkerPanelFlows(t *testing.T) {
 		if !strings.Contains(body, fmt.Sprintf("/worker/accounts/%d/delete", acc3)) {
 			t.Errorf("Expected body to contain delete form for acc3")
 		}
-		if !strings.Contains(body, fmt.Sprintf("openAddAccountModal(%d)", acc3)) && !strings.Contains(body, fmt.Sprintf("openAddAccountModal( %d )", acc3)) {
+		if !strings.Contains(body, fmt.Sprintf("data-account-id=\"%d\"", acc3)) && !strings.Contains(body, fmt.Sprintf("openAddAccountModal(%d)", acc3)) && !strings.Contains(body, fmt.Sprintf("openAddAccountModal( %d )", acc3)) {
 			t.Errorf("Expected body to contain reconnect button for acc3")
 		}
 		if !strings.Contains(body, fmt.Sprintf("/worker/accounts/%d/delete", acc1)) {

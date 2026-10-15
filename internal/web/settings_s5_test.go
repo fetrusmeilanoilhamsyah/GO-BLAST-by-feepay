@@ -68,7 +68,7 @@ func TestS5_LinkingRejectedWhenMaxAccountsEmptyOrReached(t *testing.T) {
 	srv, pool, _, workerID := setupAdminTest(t)
 	ctx := context.Background()
 
-	cfg := &config.Config{MaxActiveSessions: 50}
+	cfg := &config.Config{MaxActiveSessions: 1000}
 	settingsReader := wa.NewDBSettingsReader(srv.DB)
 	mgr := wa.NewManager(srv.DB, settingsReader, cfg)
 

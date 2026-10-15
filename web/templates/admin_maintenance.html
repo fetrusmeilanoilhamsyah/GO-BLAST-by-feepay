@@ -21,7 +21,7 @@
             </p>
         </div>
         <div>
-            <button type="button" onclick="location.reload()" class="btn btn-secondary" style="padding: 8px 16px; font-size: 13px; cursor: pointer;">
+            <button type="button" id="btn-refresh-maintenance" class="btn btn-secondary" style="padding: 8px 16px; font-size: 13px; cursor: pointer;">
                 Segarkan Data
             </button>
         </div>
@@ -62,7 +62,7 @@
                 </p>
             </div>
 
-            <form method="POST" action="/admin/maintenance/toggle" style="margin: 0;" onsubmit="return confirm('{{if .MaintenanceMode}}Nonaktifkan mode pemeliharaan dan buka kembali akses untuk semua pekerja?{{else}}Aktifkan mode pemeliharaan? Seluruh pekerja akan dialihkan ke halaman pemeliharaan dan engine akan dihentikan.{{end}}');">
+            <form method="POST" action="/admin/maintenance/toggle" id="form-toggle-maintenance" data-mode="{{if .MaintenanceMode}}active{{else}}inactive{{end}}" style="margin: 0;">
                 <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
                 {{if .MaintenanceMode}}
                 <button type="submit" class="btn btn-secondary" style="padding: 10px 20px; font-size: 13px; font-weight: 600; cursor: pointer; color: var(--color-success); border-color: var(--color-success);">
@@ -286,6 +286,66 @@
         </div>
     </div>
 
+    <!-- 2C. PEMBATASAN RATE LIMIT AKTIF (ACTIVE RESTRICTIONS) -->
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
+        <div>
+            <h2 style="font-size: 16px; font-weight: 700; color: var(--color-text); margin: 0;">
+                Pembatasan Rate Limit Aktif ({{len .ActiveRestrictions}})
+            </h2>
+            <p style="font-size: 12px; color: var(--color-muted); margin: 2px 0 0 0;">
+                Daftar IP dan akun yang sedang dibatasi sementara oleh sistem rate limit anti brute-force.
+            </p>
+        </div>
+        {{if .ActiveRestrictions}}
+        <form method="POST" action="/admin/maintenance/restrictions/release-all" id="form-release-all-restrictions" style="margin: 0;">
+            <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+            <button type="submit" class="btn btn-secondary" style="font-size: 12px; padding: 6px 12px; color: var(--color-danger); border-color: var(--color-danger); cursor: pointer;">
+                Lepas Semua Pembatasan
+            </button>
+        </form>
+        {{end}}
+    </div>
+
+    <div class="card" style="margin-bottom: 28px; padding: 0; overflow-x: auto; border: 1px solid var(--color-border); border-radius: 10px; background: var(--color-card);">
+        <table class="table" style="width: 100%; border-collapse: collapse; font-size: 12px;">
+            <thead>
+                <tr style="border-bottom: 1px solid var(--color-border); text-align: left; background: var(--color-surface-muted);">
+                    <th style="padding: 10px 14px;">Lapisan</th>
+                    <th style="padding: 10px 14px;">Kunci (Tersamar)</th>
+                    <th style="padding: 10px 14px;">Sisa Waktu</th>
+                    <th style="padding: 10px 14px; text-align: right;">Aksi</th>
+                </tr>
+            </thead>
+            <tbody>
+                {{range .ActiveRestrictions}}
+                <tr style="border-bottom: 1px solid var(--color-border);">
+                    <td style="padding: 10px 14px;">
+                        <span class="badge badge-muted" style="font-size: 11px;">{{.Layer}}</span>
+                    </td>
+                    <td style="padding: 10px 14px; font-family: monospace; font-weight: 600; color: var(--color-text);">{{.Key}}</td>
+                    <td style="padding: 10px 14px; color: var(--color-warning); font-weight: 600;">{{.RemainingWait}}</td>
+                    <td style="padding: 10px 14px; text-align: right;">
+                        <form method="POST" action="/admin/maintenance/restrictions/release" style="display: inline; margin: 0;">
+                            <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                            <input type="hidden" name="layer" value="{{.Layer}}">
+                            <input type="hidden" name="key" value="{{.RawKey}}">
+                            <button type="submit" class="btn btn-secondary" style="font-size: 11px; padding: 4px 10px; cursor: pointer;">
+                                Lepas Blokir
+                            </button>
+                        </form>
+                    </td>
+                </tr>
+                {{else}}
+                <tr>
+                    <td colspan="4" style="padding: 24px; text-align: center; color: var(--color-muted);">
+                        Tidak ada pembatasan rate limit yang sedang aktif saat ini.
+                    </td>
+                </tr>
+                {{end}}
+            </tbody>
+        </table>
+    </div>
+
     <!-- 3. AUDIT LOGS TERBARU -->
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
         <h2 style="font-size: 16px; font-weight: 700; color: var(--color-text); margin: 0;">
@@ -364,4 +424,37 @@
     </div>
     </main>
 </div>
+
+<script nonce="{{ .Nonce }}">
+document.addEventListener('DOMContentLoaded', function() {
+    var btnRefresh = document.getElementById('btn-refresh-maintenance');
+    if (btnRefresh) {
+        btnRefresh.addEventListener('click', function() {
+            location.reload();
+        });
+    }
+
+    var formToggle = document.getElementById('form-toggle-maintenance');
+    if (formToggle) {
+        formToggle.addEventListener('submit', function(e) {
+            var mode = this.getAttribute('data-mode');
+            var msg = (mode === 'active')
+                ? 'Nonaktifkan mode pemeliharaan dan buka kembali akses untuk semua pekerja?'
+                : 'Aktifkan mode pemeliharaan? Seluruh pekerja akan dialihkan ke halaman pemeliharaan dan engine akan dihentikan.';
+            if (!confirm(msg)) {
+                e.preventDefault();
+            }
+        });
+    }
+
+    var formReleaseAll = document.getElementById('form-release-all-restrictions');
+    if (formReleaseAll) {
+        formReleaseAll.addEventListener('submit', function(e) {
+            if (!confirm('Lepas semua pembatasan rate limit yang aktif saat ini?')) {
+                e.preventDefault();
+            }
+        });
+    }
+});
+</script>
 {{end}}

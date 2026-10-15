@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"html/template"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -17,12 +18,17 @@ import (
 
 	"goblast/internal/auth"
 	"goblast/internal/campaign"
+	"goblast/internal/config"
 	"goblast/internal/db"
 	"goblast/internal/engine"
 	"goblast/internal/i18n"
+	"goblast/internal/ratelimit"
 	"goblast/internal/safe"
+	"goblast/internal/turnstile"
 	"goblast/internal/wa"
 	"goblast/internal/withdraw"
+
+	"golang.org/x/time/rate"
 )
 
 // WorkController antarmuka kontrol kerja pengiriman pesan.
@@ -75,6 +81,37 @@ type Server struct {
 	statsCache         globalStatsCache
 	lockCache          systemLockCache
 	draining           atomic.Bool
+
+	// H5a Keamanan Akses
+	SessionSecret           string
+	TrustedProxyCIDRs       []*net.IPNet
+	ClientIPHeader          string
+	Turnstile               *turnstile.Client
+	LoginIPLimiter          *ratelimit.Limiter
+	LoginIdentLimiter       *ratelimit.Limiter
+	LoginPairLimiter        *ratelimit.Limiter
+	LoginGlobalLimiter      *ratelimit.Limiter
+	RegisterHourlyLimiter   *ratelimit.Limiter
+	RegisterDailyLimiter    *ratelimit.Limiter
+	AuditLoginFailedLimiter *ratelimit.Limiter
+}
+
+func (s *Server) isProd() bool {
+	return s.Env == "prod" || s.Env == "production"
+}
+
+func (s *Server) sessionCookieName() string {
+	if s.isProd() {
+		return "__Host-gb_session"
+	}
+	return "gb_session"
+}
+
+func (s *Server) csrfCookieName() string {
+	if s.isProd() {
+		return "__Host-gb_csrf"
+	}
+	return "gb_csrf"
 }
 
 // SetDraining menyetel status penutupan server (draining).
@@ -326,11 +363,119 @@ func NewServer(database *db.DB, env string, waMgr *wa.Manager, workCtrl WorkCont
 		CSWhatsAppURL:      "https://wa.me/",
 		CSTelegramURL:      "https://t.me/feepay_cs",
 		ChannelTelegramURL: "https://t.me/goblast_channel",
+		ClientIPHeader:     "CF-Connecting-IP",
+		LoginIPLimiter: ratelimit.NewLimiter(ratelimit.Config{
+			Layer:      "ip",
+			Rate:       rate.Every(config.LoginRateLimitIPWindow / time.Duration(config.LoginRateLimitIPAttempts)),
+			Burst:      config.LoginRateLimitIPAttempts,
+			Window:     config.LoginRateLimitIPWindow,
+			MaxKeys:    config.MaxLimiterKeys,
+			FailClosed: false,
+		}),
+		LoginIdentLimiter: ratelimit.NewLimiter(ratelimit.Config{
+			Layer:      "ident",
+			Rate:       rate.Every(config.LoginRateLimitIdentifierWindow / time.Duration(config.LoginRateLimitIdentifierAttempts)),
+			Burst:      config.LoginRateLimitIdentifierAttempts,
+			Window:     config.LoginRateLimitIdentifierWindow,
+			MaxKeys:    config.MaxLimiterKeys,
+			FailClosed: true,
+		}),
+		LoginPairLimiter: ratelimit.NewLimiter(ratelimit.Config{
+			Layer:      "pair",
+			Rate:       rate.Every(config.LoginRateLimitPairWindow / time.Duration(config.LoginRateLimitPairAttempts)),
+			Burst:      config.LoginRateLimitPairAttempts,
+			Window:     config.LoginRateLimitPairWindow,
+			MaxKeys:    config.MaxLimiterKeys,
+			FailClosed: true,
+		}),
+		LoginGlobalLimiter: ratelimit.NewLimiter(ratelimit.Config{
+			Layer:      "global",
+			Rate:       rate.Every(config.LoginRateLimitGlobalWindow / time.Duration(config.LoginRateLimitGlobalAttempts)),
+			Burst:      config.LoginRateLimitGlobalAttempts,
+			Window:     config.LoginRateLimitGlobalWindow,
+			MaxKeys:    10,
+			FailClosed: false,
+		}),
+		RegisterHourlyLimiter: ratelimit.NewLimiter(ratelimit.Config{
+			Layer:      "register_hourly",
+			Rate:       rate.Every(config.RegisterRateLimitHourlyWindow / time.Duration(config.RegisterRateLimitHourlyAttempts)),
+			Burst:      config.RegisterRateLimitHourlyAttempts,
+			Window:     config.RegisterRateLimitHourlyWindow,
+			MaxKeys:    config.MaxLimiterKeys,
+			FailClosed: false,
+		}),
+		RegisterDailyLimiter: ratelimit.NewLimiter(ratelimit.Config{
+			Layer:      "register_daily",
+			Rate:       rate.Every(config.RegisterRateLimitDailyWindow / time.Duration(config.RegisterRateLimitDailyAttempts)),
+			Burst:      config.RegisterRateLimitDailyAttempts,
+			Window:     config.RegisterRateLimitDailyWindow,
+			MaxKeys:    config.MaxLimiterKeys,
+			FailClosed: false,
+		}),
+		AuditLoginFailedLimiter: ratelimit.NewLimiter(ratelimit.Config{
+			Layer:      "audit_login_failed",
+			Rate:       rate.Every(config.AuditLoginFailedRateLimitWindow / time.Duration(config.AuditLoginFailedRateLimitAttempts)),
+			Burst:      config.AuditLoginFailedRateLimitAttempts,
+			Window:     config.AuditLoginFailedRateLimitWindow,
+			MaxKeys:    config.MaxLimiterKeys,
+			FailClosed: false,
+		}),
 	}
 	if eng, ok := workCtrl.(*engine.Engine); ok {
 		srv.Engine = eng
 	}
+
+	if database != nil && database.Pool != nil {
+		safe.Go("web-session-cleaner", func() {
+			srv.startSessionCleaner()
+		})
+		safe.Go("audit-log-cleaner", func() {
+			srv.startAuditCleaner()
+		})
+	}
 	return srv, nil
+}
+
+func (s *Server) startSessionCleaner() {
+	ticker := time.NewTicker(1 * time.Hour)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		if s.IsDraining() {
+			return
+		}
+		if s.DB != nil && s.DB.Pool != nil {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			_, err := s.DB.Pool.Exec(ctx, "DELETE FROM web_sessions WHERE expires_at < CURRENT_TIMESTAMP")
+			cancel()
+			if err != nil {
+				slog.Error("web: gagal membersihkan sesi web kedaluwarsa", "err", err)
+			}
+		}
+	}
+}
+
+func (s *Server) startAuditCleaner() {
+	ticker := time.NewTicker(24 * time.Hour)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		if s.IsDraining() {
+			return
+		}
+		if s.DB != nil && s.DB.Pool != nil {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			_, err := s.DB.Pool.Exec(ctx, `
+				DELETE FROM audit_logs 
+				WHERE action IN ('login_failed', 'login_rejected') 
+				  AND created_at < CURRENT_TIMESTAMP - INTERVAL '30 days'
+			`)
+			cancel()
+			if err != nil {
+				slog.Error("web: gagal membersihkan audit log lama", "err", err)
+			}
+		}
+	}
 }
 
 // neuteredFileSystem membungkus http.FileSystem untuk menolak directory listing (mengembalikan 404).
@@ -413,22 +558,22 @@ func (s *Server) RecoverMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-// WrapGlobalMiddleware membungkus handler utama dengan RecoverMiddleware dan MaxBytes dinamis.
+// WrapGlobalMiddleware membungkus handler utama dengan RecoverMiddleware, SecurityHeadersMiddleware, dan MaxBytes dinamis.
 func (s *Server) WrapGlobalMiddleware(next http.Handler) http.Handler {
-	return s.RecoverMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return s.RecoverMiddleware(s.SecurityHeadersMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		isUpload := isUploadRoute(r.URL.Path)
 		s.MaxBytesMiddleware(next, isUpload).ServeHTTP(w, r)
-	}))
+	})))
 }
 
 func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	handle := func(pattern string, handler http.Handler) {
 		isUpload := isUploadRoute(pattern)
-		mux.Handle(pattern, s.RecoverMiddleware(s.MaxBytesMiddleware(handler, isUpload)))
+		mux.Handle(pattern, s.RecoverMiddleware(s.SecurityHeadersMiddleware(s.MaxBytesMiddleware(handler, isUpload))))
 	}
 	handleFunc := func(pattern string, fn http.HandlerFunc) {
 		isUpload := isUploadRoute(pattern)
-		mux.Handle(pattern, s.RecoverMiddleware(s.MaxBytesMiddleware(fn, isUpload)))
+		mux.Handle(pattern, s.RecoverMiddleware(s.SecurityHeadersMiddleware(s.MaxBytesMiddleware(fn, isUpload))))
 	}
 
 	// Serve static files dengan neutered file system (mencegah directory listing)
@@ -443,8 +588,8 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	handle("/", s.CSRFMiddleware(http.HandlerFunc(s.handleIndex)))
 	handle("POST /theme", s.CSRFMiddleware(http.HandlerFunc(s.HandleThemePOST)))
 	handle("POST /language", s.CSRFMiddleware(http.HandlerFunc(s.HandleLanguagePOST)))
-	handle("/login", s.CSRFMiddleware(RateLimitLogin(s.handleLogin)))
-	handle("/register", s.CSRFMiddleware(RateLimitRegister(s.handleRegister)))
+	handle("/login", s.CSRFMiddleware(http.HandlerFunc(s.handleLogin)))
+	handle("/register", s.CSRFMiddleware(http.HandlerFunc(s.handleRegister)))
 
 	handle("/logout", s.CSRFMiddleware(s.RequireRole(s.handleLogout, "admin", "worker")))
 	handle("GET /maintenance", s.CSRFMiddleware(http.HandlerFunc(s.HandleMaintenancePublicGET)))
@@ -479,6 +624,8 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	handle("POST /admin/maintenance/toggle", s.CSRFMiddleware(s.RequireRole(s.HandleAdminMaintenanceTogglePOST, "admin")))
 	handle("POST /admin/maintenance/locks", s.CSRFMiddleware(s.RequireRole(s.HandleAdminMaintenanceLocksPOST, "admin")))
 	handle("POST /admin/maintenance/lock/toggle", s.CSRFMiddleware(s.RequireRole(s.HandleAdminMaintenanceLockTogglePOST, "admin")))
+	handle("POST /admin/maintenance/restrictions/release", s.CSRFMiddleware(s.RequireRole(s.HandleAdminMaintenanceRestrictionReleasePOST, "admin")))
+	handle("POST /admin/maintenance/restrictions/release-all", s.CSRFMiddleware(s.RequireRole(s.HandleAdminMaintenanceRestrictionReleaseAllPOST, "admin")))
 	handle("/admin/", s.CSRFMiddleware(s.RequireRole(func(w http.ResponseWriter, r *http.Request) { http.NotFound(w, r) }, "admin")))
 
 	// Tahap 8
@@ -606,6 +753,7 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 		SelectLanguage string
 		Theme          string
 		CSRFToken      string
+		Nonce          string
 		T              func(string) string
 	}{
 		Lang:           lang,
@@ -615,6 +763,7 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 		SelectLanguage: i18n.T(lang, "common.select_language"),
 		Theme:          getTheme(r),
 		CSRFToken:      getCSRF(r),
+		Nonce:          getNonce(r),
 		T: func(key string) string {
 			return i18n.T(lang, key)
 		},

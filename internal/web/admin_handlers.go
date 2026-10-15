@@ -22,6 +22,7 @@ import (
 	"goblast/internal/engine"
 	"goblast/internal/i18n"
 	"goblast/internal/money"
+	"goblast/internal/ratelimit"
 	"goblast/internal/timeutil"
 	"goblast/internal/withdraw"
 )
@@ -91,6 +92,7 @@ func (s *Server) HandleAdminHome(w http.ResponseWriter, r *http.Request) {
 		Title     string
 		Theme     string
 		CSRFToken string
+		Nonce     string
 		ActiveNav string
 		Stats     *DashboardData
 		T         func(string) string
@@ -99,6 +101,7 @@ func (s *Server) HandleAdminHome(w http.ResponseWriter, r *http.Request) {
 		Title:     "Dashboard Admin - GO BLAST",
 		Theme:     getTheme(r),
 		CSRFToken: getCSRF(r),
+		Nonce:     getNonce(r),
 		ActiveNav: "dashboard",
 		Stats:     data,
 		T: func(key string) string {
@@ -346,6 +349,7 @@ func (s *Server) HandleAdminSettingsGET(w http.ResponseWriter, r *http.Request) 
 		Title     string
 		Theme     string
 		CSRFToken string
+		Nonce     string
 		ActiveNav string
 		Settings  *SettingsViewData
 		Message   string
@@ -356,6 +360,7 @@ func (s *Server) HandleAdminSettingsGET(w http.ResponseWriter, r *http.Request) 
 		Title:     "Pengaturan Sistem - GO BLAST",
 		Theme:     getTheme(r),
 		CSRFToken: getCSRF(r),
+		Nonce:     getNonce(r),
 		ActiveNav: "settings",
 		Settings:  settings,
 		Message:   flashMsg,
@@ -503,12 +508,14 @@ func (s *Server) renderSettingsError(w http.ResponseWriter, r *http.Request, err
 		Settings  *SettingsViewData
 		Message   string
 		Error     string
+		Nonce     string
 		T         func(string) string
 	}{
 		Lang:      lang,
 		Title:     "Pengaturan Sistem - GO BLAST",
 		Theme:     getTheme(r),
 		CSRFToken: getCSRF(r),
+		Nonce:     getNonce(r),
 		ActiveNav: "settings",
 		Settings:  settings,
 		Message:   "",
@@ -678,6 +685,7 @@ func (s *Server) HandleAdminWalletGET(w http.ResponseWriter, r *http.Request) {
 		Title     string
 		Theme     string
 		CSRFToken string
+		Nonce     string
 		ActiveNav string
 		Wallet    *WalletViewData
 		Message   string
@@ -688,6 +696,7 @@ func (s *Server) HandleAdminWalletGET(w http.ResponseWriter, r *http.Request) {
 		Title:     "Dompet Admin - GO BLAST",
 		Theme:     getTheme(r),
 		CSRFToken: getCSRF(r),
+		Nonce:     getNonce(r),
 		ActiveNav: "wallet",
 		Wallet:    walletData,
 		Message:   flashMsg,
@@ -934,6 +943,7 @@ func (s *Server) HandleAdminWithdrawalsGET(w http.ResponseWriter, r *http.Reques
 		Title            string
 		Theme            string
 		CSRFToken        string
+		Nonce            string
 		ActiveNav        string
 		PendingIDRTotal  string
 		PendingIDRCount  int64
@@ -949,6 +959,7 @@ func (s *Server) HandleAdminWithdrawalsGET(w http.ResponseWriter, r *http.Reques
 		Title:            "Permintaan Penarikan - GO BLAST",
 		Theme:            getTheme(r),
 		CSRFToken:        getCSRF(r),
+		Nonce:            getNonce(r),
 		ActiveNav:        "withdrawals",
 		PendingIDRTotal:  formatIDR(pendingIDRTotal),
 		PendingIDRCount:  pendingIDRCount,
@@ -1237,6 +1248,7 @@ func (s *Server) HandleAdminWorkers(w http.ResponseWriter, r *http.Request) {
 		Title       string
 		Theme       string
 		CSRFToken   string
+		Nonce       string
 		ActiveNav   string
 		SearchQuery string
 		Workers     []WorkerListItem
@@ -1246,6 +1258,7 @@ func (s *Server) HandleAdminWorkers(w http.ResponseWriter, r *http.Request) {
 		Title:       "Daftar Pekerja - GO BLAST",
 		Theme:       getTheme(r),
 		CSRFToken:   getCSRF(r),
+		Nonce:       getNonce(r),
 		ActiveNav:   "workers",
 		SearchQuery: q,
 		Workers:     workers,
@@ -1445,12 +1458,14 @@ func (s *Server) HandleAdminTicketsGET(w http.ResponseWriter, r *http.Request) {
 		Tickets      []AdminSupportTicketRow
 		Success      string
 		Error        string
+		Nonce        string
 		T            func(string) string
 	}{
 		Lang:         lang,
 		Title:        "Laporan Pengguna - Admin",
 		Theme:        getTheme(r),
 		CSRFToken:    getCSRF(r),
+		Nonce:        getNonce(r),
 		ActiveNav:    "tickets",
 		StatusFilter: statusFilter,
 		Tickets:      tickets,
@@ -1554,12 +1569,14 @@ func (s *Server) HandleAdminBroadcastsGET(w http.ResponseWriter, r *http.Request
 		Broadcasts []AdminBroadcastRow
 		Success    string
 		Error      string
+		Nonce      string
 		T          func(string) string
 	}{
 		Lang:       lang,
 		Title:      "Kelola Broadcast - Admin",
 		Theme:      getTheme(r),
 		CSRFToken:  getCSRF(r),
+		Nonce:      getNonce(r),
 		ActiveNav:  "broadcasts",
 		Broadcasts: broadcasts,
 		Success:    r.URL.Query().Get("success"),
@@ -1736,6 +1753,8 @@ type MaintenanceHealthViewData struct {
 	EngineStatus          string
 	RecentAuditLogs       []AuditLogRow
 	HealthChecks          []HealthCheckItem
+	ActiveRestrictions    []ratelimit.RestrictionEntry
+	Nonce                 string
 	T                     func(string) string
 }
 
@@ -2159,11 +2178,30 @@ func (s *Server) HandleAdminMaintenanceGET(w http.ResponseWriter, r *http.Reques
 	locks := s.GetSystemLocks(ctx)
 	healthChecks := s.RunHealthChecks(ctx)
 
+	// 7. Pembatasan Laju Aktif (Tahap H5a)
+	var activeRestrictions []ratelimit.RestrictionEntry
+	if s.LoginIPLimiter != nil {
+		activeRestrictions = append(activeRestrictions, s.LoginIPLimiter.ActiveRestrictions()...)
+	}
+	if s.LoginIdentLimiter != nil {
+		activeRestrictions = append(activeRestrictions, s.LoginIdentLimiter.ActiveRestrictions()...)
+	}
+	if s.LoginPairLimiter != nil {
+		activeRestrictions = append(activeRestrictions, s.LoginPairLimiter.ActiveRestrictions()...)
+	}
+	if s.RegisterHourlyLimiter != nil {
+		activeRestrictions = append(activeRestrictions, s.RegisterHourlyLimiter.ActiveRestrictions()...)
+	}
+	if s.RegisterDailyLimiter != nil {
+		activeRestrictions = append(activeRestrictions, s.RegisterDailyLimiter.ActiveRestrictions()...)
+	}
+
 	viewData := MaintenanceHealthViewData{
 		Lang:                  lang,
 		Title:                 "Pemeliharaan & Diagnostik Sistem - GO BLAST",
 		Theme:                 getTheme(r),
 		CSRFToken:             getCSRF(r),
+		Nonce:                 getNonce(r),
 		ActiveNav:             "maintenance",
 		Message:               r.URL.Query().Get("msg"),
 		Error:                 r.URL.Query().Get("err"),
@@ -2186,6 +2224,7 @@ func (s *Server) HandleAdminMaintenanceGET(w http.ResponseWriter, r *http.Reques
 		EngineStatus:          engineStatus,
 		RecentAuditLogs:       auditLogs,
 		HealthChecks:          healthChecks,
+		ActiveRestrictions:    activeRestrictions,
 		T: func(key string) string {
 			return i18n.T(lang, key)
 		},
@@ -2193,6 +2232,66 @@ func (s *Server) HandleAdminMaintenanceGET(w http.ResponseWriter, r *http.Reques
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_ = s.Tmpl["admin_maintenance.html"].ExecuteTemplate(w, "base.html", viewData)
+}
+
+func (s *Server) HandleAdminMaintenanceRestrictionReleasePOST(w http.ResponseWriter, r *http.Request) {
+	admin, ok := currentUser(r)
+	if !ok || admin.Role != "admin" {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+
+	key := strings.TrimSpace(r.FormValue("key"))
+	if key != "" {
+		if s.LoginIPLimiter != nil {
+			s.LoginIPLimiter.Reset(key)
+		}
+		if s.LoginIdentLimiter != nil {
+			s.LoginIdentLimiter.Reset(key)
+		}
+		if s.LoginPairLimiter != nil {
+			s.LoginPairLimiter.Reset(key)
+		}
+		if s.RegisterHourlyLimiter != nil {
+			s.RegisterHourlyLimiter.Reset(key)
+		}
+		if s.RegisterDailyLimiter != nil {
+			s.RegisterDailyLimiter.Reset(key)
+		}
+		s.logAudit(&admin.ID, "ratelimit_release", "system", key, "manual release by admin")
+	}
+
+	http.Redirect(w, r, "/admin/maintenance?msg=Pembatasan+berhasil+dilepas", http.StatusSeeOther)
+}
+
+func (s *Server) HandleAdminMaintenanceRestrictionReleaseAllPOST(w http.ResponseWriter, r *http.Request) {
+	admin, ok := currentUser(r)
+	if !ok || admin.Role != "admin" {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+
+	if s.LoginIPLimiter != nil {
+		s.LoginIPLimiter.ResetAll()
+	}
+	if s.LoginIdentLimiter != nil {
+		s.LoginIdentLimiter.ResetAll()
+	}
+	if s.LoginPairLimiter != nil {
+		s.LoginPairLimiter.ResetAll()
+	}
+	if s.LoginGlobalLimiter != nil {
+		s.LoginGlobalLimiter.ResetAll()
+	}
+	if s.RegisterHourlyLimiter != nil {
+		s.RegisterHourlyLimiter.ResetAll()
+	}
+	if s.RegisterDailyLimiter != nil {
+		s.RegisterDailyLimiter.ResetAll()
+	}
+
+	s.logAudit(&admin.ID, "ratelimit_release_all", "system", "all", "manual release all by admin")
+	http.Redirect(w, r, "/admin/maintenance?msg=Semua+pembatasan+laju+berhasil+dikosongkan", http.StatusSeeOther)
 }
 
 func (s *Server) HandleAdminMaintenanceTogglePOST(w http.ResponseWriter, r *http.Request) {
@@ -2312,6 +2411,7 @@ func (s *Server) HandleMaintenancePublicGET(w http.ResponseWriter, r *http.Reque
 		Title     string
 		Theme     string
 		CSRFToken string
+		Nonce     string
 		IsActive  bool
 		T         func(string) string
 	}{
@@ -2319,6 +2419,7 @@ func (s *Server) HandleMaintenancePublicGET(w http.ResponseWriter, r *http.Reque
 		Title:     "Pemeliharaan Sistem - GO BLAST",
 		Theme:     getTheme(r),
 		CSRFToken: getCSRF(r),
+		Nonce:     getNonce(r),
 		IsActive:  s.IsMaintenanceMode(r.Context()),
 		T: func(key string) string {
 			return i18n.T(lang, key)
@@ -2401,6 +2502,7 @@ type AdminWorkerDetailViewData struct {
 	Accounts                []AdminWorkerAccountItem
 	Withdrawals             []AdminWorkerWithdrawalItem
 	LedgerEntries           []AdminWorkerLedgerItem
+	Nonce                   string
 	T                       func(string) string
 }
 
@@ -2573,6 +2675,7 @@ func (s *Server) HandleAdminWorkerDetailGET(w http.ResponseWriter, r *http.Reque
 		Title:                   fmt.Sprintf("Detail Pekerja %s - GO BLAST", wInfo.Username),
 		Theme:                   getTheme(r),
 		CSRFToken:               getCSRF(r),
+		Nonce:                   getNonce(r),
 		ActiveNav:               "workers",
 		Message:                 r.URL.Query().Get("msg"),
 		Error:                   r.URL.Query().Get("err"),

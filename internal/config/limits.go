@@ -96,4 +96,60 @@ var (
 
 	// DrainAccountTimeout adalah batas waktu tunggu drain worker akun saat Stop atau Delete (10 detik).
 	DrainAccountTimeout = 10 * time.Second
+
+	// --- Konstanta Keamanan Akses Tahap H5a ---
+
+	// MaxPasswordBytes batas panjang maksimal kata sandi sebelum di-hash (128 byte).
+	MaxPasswordBytes = 128
+
+	// ArgonConcurrencyLimit batas hashing argon2 yang berjalan bersamaan (2).
+	ArgonConcurrencyLimit = 2
+
+	// ArgonQueueLimit batas antrean pemohon hashing argon2 (8).
+	ArgonQueueLimit = 8
+
+	// ArgonMaxWait batas maksimal tunggu antrean hashing argon2 (2 detik).
+	ArgonMaxWait = 2 * time.Second
+
+	// LoginRateLimitIPAttempts batas gagal login per IP (20 per 15 menit).
+	LoginRateLimitIPAttempts = 20
+	// LoginRateLimitIPWindow jendela waktu batas gagal login per IP (15 menit).
+	LoginRateLimitIPWindow = 15 * time.Minute
+
+	// LoginRateLimitIdentifierAttempts batas gagal login per identifier (10 per 15 menit).
+	LoginRateLimitIdentifierAttempts = 10
+	// LoginRateLimitIdentifierWindow jendela waktu batas gagal login per identifier (15 menit).
+	LoginRateLimitIdentifierWindow = 15 * time.Minute
+
+	// LoginRateLimitPairAttempts batas gagal login per pasangan IP+identifier (5 per 15 menit).
+	LoginRateLimitPairAttempts = 5
+	// LoginRateLimitPairWindow jendela waktu batas gagal login per pasangan IP+identifier (15 menit).
+	LoginRateLimitPairWindow = 15 * time.Minute
+
+	// LoginRateLimitGlobalAttempts batas gagal login global per menit (300).
+	LoginRateLimitGlobalAttempts = 300
+	// LoginRateLimitGlobalWindow jendela waktu batas gagal login global (1 menit).
+	LoginRateLimitGlobalWindow = 1 * time.Minute
+
+	// RegisterRateLimitHourlyAttempts batas pendaftaran per IP per jam (10).
+	RegisterRateLimitHourlyAttempts = 10
+	// RegisterRateLimitHourlyWindow jendela waktu pendaftaran per jam (1 jam).
+	RegisterRateLimitHourlyWindow = 1 * time.Hour
+
+	// RegisterRateLimitDailyAttempts batas pendaftaran per IP per hari (100).
+	RegisterRateLimitDailyAttempts = 100
+	// RegisterRateLimitDailyWindow jendela waktu pendaftaran per hari (24 jam).
+	RegisterRateLimitDailyWindow = 24 * time.Hour
+
+	// MaxLimiterKeys batas jumlah entri dalam map rate limiter (LRU eviction).
+	MaxLimiterKeys = 10000
+
+	// MaxUserWebSessions batas sesi web aktif per pengguna (5).
+	MaxUserWebSessions = 5
+
+	// AuditLoginFailedRateLimitAttempts batas penulisan log audit login_failed per IP per menit (20).
+	AuditLoginFailedRateLimitAttempts = 20
+	// AuditLoginFailedRateLimitWindow jendela waktu batas audit login_failed (1 menit).
+	AuditLoginFailedRateLimitWindow = 1 * time.Minute
 )
+

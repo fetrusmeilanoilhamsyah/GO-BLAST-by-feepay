@@ -184,7 +184,7 @@ func TestWorkerAPIStats_CacheAndRole(t *testing.T) {
 	}
 
 	// Tunggu cache kedaluwarsa (> 2 detik)
-	time.Sleep(2100 * time.Millisecond)
+	time.Sleep(2500 * time.Millisecond)
 
 	// Request setelah > 2 detik: harus CACHE MISS (angka database_tersedia terbarui +3)
 	{

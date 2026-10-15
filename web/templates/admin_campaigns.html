@@ -72,7 +72,7 @@
                                 {{end}}
                                 {{end}}
                                 {{if ne .Status "berjalan"}}
-                                <form method="POST" action="/admin/campaigns/{{.ID}}/archive" style="display: inline; margin: 0;" onsubmit="return confirm('{{ call $.T "campaign.archive_confirm" }}');">
+                                <form method="POST" action="/admin/campaigns/{{.ID}}/archive" class="form-confirm-archive" data-confirm='{{ call $.T "campaign.archive_confirm" }}' style="display: inline; margin: 0;">
                                     <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
                                     <button type="submit" class="btn btn-secondary" style="padding: 2px 8px; font-size: 11px; cursor: pointer;">
                                         {{ call $.T "campaign.archive_btn" }}
@@ -80,7 +80,7 @@
                                 </form>
                                 {{end}}
                                 {{if eq .Status "draf"}}
-                                <form method="POST" action="/admin/campaigns/{{.ID}}/delete" style="display: inline; margin: 0;" onsubmit="return confirm('{{ call $.T "campaign.delete_confirm" }}');">
+                                <form method="POST" action="/admin/campaigns/{{.ID}}/delete" class="form-confirm-delete" data-confirm='{{ call $.T "campaign.delete_confirm" }}' style="display: inline; margin: 0;">
                                     <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
                                     <button type="submit" class="btn btn-secondary" style="padding: 2px 8px; font-size: 11px; color: var(--color-danger); border-color: var(--color-danger); cursor: pointer;">
                                         {{ call $.T "campaign.delete_btn" }}
@@ -146,13 +146,13 @@
                     {{end}}
                     {{end}}
                     {{if ne .Status "berjalan"}}
-                    <form method="POST" action="/admin/campaigns/{{.ID}}/archive" style="display: inline; margin: 0; flex: 1;" onsubmit="return confirm('{{ call $.T "campaign.archive_confirm" }}');">
+                    <form method="POST" action="/admin/campaigns/{{.ID}}/archive" class="form-confirm-archive" data-confirm='{{ call $.T "campaign.archive_confirm" }}' style="display: inline; margin: 0; flex: 1;">
                         <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
                         <button type="submit" class="btn btn-secondary" style="width: 100%; padding: 6px 10px; font-size: 12px; cursor: pointer; border-radius: 6px;">{{ call $.T "campaign.archive_btn" }}</button>
                     </form>
                     {{end}}
                     {{if eq .Status "draf"}}
-                    <form method="POST" action="/admin/campaigns/{{.ID}}/delete" style="display: inline; margin: 0; flex: 1;" onsubmit="return confirm('{{ call $.T "campaign.delete_confirm" }}');">
+                    <form method="POST" action="/admin/campaigns/{{.ID}}/delete" class="form-confirm-delete" data-confirm='{{ call $.T "campaign.delete_confirm" }}' style="display: inline; margin: 0; flex: 1;">
                         <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
                         <button type="submit" class="btn btn-secondary" style="width: 100%; padding: 6px 10px; font-size: 12px; color: var(--color-danger); border-color: var(--color-danger); cursor: pointer; border-radius: 6px;">{{ call $.T "campaign.delete_btn" }}</button>
                     </form>
@@ -168,4 +168,24 @@
     </div>
 </main>
 </div>
+<script nonce="{{ .Nonce }}">
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.form-confirm-archive').forEach(function(form) {
+        form.addEventListener('submit', function(e) {
+            var msg = form.getAttribute('data-confirm') || 'Archive this campaign?';
+            if (!confirm(msg)) {
+                e.preventDefault();
+            }
+        });
+    });
+    document.querySelectorAll('.form-confirm-delete').forEach(function(form) {
+        form.addEventListener('submit', function(e) {
+            var msg = form.getAttribute('data-confirm') || 'Delete this campaign?';
+            if (!confirm(msg)) {
+                e.preventDefault();
+            }
+        });
+    });
+});
+</script>
 {{end}}

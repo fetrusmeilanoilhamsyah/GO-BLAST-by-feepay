@@ -2,7 +2,7 @@
 <!-- BILAH ATAS (TOPBAR ADMIN) -->
 <header class="admin-topbar">
     <!-- KIRI MOBILE: TOMBOL HAMBURGER MENU -->
-    <button type="button" class="btn btn-secondary mobile-only" onclick="toggleAdminDrawer()" aria-label="{{ call .T "worker.menu" }}" style="padding: 6px 12px; display: inline-flex; align-items: center; gap: 6px; font-size: 13px;">
+    <button type="button" class="btn btn-secondary mobile-only" id="btn-toggle-admin-drawer" aria-label="{{ call .T "worker.menu" }}" style="padding: 6px 12px; display: inline-flex; align-items: center; gap: 6px; font-size: 13px;">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <line x1="4" y1="7" x2="20" y2="7"></line>
             <line x1="4" y1="17" x2="20" y2="17"></line>
@@ -38,7 +38,7 @@
     <div style="display: flex; align-items: center; gap: 8px;">
         <form method="POST" action="/language" style="display: inline-flex; align-items: center; margin: 0;">
             <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-            <select name="lang" onchange="this.form.submit()" style="padding: 5px 8px; border: 1px solid var(--color-border); border-radius: 6px; background-color: var(--color-input-bg); color: var(--color-input-text); font-size: 12px; cursor: pointer;">
+            <select name="lang" id="select-admin-lang" style="padding: 5px 8px; border: 1px solid var(--color-border); border-radius: 6px; background-color: var(--color-input-bg); color: var(--color-input-text); font-size: 12px; cursor: pointer;">
                 <option value="id"{{if eq .Lang "id"}} selected{{end}}>ID</option>
                 <option value="en"{{if eq .Lang "en"}} selected{{end}}>EN</option>
                 <option value="zh"{{if eq .Lang "zh"}} selected{{end}}>ZH</option>
@@ -52,7 +52,7 @@
 </header>
 
 <!-- OVERLAY BACKDROP MOBILE -->
-<div id="admin-drawer-backdrop" class="drawer-backdrop" onclick="closeAdminDrawer()"></div>
+<div id="admin-drawer-backdrop" class="drawer-backdrop"></div>
 
 <!-- SIDEBAR ADMIN (DESKTOP: PERMANEN DI KIRI | MOBILE: OFF-CANVAS DRAWER) -->
 <aside id="admin-drawer" class="admin-drawer" aria-label="Menu Admin">
@@ -61,7 +61,7 @@
             <span style="font-size: 17px; font-weight: 800; letter-spacing: -0.02em;">{{ call .T "app.name" }}</span>
             <span class="badge badge-muted" style="font-size: 10px;">{{ call .T "admin.role" }}</span>
         </a>
-        <button type="button" class="worker-drawer-close" onclick="closeAdminDrawer()" aria-label="Tutup">
+        <button type="button" class="worker-drawer-close" id="btn-close-admin-drawer" aria-label="Tutup">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <line x1="18" y1="6" x2="6" y2="18"></line>
                 <line x1="6" y1="6" x2="18" y2="18"></line>
@@ -219,30 +219,48 @@
     </div>
 </aside>
 
-<script>
-function toggleAdminDrawer() {
-    var drawer = document.getElementById('admin-drawer');
-    var backdrop = document.getElementById('admin-drawer-backdrop');
-    if (!drawer) return;
-    if (drawer.classList.contains('is-open')) {
-        closeAdminDrawer();
-    } else {
-        drawer.classList.add('is-open');
-        if (backdrop) backdrop.classList.add('is-open');
+<script nonce="{{ .Nonce }}">
+(function() {
+    function toggleAdminDrawer() {
+        var drawer = document.getElementById('admin-drawer');
+        var backdrop = document.getElementById('admin-drawer-backdrop');
+        if (!drawer) return;
+        if (drawer.classList.contains('is-open')) {
+            closeAdminDrawer();
+        } else {
+            drawer.classList.add('is-open');
+            if (backdrop) backdrop.classList.add('is-open');
+        }
     }
-}
 
-function closeAdminDrawer() {
-    var drawer = document.getElementById('admin-drawer');
-    var backdrop = document.getElementById('admin-drawer-backdrop');
-    if (drawer) drawer.classList.remove('is-open');
-    if (backdrop) backdrop.classList.remove('is-open');
-}
-
-document.addEventListener('keydown', function(e) {
-    if (e.key === 'Escape') {
-        closeAdminDrawer();
+    function closeAdminDrawer() {
+        var drawer = document.getElementById('admin-drawer');
+        var backdrop = document.getElementById('admin-drawer-backdrop');
+        if (drawer) drawer.classList.remove('is-open');
+        if (backdrop) backdrop.classList.remove('is-open');
     }
-});
+
+    var toggleBtn = document.getElementById('btn-toggle-admin-drawer');
+    if (toggleBtn) toggleBtn.addEventListener('click', toggleAdminDrawer);
+
+    var closeBtn = document.getElementById('btn-close-admin-drawer');
+    if (closeBtn) closeBtn.addEventListener('click', closeAdminDrawer);
+
+    var backdrop = document.getElementById('admin-drawer-backdrop');
+    if (backdrop) backdrop.addEventListener('click', closeAdminDrawer);
+
+    var langSelect = document.getElementById('select-admin-lang');
+    if (langSelect) {
+        langSelect.addEventListener('change', function() {
+            this.form.submit();
+        });
+    }
+
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            closeAdminDrawer();
+        }
+    });
+})();
 </script>
 {{end}}

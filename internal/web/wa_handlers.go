@@ -84,6 +84,7 @@ func (s *Server) HandleWorkerAccounts(w http.ResponseWriter, r *http.Request) {
 		RunningAccountsGlobal int
 		ConnectedAccounts     int64
 		Error                 string
+		Nonce                 string
 		T                     func(string) string
 	}{
 		CSLinks:               s.csLinks(r.Context()),
@@ -96,8 +97,9 @@ func (s *Server) HandleWorkerAccounts(w http.ResponseWriter, r *http.Request) {
 		Accounts:              accounts,
 		AvailableNumbers:      availableNumbers,
 		RunningAccountsGlobal: runningAccountsGlobal,
-		ConnectedAccounts: connectedAccounts,
-		Error:             errMsg,
+		ConnectedAccounts:     connectedAccounts,
+		Error:                 errMsg,
+		Nonce:                 getNonce(r),
 		T: func(key string) string {
 			return i18n.T(lang, key)
 		},

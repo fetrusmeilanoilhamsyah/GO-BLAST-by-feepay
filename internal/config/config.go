@@ -22,6 +22,12 @@ type Config struct {
 	CSTelegramURL      string
 	ChannelTelegramURL string
 	MaxActiveSessions  int
+	TrustedProxyCIDRs  []string
+	ParsedTrustedCIDRs []*net.IPNet
+	ClientIPHeader     string
+	TurnstileSiteKey   string
+	TurnstileSecretKey string
+	AppPublicHost      string
 }
 
 func Load() (*Config, error) {
@@ -36,6 +42,10 @@ func Load() (*Config, error) {
 		CSWhatsAppURL:      os.Getenv("CS_WHATSAPP_URL"),
 		CSTelegramURL:      os.Getenv("CS_TELEGRAM_URL"),
 		ChannelTelegramURL: os.Getenv("CHANNEL_TELEGRAM_URL"),
+		ClientIPHeader:     os.Getenv("CLIENT_IP_HEADER"),
+		TurnstileSiteKey:   os.Getenv("TURNSTILE_SITE_KEY"),
+		TurnstileSecretKey: os.Getenv("TURNSTILE_SECRET_KEY"),
+		AppPublicHost:      os.Getenv("APP_PUBLIC_HOST"),
 	}
 
 	if cfg.AppEnv == "" {
@@ -56,6 +66,35 @@ func Load() (*Config, error) {
 
 	if cfg.ChannelTelegramURL == "" {
 		cfg.ChannelTelegramURL = "https://t.me/goblast_channel"
+	}
+
+	if cfg.ClientIPHeader == "" {
+		cfg.ClientIPHeader = "CF-Connecting-IP"
+	}
+
+	// Parsing TRUSTED_PROXY_CIDRS
+	trustedCIDRStr := os.Getenv("TRUSTED_PROXY_CIDRS")
+	if trustedCIDRStr == "" {
+		trustedCIDRStr = "127.0.0.1/32,::1/128"
+	}
+	rawCIDRs := strings.Split(trustedCIDRStr, ",")
+	for _, raw := range rawCIDRs {
+		raw = strings.TrimSpace(raw)
+		if raw == "" {
+			continue
+		}
+		if !strings.Contains(raw, "/") {
+			if strings.Contains(raw, ":") {
+				raw = raw + "/128"
+			} else {
+				raw = raw + "/32"
+			}
+		}
+		_, ipNet, err := net.ParseCIDR(raw)
+		if err == nil && ipNet != nil {
+			cfg.TrustedProxyCIDRs = append(cfg.TrustedProxyCIDRs, raw)
+			cfg.ParsedTrustedCIDRs = append(cfg.ParsedTrustedCIDRs, ipNet)
+		}
 	}
 
 	encKeyStr := os.Getenv("ENCRYPTION_KEY")
@@ -115,6 +154,10 @@ func Load() (*Config, error) {
 
 		if isWeakOrSequentialKey(cfg.EncryptionKey) {
 			return nil, errors.New("ENCRYPTION_KEY semua byte-nya sama atau berpola berurutan di produksi")
+		}
+
+		if IsTurnstileTestKey(cfg.TurnstileSiteKey) || IsTurnstileTestKey(cfg.TurnstileSecretKey) {
+			return nil, errors.New("kunci uji Turnstile tidak boleh digunakan di lingkungan produksi")
 		}
 	}
 
@@ -185,3 +228,13 @@ func isWeakOrSequentialKey(b []byte) bool {
 
 	return false
 }
+
+// IsTurnstileTestKey memeriksa apakah kunci merupakan kunci uji resmi Cloudflare (misal diawali 1x0000, 2x0000, 3x0000).
+func IsTurnstileTestKey(k string) bool {
+	k = strings.TrimSpace(k)
+	if k == "" {
+		return false
+	}
+	return strings.HasPrefix(k, "1x0000") || strings.HasPrefix(k, "2x0000") || strings.HasPrefix(k, "3x0000")
+}
+

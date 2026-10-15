@@ -11,6 +11,12 @@
 
     <form method="POST" action="/register">
         <input type="hidden" name="csrf_token" value="{{ .CSRFToken }}">
+        {{ if .FormToken }}<input type="hidden" name="form_token" value="{{ .FormToken }}">{{ end }}
+        
+        <!-- Honeypot tak terlihat untuk mendeteksi bot -->
+        <div class="hp-check" aria-hidden="true" style="display:none !important; position:absolute; left:-9999px;">
+            <input type="text" name="website_hp" tabindex="-1" autocomplete="off">
+        </div>
         
         <div style="margin-bottom: 15px;">
             <label style="display: block; margin-bottom: 5px; font-size: 13px; font-weight: 500;">{{ call .T "auth.username" }} <span class="badge badge-warning" style="font-size: 10px;">{{ call .T "admin.required_label" }}</span></label>
@@ -25,7 +31,7 @@
 
         <div style="margin-bottom: 15px;">
             <label style="display: block; margin-bottom: 5px; font-size: 13px; font-weight: 500;">{{ call .T "auth.password" }}</label>
-            <input type="password" name="password" minlength="10" placeholder="Minimal 10 karakter" required style="width: 100%; padding: 10px 12px; box-sizing: border-box; background-color: var(--color-input-bg); color: var(--color-input-text); border: 1px solid var(--color-border); border-radius: 6px; font-size: 14px;">
+            <input type="password" name="password" minlength="10" maxlength="128" placeholder="Minimal 10 karakter" required style="width: 100%; padding: 10px 12px; box-sizing: border-box; background-color: var(--color-input-bg); color: var(--color-input-text); border: 1px solid var(--color-border); border-radius: 6px; font-size: 14px;">
             <small style="color: var(--color-muted); font-size: 0.8em;">{{ call .T "auth.password_hint" }}</small>
         </div>
 
@@ -50,8 +56,12 @@
             </label>
         </div>
 
-        <!-- Cloudflare Turnstile / Bot Protection Container Readiness -->
-        <div id="cf-turnstile-container" style="margin-bottom: 15px;"></div>
+        {{ if .TurnstileSiteKey }}
+        <div style="margin-bottom: 15px; display: flex; justify-content: center;">
+            <div class="cf-turnstile" data-sitekey="{{ .TurnstileSiteKey }}" data-action="register" data-theme="{{ if eq .Theme "dark" }}dark{{ else }}light{{ end }}"></div>
+        </div>
+        <script nonce="{{ .Nonce }}" src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+        {{ end }}
 
         <button type="submit" class="btn btn-primary" style="width: 100%; padding: 10px; font-size: 14px; font-weight: bold; cursor: pointer;">
             {{ call .T "auth.register_btn" }}

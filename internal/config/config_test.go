@@ -106,12 +106,33 @@ func TestConfigProductionValidation(t *testing.T) {
 			},
 			wantErr: true, errContains: "DATABASE_URL",
 		},
+		{
+			name: "prod menolak TURNSTILE_SITE_KEY bernilai test key",
+			env: map[string]string{
+				"APP_ENV": "prod", "APP_ADDR": "127.0.0.1:8080", "ALLOW_PUBLIC_BIND": "",
+				"ENCRYPTION_KEY": realKey, "SESSION_SECRET": realSecret, "DATABASE_URL": realDB,
+				"MAX_ACTIVE_SESSIONS": "50",
+				"TURNSTILE_SITE_KEY":  "1x00000000000000000000AA",
+				"TURNSTILE_SECRET_KEY": "1x0000000000000000000000000000000AA",
+			},
+			wantErr: true, errContains: "kunci uji Turnstile",
+		},
+		{
+			name: "dev menerima TURNSTILE_SITE_KEY bernilai test key",
+			env: map[string]string{
+				"APP_ENV": "dev", "APP_ADDR": "127.0.0.1:8080",
+				"ENCRYPTION_KEY": realKey, "SESSION_SECRET": realSecret,
+				"TURNSTILE_SITE_KEY":  "1x00000000000000000000AA",
+				"TURNSTILE_SECRET_KEY": "1x0000000000000000000000000000000AA",
+			},
+			wantErr: false,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Clear env
-			keys := []string{"APP_ENV", "APP_ADDR", "ALLOW_PUBLIC_BIND", "ENCRYPTION_KEY", "ENCRYPTION_KEY_PREV", "SESSION_SECRET", "DATABASE_URL", "MAX_ACTIVE_SESSIONS"}
+			keys := []string{"APP_ENV", "APP_ADDR", "ALLOW_PUBLIC_BIND", "ENCRYPTION_KEY", "ENCRYPTION_KEY_PREV", "SESSION_SECRET", "DATABASE_URL", "MAX_ACTIVE_SESSIONS", "TURNSTILE_SITE_KEY", "TURNSTILE_SECRET_KEY"}
 			saved := make(map[string]string)
 			for _, k := range keys {
 				saved[k] = os.Getenv(k)

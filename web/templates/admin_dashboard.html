@@ -352,7 +352,7 @@
 </div>
 
 <!-- Polling fetch() 10 detik -->
-<script>
+<script nonce="{{ .Nonce }}">
 setInterval(function() {
     fetch('/admin/api/stats')
         .then(function(res) {

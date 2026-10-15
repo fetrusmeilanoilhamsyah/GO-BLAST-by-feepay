@@ -12,7 +12,7 @@
         <form method="POST" action="/theme" style="display: inline-flex; align-items: center; gap: 8px;">
             <input type="hidden" name="csrf_token" value="{{ .CSRFToken }}">
             <label for="theme-select">{{ call .T "theme.label" }}:</label>
-            <select id="theme-select" name="theme" onchange="this.form.submit()" style="padding: 4px 8px; border: 1px solid var(--color-border); border-radius: 4px; background-color: var(--color-input-bg); color: var(--color-input-text);">
+            <select id="theme-select" name="theme" style="padding: 4px 8px; border: 1px solid var(--color-border); border-radius: 4px; background-color: var(--color-input-bg); color: var(--color-input-text);">
                 <option value="auto"{{ if or (eq .Theme "") (eq .Theme "auto") }} selected{{ end }}>{{ call .T "theme.auto" }}</option>
                 <option value="light"{{ if eq .Theme "light" }} selected{{ end }}>{{ call .T "theme.light" }}</option>
                 <option value="dark"{{ if eq .Theme "dark" }} selected{{ end }}>{{ call .T "theme.dark" }}</option>
@@ -22,5 +22,15 @@
             </noscript>
         </form>
     </footer>
+    <script nonce="{{ .Nonce }}">
+        (function() {
+            var ts = document.getElementById('theme-select');
+            if (ts) {
+                ts.addEventListener('change', function() {
+                    this.form.submit();
+                });
+            }
+        })();
+    </script>
 </body>
 </html>

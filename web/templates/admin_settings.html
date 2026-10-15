@@ -10,7 +10,7 @@
             <p style="font-size: 13px; color: var(--color-muted); margin: 4px 0 0 0;">{{ call .T "admin.settings_desc" }}</p>
         </div>
         <div>
-            <button type="button" onclick="fillRecommendedSettings()" class="btn btn-secondary" style="font-size: 13px; padding: 8px 14px; border-color: var(--color-accent); color: var(--color-accent);">
+            <button type="button" id="btn-fill-recommended" class="btn btn-secondary" style="font-size: 13px; padding: 8px 14px; border-color: var(--color-accent); color: var(--color-accent);">
                 Isi Nilai Rekomendasi
             </button>
         </div>
@@ -92,12 +92,17 @@
     </main>
 </div>
 
-<script>
+<script nonce="{{ .Nonce }}">
 function fillRecommendedSettings() {
     document.getElementById('rate_wage_idr').value = '25';
     document.getElementById('rate_idr_to_usdt').value = '15000';
     document.getElementById('rate_referral_idr').value = '5';
     document.getElementById('max_accounts_per_worker').value = '5';
 }
+
+document.addEventListener('DOMContentLoaded', function() {
+    var btn = document.getElementById('btn-fill-recommended');
+    if (btn) btn.addEventListener('click', fillRecommendedSettings);
+});
 </script>
 {{end}}

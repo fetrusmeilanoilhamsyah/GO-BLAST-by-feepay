@@ -187,7 +187,7 @@
                 </a>
 
                 <!-- 5. Bantuan CS -->
-                <div class="worker-quick-card" onclick="openHelpdeskModal()" role="button" tabindex="0">
+                <div class="worker-quick-card" id="btn-quick-cs" role="button" tabindex="0">
                     <div class="worker-quick-icon">
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <circle cx="12" cy="12" r="10"></circle>
@@ -384,7 +384,15 @@
         </div>
     </main>
 </div>
-<script>
+<script nonce="{{ .Nonce }}">
+document.addEventListener('DOMContentLoaded', function() {
+    var btnCS = document.getElementById('btn-quick-cs');
+    if (btnCS) {
+        btnCS.addEventListener('click', function() {
+            if (typeof openHelpdeskModal === 'function') openHelpdeskModal();
+        });
+    }
+});
 setInterval(function() {
     fetch('/worker/api/stats')
         .then(function(res) {

@@ -64,6 +64,7 @@ func (s *Server) HandleAdminCampaigns(w http.ResponseWriter, r *http.Request) {
 		ShowArchived bool
 		Error        string
 		Message      string
+		Nonce        string
 		T            func(string) string
 	}{
 		Lang:         lang,
@@ -75,6 +76,7 @@ func (s *Server) HandleAdminCampaigns(w http.ResponseWriter, r *http.Request) {
 		ShowArchived: showArchived,
 		Error:        r.URL.Query().Get("err"),
 		Message:      r.URL.Query().Get("msg"),
+		Nonce:        getNonce(r),
 		T: func(key string) string {
 			return i18n.T(lang, key)
 		},
@@ -111,6 +113,7 @@ func (s *Server) HandleAdminCampaignNewGET(w http.ResponseWriter, r *http.Reques
 		ActiveNav   string
 		Campaign    campaign.Campaign
 		DefaultMode string
+		Nonce       string
 		T           func(string) string
 	}{
 		Lang:      lang,
@@ -125,6 +128,7 @@ func (s *Server) HandleAdminCampaignNewGET(w http.ResponseWriter, r *http.Reques
 			ButtonMode: defaultMode,
 		},
 		DefaultMode: defaultMode,
+		Nonce:       getNonce(r),
 		T: func(key string) string {
 			return i18n.T(lang, key)
 		},
@@ -281,6 +285,7 @@ func (s *Server) HandleAdminCampaignEditGET(w http.ResponseWriter, r *http.Reque
 		CSRFToken string
 		ActiveNav string
 		Campaign  campaign.Campaign
+		Nonce     string
 		T         func(string) string
 	}{
 		Lang:      lang,
@@ -289,6 +294,7 @@ func (s *Server) HandleAdminCampaignEditGET(w http.ResponseWriter, r *http.Reque
 		CSRFToken: csrfToken,
 		ActiveNav: "campaigns",
 		Campaign:  c,
+		Nonce:     getNonce(r),
 		T: func(key string) string {
 			return i18n.T(lang, key)
 		},
@@ -578,6 +584,7 @@ func (s *Server) HandleAdminCampaignDetail(w http.ResponseWriter, r *http.Reques
 		Counts         map[string]int
 		UncertainCount int
 		Error          string
+		Nonce          string
 		T              func(string) string
 	}{
 		Lang:           lang,
@@ -589,6 +596,7 @@ func (s *Server) HandleAdminCampaignDetail(w http.ResponseWriter, r *http.Reques
 		Counts:         counts,
 		UncertainCount: uncertainCount,
 		Error:          r.URL.Query().Get("err"),
+		Nonce:          getNonce(r),
 		T: func(key string) string {
 			return i18n.T(lang, key)
 		},

@@ -30,14 +30,14 @@
 
         <div style="display: flex; gap: 8px;">
             {{if eq .Worker.Status "frozen"}}
-            <form method="POST" action="/admin/workers/{{.Worker.ID}}/unfreeze" style="margin: 0;" onsubmit="return confirm('Buka pembekuan akun pekerja ini?');">
+            <form method="POST" action="/admin/workers/{{.Worker.ID}}/unfreeze" class="form-confirm-unfreeze" style="margin: 0;">
                 <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
                 <button type="submit" class="btn btn-primary" style="padding: 6px 14px; font-size: 12px; cursor: pointer; border-radius: 6px;">
                     {{call $.T "admin.action_unfreeze"}}
                 </button>
             </form>
             {{else}}
-            <button type="button" class="btn btn-secondary" onclick="openFreezeModal()" style="padding: 6px 14px; font-size: 12px; color: var(--color-danger); border-color: var(--color-danger); cursor: pointer; border-radius: 6px;">
+            <button type="button" id="btn-open-freeze" class="btn btn-secondary" style="padding: 6px 14px; font-size: 12px; color: var(--color-danger); border-color: var(--color-danger); cursor: pointer; border-radius: 6px;">
                 {{call $.T "admin.action_freeze"}}
             </button>
             {{end}}
@@ -75,7 +75,7 @@
             <code style="font-size: 16px; font-weight: 700; padding: 6px 12px; border-radius: 6px; background: var(--color-card); border: 1px solid var(--color-border); color: var(--color-text); font-family: monospace;">
                 {{.ResetPasswordNotice}}
             </code>
-            <button type="button" class="btn btn-secondary" onclick="navigator.clipboard.writeText('{{.ResetPasswordNotice}}'); alert('Kata sandi disalin ke clipboard');" style="padding: 6px 12px; font-size: 12px; cursor: pointer;">
+            <button type="button" id="btn-copy-reset-pwd" class="btn btn-secondary" data-pwd="{{.ResetPasswordNotice}}" style="padding: 6px 12px; font-size: 12px; cursor: pointer;">
                 Salin Kata Sandi
             </button>
         </div>
@@ -198,7 +198,7 @@
             <p style="font-size: 12px; color: var(--color-muted); margin: 0 0 14px 0;">
                 Admin dapat mengatur kata sandi baru atau membiarkannya kosong untuk membuat kata sandi sementara otomatis 12 karakter. Sesi aktif pekerja akan diputus.
             </p>
-            <form method="POST" action="/admin/workers/{{.Worker.ID}}/reset-password" onsubmit="return confirm('Reset kata sandi pekerja ini? Seluruh sesi login pekerja akan diputus seketika.');">
+            <form method="POST" action="/admin/workers/{{.Worker.ID}}/reset-password" class="form-confirm-reset-pwd">
                 <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
                 <div class="field" style="margin-bottom: 12px;">
                     <label for="new_password" style="font-size: 12px;">Kata Sandi Baru (opsional):</label>
@@ -492,7 +492,7 @@
                     <textarea id="freeze_reason" name="freeze_reason" class="input" rows="3" required placeholder="Tuliskan alasan pembekuan akun..." style="font-size: 13px; width: 100%; box-sizing: border-box;"></textarea>
                 </div>
                 <div style="display: flex; justify-content: flex-end; gap: 8px;">
-                    <button type="button" class="btn btn-secondary" onclick="closeFreezeModal()" style="padding: 8px 16px; font-size: 13px; cursor: pointer;">
+                    <button type="button" id="btn-close-freeze" class="btn btn-secondary" style="padding: 8px 16px; font-size: 13px; cursor: pointer;">
                         Batal
                     </button>
                     <button type="submit" class="btn btn-secondary" style="padding: 8px 16px; font-size: 13px; color: var(--color-danger); border-color: var(--color-danger); cursor: pointer; font-weight: 600;">
@@ -502,7 +502,7 @@
             </form>
         </div>
     </div>
-    <script>
+    <script nonce="{{ .Nonce }}">
     function openFreezeModal() {
         var m = document.getElementById('freezeModal');
         if (m) m.style.display = 'flex';
@@ -513,6 +513,38 @@
     }
     window.addEventListener('keydown', function(e) {
         if (e.key === 'Escape') closeFreezeModal();
+    });
+    document.addEventListener('DOMContentLoaded', function() {
+        var btnOpen = document.getElementById('btn-open-freeze');
+        if (btnOpen) btnOpen.addEventListener('click', openFreezeModal);
+
+        var btnClose = document.getElementById('btn-close-freeze');
+        if (btnClose) btnClose.addEventListener('click', closeFreezeModal);
+
+        document.querySelectorAll('.form-confirm-unfreeze').forEach(function(form) {
+            form.addEventListener('submit', function(e) {
+                if (!confirm('Buka pembekuan akun pekerja ini?')) {
+                    e.preventDefault();
+                }
+            });
+        });
+
+        document.querySelectorAll('.form-confirm-reset-pwd').forEach(function(form) {
+            form.addEventListener('submit', function(e) {
+                if (!confirm('Reset kata sandi pekerja ini? Seluruh sesi login pekerja akan diputus seketika.')) {
+                    e.preventDefault();
+                }
+        var btnCopyPwd = document.getElementById('btn-copy-reset-pwd');
+        if (btnCopyPwd) {
+            btnCopyPwd.addEventListener('click', function() {
+                var pwd = this.getAttribute('data-pwd');
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(pwd).then(function() {
+                        alert('Kata sandi disalin ke clipboard');
+                    });
+                }
+            });
+        }
     });
     </script>
     </main>

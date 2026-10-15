@@ -8,7 +8,7 @@
                     <h1 class="worker-page-title">{{ call .T "wa.accounts_title" }}</h1>
                     <p style="margin: 4px 0 0 0; color: var(--color-muted); font-size: 14px;">Kelola akun WhatsApp yang terhubung untuk mengirim pesan.</p>
                 </div>
-                <button type="button" onclick="openAddAccountModal();" class="btn btn-primary" style="padding: 10px 18px; font-weight: bold; cursor: pointer;">+ {{ call .T "wa.add_account" }}</button>
+                <button type="button" id="btn-add-account" class="btn btn-primary" style="padding: 10px 18px; font-weight: bold; cursor: pointer;">+ {{ call .T "wa.add_account" }}</button>
             </div>
 
             <!-- STATISTIK DATABASE TERSEDIA & STATUS AKUN -->
@@ -90,10 +90,10 @@
                             <td>
                                 <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
                                     {{if eq .Status "menunggu_scan"}}
-                                    <button type="button" onclick="openAddAccountModal({{.ID}})" style="background-color: var(--color-primary); color: var(--color-on-primary); border: none; padding: 4px 10px; border-radius: 4px; font-size: 12px; font-weight: bold; cursor: pointer;">
+                                    <button type="button" class="btn-open-account-modal" data-account-id="{{.ID}}" style="background-color: var(--color-primary); color: var(--color-on-primary); border: none; padding: 4px 10px; border-radius: 4px; font-size: 12px; font-weight: bold; cursor: pointer;">
                                         Pindai / Tautkan
                                     </button>
-                                    <form method="POST" action="/worker/accounts/{{.ID}}/delete" onsubmit="return confirm('Hapus antrean akun ini?');" style="display: inline;">
+                                    <form method="POST" action="/worker/accounts/{{.ID}}/delete" class="form-confirm-delete" style="display: inline;">
                                         <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
                                         <button type="submit" style="background: none; border: 1px solid var(--color-danger); color: var(--color-danger); padding: 3px 8px; border-radius: 4px; cursor: pointer; font-size: 12px;">Hapus</button>
                                     </form>
@@ -118,10 +118,10 @@
                                         <button type="submit" style="background: none; border: 1px solid var(--color-danger); color: var(--color-danger); padding: 3px 8px; border-radius: 4px; cursor: pointer; font-size: 12px;">{{ call $.T "wa.action_stop" }}</button>
                                     </form>
                                     {{else}}
-                                    <button type="button" onclick="openAddAccountModal({{.ID}})" style="background: none; border: 1px solid var(--color-primary); color: var(--color-primary); padding: 3px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; cursor: pointer;">
+                                    <button type="button" class="btn-open-account-modal" data-account-id="{{.ID}}" style="background: none; border: 1px solid var(--color-primary); color: var(--color-primary); padding: 3px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; cursor: pointer;">
                                         {{ call $.T "wa.action_connect" }}
                                     </button>
-                                    <form method="POST" action="/worker/accounts/{{.ID}}/delete" onsubmit="return confirm('Hapus akun ini?');" style="display: inline;">
+                                    <form method="POST" action="/worker/accounts/{{.ID}}/delete" class="form-confirm-delete" style="display: inline;">
                                         <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
                                         <button type="submit" style="background: none; border: 1px solid var(--color-danger); color: var(--color-danger); padding: 3px 8px; border-radius: 4px; cursor: pointer; font-size: 12px;">Hapus</button>
                                     </form>
@@ -183,10 +183,10 @@
 
                     <div class="account-card-actions">
                         {{if eq .Status "menunggu_scan"}}
-                        <button type="button" onclick="openAddAccountModal({{.ID}})" class="btn btn-primary" style="flex: 1; padding: 8px 12px; font-size: 13px; font-weight: bold; cursor: pointer;">
+                        <button type="button" class="btn btn-primary btn-open-account-modal" data-account-id="{{.ID}}" style="flex: 1; padding: 8px 12px; font-size: 13px; font-weight: bold; cursor: pointer;">
                             Pindai / Tautkan
                         </button>
-                        <form method="POST" action="/worker/accounts/{{.ID}}/delete" onsubmit="return confirm('Hapus antrean akun ini?');" style="display: inline;">
+                        <form method="POST" action="/worker/accounts/{{.ID}}/delete" class="form-confirm-delete" style="display: inline;">
                             <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
                             <button type="submit" style="background: none; border: 1px solid var(--color-danger); color: var(--color-danger); padding: 7px 12px; border-radius: 4px; cursor: pointer; font-size: 13px;">Hapus</button>
                         </form>
@@ -211,10 +211,10 @@
                             <button type="submit" style="width: 100%; background: none; border: 1px solid var(--color-danger); color: var(--color-danger); padding: 7px 12px; border-radius: 4px; cursor: pointer; font-size: 13px;">{{ call $.T "wa.action_stop" }}</button>
                         </form>
                         {{else}}
-                        <button type="button" onclick="openAddAccountModal({{.ID}})" style="flex: 1; background: none; border: 1px solid var(--color-primary); color: var(--color-primary); padding: 7px 12px; border-radius: 4px; font-size: 13px; font-weight: bold; cursor: pointer;">
+                        <button type="button" class="btn-open-account-modal" data-account-id="{{.ID}}" style="flex: 1; background: none; border: 1px solid var(--color-primary); color: var(--color-primary); padding: 7px 12px; border-radius: 4px; font-size: 13px; font-weight: bold; cursor: pointer;">
                             {{ call $.T "wa.action_connect" }}
                         </button>
-                        <form method="POST" action="/worker/accounts/{{.ID}}/delete" onsubmit="return confirm('Hapus akun ini?');" style="display: inline;">
+                        <form method="POST" action="/worker/accounts/{{.ID}}/delete" class="form-confirm-delete" style="display: inline;">
                             <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
                             <button type="submit" style="background: none; border: 1px solid var(--color-danger); color: var(--color-danger); padding: 7px 12px; border-radius: 4px; cursor: pointer; font-size: 13px;">Hapus</button>
                         </form>
@@ -236,7 +236,7 @@
         <!-- MODAL HEADER -->
         <div style="display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; border-bottom: 1px solid var(--color-border);">
             <h3 id="modal-title" style="margin: 0; font-size: 18px;">Tautkan Akun WhatsApp</h3>
-            <button type="button" onclick="closeAddAccountModal()" style="background: none; border: none; font-size: 20px; line-height: 1; cursor: pointer; color: var(--color-muted); padding: 4px 8px;">&times;</button>
+            <button type="button" id="btn-modal-close-x" style="background: none; border: none; font-size: 20px; line-height: 1; cursor: pointer; color: var(--color-muted); padding: 4px 8px;">&times;</button>
         </div>
 
         <!-- MODAL BODY -->
@@ -254,10 +254,10 @@
                     <p style="margin: 0;">{{ call .T "worker.risk_privacy_desc" }}</p>
                 </div>
                 <label style="display: flex; align-items: flex-start; gap: 10px; cursor: pointer; font-size: 13px; color: var(--color-text); margin-bottom: 18px; user-select: none;">
-                    <input type="checkbox" id="risk-agreement-check" onchange="toggleRiskButton(this.checked)" style="margin-top: 2px;">
+                    <input type="checkbox" id="risk-agreement-check" style="margin-top: 2px;">
                     <span>{{ call .T "worker.risk_agree_checkbox" }}</span>
                 </label>
-                <button type="button" id="btn-proceed-pairing" onclick="proceedToPairing()" disabled class="btn btn-primary" style="width: 100%; padding: 10px; font-weight: bold; font-size: 14px; cursor: pointer;">
+                <button type="button" id="btn-proceed-pairing" disabled class="btn btn-primary" style="width: 100%; padding: 10px; font-weight: bold; font-size: 14px; cursor: pointer;">
                     Lanjutkan &rarr;
                 </button>
             </div>
@@ -266,10 +266,10 @@
             <div id="modal-step-link">
                 <!-- TAB SWITCHER -->
                 <div style="display: flex; gap: 8px; margin-bottom: 20px; background-color: var(--color-surface-muted); padding: 4px; border-radius: 6px;">
-                    <button type="button" id="tab-btn-qr" onclick="switchModalTab('qr')" style="flex: 1; padding: 8px 12px; border: none; border-radius: 4px; font-weight: bold; font-size: 13px; cursor: pointer; background-color: var(--color-primary); color: var(--color-on-primary);">
+                    <button type="button" id="tab-btn-qr" style="flex: 1; padding: 8px 12px; border: none; border-radius: 4px; font-weight: bold; font-size: 13px; cursor: pointer; background-color: var(--color-primary); color: var(--color-on-primary);">
                         Pindai QR
                     </button>
-                    <button type="button" id="tab-btn-code" onclick="switchModalTab('code')" style="flex: 1; padding: 8px 12px; border: none; border-radius: 4px; font-weight: bold; font-size: 13px; cursor: pointer; background: none; color: var(--color-text);">
+                    <button type="button" id="tab-btn-code" style="flex: 1; padding: 8px 12px; border: none; border-radius: 4px; font-weight: bold; font-size: 13px; cursor: pointer; background: none; color: var(--color-text);">
                         Kode Pairing
                     </button>
                 </div>
@@ -322,7 +322,7 @@
                         </div>
                     </div>
 
-                    <form id="form-pair-phone" onsubmit="submitPairPhone(event)">
+                    <form id="form-pair-phone">
                         <label for="modal-input-phone" style="display: block; font-weight: bold; font-size: 13px; margin-bottom: 6px;">Nomor WhatsApp</label>
                         <div style="display: flex; gap: 8px;">
                             <input type="text" id="modal-input-phone" placeholder="cth: 08123456789 atau 62812..." required style="flex: 1; padding: 8px 12px; border: 1px solid var(--color-border); border-radius: 4px; background-color: var(--color-input-bg); color: var(--color-input-text); box-sizing: border-box; font-size: 14px;">
@@ -341,7 +341,7 @@
                     <p style="font-size: 13px; color: var(--color-muted); margin: 0;">Akun WhatsApp Anda telah sukses ditautkan. Silakan atur nama dan kecepatan pengiriman:</p>
                 </div>
 
-                <form id="form-save-settings" onsubmit="submitSaveSettings(event)">
+                <form id="form-save-settings">
                     <div style="margin-bottom: 16px;">
                         <label for="modal-account-label" style="display: block; font-weight: bold; font-size: 13px; margin-bottom: 6px;">Nama / Label Akun</label>
                         <input type="text" id="modal-account-label" value="WhatsApp" required style="width: 100%; padding: 8px 12px; border: 1px solid var(--color-border); border-radius: 4px; background-color: var(--color-input-bg); color: var(--color-input-text); box-sizing: border-box; font-size: 14px;">
@@ -349,7 +349,7 @@
 
                     <div style="margin-bottom: 20px;">
                         <label for="modal-account-speed" style="display: block; font-weight: bold; font-size: 13px; margin-bottom: 6px;">Kecepatan Pengiriman</label>
-                        <select id="modal-account-speed" onchange="checkModalSpeedWarning(this.value)" style="width: 100%; padding: 8px 12px; border: 1px solid var(--color-border); border-radius: 4px; background-color: var(--color-input-bg); color: var(--color-input-text); box-sizing: border-box; font-size: 14px;">
+                        <select id="modal-account-speed" style="width: 100%; padding: 8px 12px; border: 1px solid var(--color-border); border-radius: 4px; background-color: var(--color-input-bg); color: var(--color-input-text); box-sizing: border-box; font-size: 14px;">
                             <option value="medium" selected>Medium (sedang - bawaan)</option>
                             <option value="slow">Slow (santai)</option>
                             <option value="over_slow">Over Slow (sangat santai)</option>
@@ -370,17 +370,17 @@
 
         <!-- MODAL FOOTER -->
         <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 20px; border-top: 1px solid var(--color-border); background-color: var(--color-surface-muted);">
-            <button type="button" onclick="closeAddAccountModal()" style="background: none; border: 1px solid var(--color-border); color: var(--color-muted); padding: 6px 14px; border-radius: 4px; cursor: pointer; font-size: 13px;">
+            <button type="button" id="btn-modal-cancel" style="background: none; border: 1px solid var(--color-border); color: var(--color-muted); padding: 6px 14px; border-radius: 4px; cursor: pointer; font-size: 13px;">
                 Batal
             </button>
-            <button type="button" id="btn-cancel-account" onclick="cancelPendingAccount()" style="display: none; background: none; border: none; color: var(--color-danger); font-size: 12px; cursor: pointer; text-decoration: underline;">
+            <button type="button" id="btn-cancel-account" style="display: none; background: none; border: none; color: var(--color-danger); font-size: 12px; cursor: pointer; text-decoration: underline;">
                 Hapus antrean akun ini
             </button>
         </div>
     </div>
 </div>
 
-<script>
+<script nonce="{{ .Nonce }}">
     const csrfToken = "{{.CSRFToken}}";
     let activeModalAccountID = 0;
     let pollInterval = null;
@@ -687,6 +687,54 @@
                 closeAddAccountModal();
             }
         });
+
+        var btnAdd = document.getElementById('btn-add-account');
+        if (btnAdd) btnAdd.addEventListener('click', function() { openAddAccountModal(); });
+
+        document.querySelectorAll('.btn-open-account-modal').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                var accId = parseInt(this.getAttribute('data-account-id'), 10);
+                openAddAccountModal(accId || undefined);
+            });
+        });
+
+        document.querySelectorAll('.form-confirm-delete').forEach(function(form) {
+            form.addEventListener('submit', function(e) {
+                if (!confirm('Hapus antrean akun ini?')) {
+                    e.preventDefault();
+                }
+            });
+        });
+
+        var btnCloseX = document.getElementById('btn-modal-close-x');
+        if (btnCloseX) btnCloseX.addEventListener('click', closeAddAccountModal);
+
+        var btnCancelModal = document.getElementById('btn-modal-cancel');
+        if (btnCancelModal) btnCancelModal.addEventListener('click', closeAddAccountModal);
+
+        var btnCancelAcc = document.getElementById('btn-cancel-account');
+        if (btnCancelAcc) btnCancelAcc.addEventListener('click', cancelPendingAccount);
+
+        var riskCheck = document.getElementById('risk-agreement-check');
+        if (riskCheck) riskCheck.addEventListener('change', function() { toggleRiskButton(this.checked); });
+
+        var btnProceed = document.getElementById('btn-proceed-pairing');
+        if (btnProceed) btnProceed.addEventListener('click', proceedToPairing);
+
+        var tabQr = document.getElementById('tab-btn-qr');
+        if (tabQr) tabQr.addEventListener('click', function() { switchModalTab('qr'); });
+
+        var tabCode = document.getElementById('tab-btn-code');
+        if (tabCode) tabCode.addEventListener('click', function() { switchModalTab('code'); });
+
+        var formPair = document.getElementById('form-pair-phone');
+        if (formPair) formPair.addEventListener('submit', submitPairPhone);
+
+        var formSettings = document.getElementById('form-save-settings');
+        if (formSettings) formSettings.addEventListener('submit', submitSaveSettings);
+
+        var speedSelect = document.getElementById('modal-account-speed');
+        if (speedSelect) speedSelect.addEventListener('change', function() { checkModalSpeedWarning(this.value); });
 
         const params = new URLSearchParams(window.location.search);
         const openParam = params.get('open');

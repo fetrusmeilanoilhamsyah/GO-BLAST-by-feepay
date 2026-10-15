@@ -144,6 +144,7 @@ func TestCampaignFormTombolAsliDisabled(t *testing.T) {
 		CSRFToken   string
 		Campaign    campaign.Campaign
 		DefaultMode string
+		Nonce       string
 		T           func(string) string
 	}{
 		ActiveNav: "campaigns",
@@ -158,6 +159,7 @@ func TestCampaignFormTombolAsliDisabled(t *testing.T) {
 			ButtonMode: campaign.ModeKartuLink,
 		},
 		DefaultMode: campaign.ModeKartuLink,
+		Nonce:       "test-nonce",
 		T: func(key string) string {
 			return i18n.T("id", key)
 		},

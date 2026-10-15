@@ -2,10 +2,15 @@ package web
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/subtle"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -18,10 +23,20 @@ import (
 type contextKey string
 
 const (
-	userContextKey contextKey = "user"
-	sessionKey     contextKey = "session"
-	csrfContextKey contextKey = "csrf"
+	userContextKey  contextKey = "user"
+	sessionKey      contextKey = "session"
+	csrfContextKey  contextKey = "csrf"
+	nonceContextKey contextKey = "nonce"
 )
+
+func getNonce(r *http.Request) string {
+	if val := r.Context().Value(nonceContextKey); val != nil {
+		if n, ok := val.(string); ok {
+			return n
+		}
+	}
+	return ""
+}
 
 type UserSession struct {
 	ID                int64
@@ -147,22 +162,108 @@ func RateLimitRegister(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-func getIP(r *http.Request) string {
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
+func (s *Server) SecurityHeadersMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		nonceBytes := make([]byte, 16)
+		if _, err := rand.Read(nonceBytes); err != nil {
+			copy(nonceBytes, []byte(fmt.Sprintf("%d", time.Now().UnixNano())))
+		}
+		nonce := base64.StdEncoding.EncodeToString(nonceBytes)
+
+		// Content-Security-Policy
+		csp := fmt.Sprintf("default-src 'self'; script-src 'self' 'nonce-%s' https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; object-src 'none'", nonce)
+		w.Header().Set("Content-Security-Policy", csp)
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+		w.Header().Set("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=()")
+		w.Header().Set("X-Frame-Options", "DENY")
+
+		if s.isProd() || r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" {
+			w.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload")
+		}
+
+		if strings.HasPrefix(r.URL.Path, "/worker") || strings.HasPrefix(r.URL.Path, "/admin") || strings.HasPrefix(r.URL.Path, "/api") {
+			w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate, private")
+			w.Header().Set("Pragma", "no-cache")
+		}
+
+		ctx := context.WithValue(r.Context(), nonceContextKey, nonce)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+func parseHost(remoteAddr string) (string, net.IP) {
+	host, _, err := net.SplitHostPort(remoteAddr)
 	if err != nil {
-		host = r.RemoteAddr
+		host = remoteAddr
 	}
-	if host == "127.0.0.1" || host == "::1" {
-		if realIP := strings.TrimSpace(r.Header.Get("X-Real-IP")); realIP != "" {
-			return realIP
+	ip := net.ParseIP(host)
+	return host, ip
+}
+
+func getIP(r *http.Request) string {
+	return getIPWithTrustedProxies(r, nil, "CF-Connecting-IP")
+}
+
+func (s *Server) getClientIP(r *http.Request) string {
+	if s == nil {
+		return getIP(r)
+	}
+	return getIPWithTrustedProxies(r, s.TrustedProxyCIDRs, s.ClientIPHeader)
+}
+
+func getIPWithTrustedProxies(r *http.Request, trustedCIDRs []*net.IPNet, headerName string) string {
+	host, remoteIP := parseHost(r.RemoteAddr)
+	if remoteIP == nil {
+		return host
+	}
+
+	trusted := false
+	if len(trustedCIDRs) == 0 {
+		if remoteIP.IsLoopback() {
+			trusted = true
+		}
+	} else {
+		for _, cidr := range trustedCIDRs {
+			if cidr.Contains(remoteIP) {
+				trusted = true
+				break
+			}
 		}
 	}
+
+	if !trusted {
+		return host
+	}
+
+	if headerName == "" {
+		headerName = "CF-Connecting-IP"
+	}
+
+	rawHeader := strings.TrimSpace(r.Header.Get(headerName))
+	if rawHeader == "" {
+		rawHeader = strings.TrimSpace(r.Header.Get("X-Real-IP"))
+	}
+
+	if rawHeader != "" {
+		if idx := strings.Index(rawHeader, ","); idx != -1 {
+			rawHeader = strings.TrimSpace(rawHeader[:idx])
+		}
+		if parsed := net.ParseIP(rawHeader); parsed != nil {
+			return parsed.String()
+		}
+	}
+
 	return host
 }
 
 func (s *Server) RequireRole(next http.HandlerFunc, roles ...string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		cookie, err := r.Cookie("gb_session")
+		cookieName := s.sessionCookieName()
+		cookie, err := r.Cookie(cookieName)
+		if err != nil && s.isProd() {
+			cookie, err = r.Cookie("gb_session")
+		}
 		if err != nil {
 			http.Redirect(w, r, "/login", http.StatusSeeOther)
 			return
@@ -172,17 +273,17 @@ func (s *Server) RequireRole(next http.HandlerFunc, roles ...string) http.Handle
 
 		var user UserSession
 		var expiresAt time.Time
-		var payoutMethod, payoutDestEncrypted, payoutAccName *string
+		var payoutMethod, payoutAccName *string
 
 		qCtx, qCancel := context.WithTimeout(r.Context(), 10*time.Second)
 		err = s.DB.Pool.QueryRow(qCtx, `
 			SELECT u.id, u.role, COALESCE(u.email, ''), COALESCE(u.username, ''), COALESCE(u.display_name, u.username, ''), u.language,
-			       u.payout_method, u.payout_dest_encrypted, u.payout_account_name, ws.expires_at, COALESCE(u.must_change_password, FALSE)
+			       u.payout_method, u.payout_account_name, ws.expires_at, COALESCE(u.must_change_password, FALSE)
 			FROM web_sessions ws
 			JOIN users u ON u.id = ws.user_id
 			WHERE ws.token_hash = $1 AND u.status = 'active'
 		`, hash).Scan(&user.ID, &user.Role, &user.Email, &user.Username, &user.DisplayName, &user.Language,
-			&payoutMethod, &payoutDestEncrypted, &payoutAccName, &expiresAt, &user.MustChangePassword)
+			&payoutMethod, &payoutAccName, &expiresAt, &user.MustChangePassword)
 		qCancel()
 
 		if payoutMethod != nil {
@@ -191,20 +292,17 @@ func (s *Server) RequireRole(next http.HandlerFunc, roles ...string) http.Handle
 		if payoutAccName != nil {
 			user.PayoutAccountName = *payoutAccName
 		}
-		if payoutDestEncrypted != nil && *payoutDestEncrypted != "" {
-			if dec, err := s.DecryptDestination(*payoutDestEncrypted); err == nil {
-				user.PayoutDestMasked = MaskDestination(dec, user.PayoutMethod)
-			}
-		}
+		// H5a: Dekripsi tujuan penarikan dihapus dari RequireRole (dilakukan hanya saat halaman penarikan/profil dibuka)
 
 		if err != nil || time.Now().After(expiresAt) {
 			// Clean up invalid cookie
 			http.SetCookie(w, &http.Cookie{
-				Name:     "gb_session",
+				Name:     cookieName,
 				Value:    "",
 				Path:     "/",
 				MaxAge:   -1,
 				HttpOnly: true,
+				Secure:   s.isProd(),
 			})
 			http.Redirect(w, r, "/login", http.StatusSeeOther)
 			return
@@ -239,10 +337,12 @@ func (s *Server) RequireRole(next http.HandlerFunc, roles ...string) http.Handle
 			}
 		}
 
-		// Update last seen
-		updCtx, updCancel := context.WithTimeout(r.Context(), 10*time.Second)
+		// H5a: Update last_seen_at hanya jika aktivitas sebelumnya lebih tua dari 1 menit (mencegah write amplification)
+		updCtx, updCancel := context.WithTimeout(r.Context(), 5*time.Second)
 		_, _ = s.DB.Pool.Exec(updCtx, `
-			UPDATE web_sessions SET last_seen_at = CURRENT_TIMESTAMP WHERE token_hash = $1
+			UPDATE web_sessions 
+			SET last_seen_at = CURRENT_TIMESTAMP 
+			WHERE token_hash = $1 AND last_seen_at < CURRENT_TIMESTAMP - INTERVAL '1 minute'
 		`, hash)
 		updCancel()
 
@@ -270,13 +370,33 @@ func (s *Server) IsMaintenanceMode(ctx context.Context) bool {
 
 func (s *Server) CSRFMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		cookieName := s.csrfCookieName()
 		var csrfToken string
-		cookie, err := r.Cookie("gb_csrf")
+		cookie, err := r.Cookie(cookieName)
+		if err != nil && s.isProd() {
+			cookie, err = r.Cookie("gb_csrf")
+		}
 		if err == nil && cookie.Value != "" {
 			csrfToken = cookie.Value
 		}
 
 		if r.Method == http.MethodPost || r.Method == http.MethodPut || r.Method == http.MethodDelete {
+			// 1. Verifikasi Sec-Fetch-Site jika ada
+			if secFetchSite := r.Header.Get("Sec-Fetch-Site"); secFetchSite == "cross-site" {
+				http.Error(w, "Cross-site request rejected", http.StatusForbidden)
+				return
+			}
+
+			// 2. Verifikasi Origin jika ada
+			if origin := r.Header.Get("Origin"); origin != "" {
+				if originURL, err := url.Parse(origin); err == nil {
+					if originURL.Host != "" && !strings.EqualFold(originURL.Host, r.Host) {
+						http.Error(w, "Origin mismatch", http.StatusForbidden)
+						return
+					}
+				}
+			}
+
 			var maxBytesErr *http.MaxBytesError
 			if strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data") {
 				if err := r.ParseMultipartForm(6 << 20); err != nil && errors.As(err, &maxBytesErr) {
@@ -294,23 +414,34 @@ func (s *Server) CSRFMiddleware(next http.Handler) http.Handler {
 			if sentToken == "" {
 				sentToken = r.Header.Get("X-CSRF-Token")
 			}
-			if csrfToken == "" || sentToken != csrfToken {
+
+			if csrfToken == "" || sentToken == "" || subtle.ConstantTimeCompare([]byte(sentToken), []byte(csrfToken)) != 1 {
 				http.Error(w, "Invalid CSRF token", http.StatusForbidden)
 				return
+			}
+
+			// Jika server memiliki SessionSecret terkonfigurasi, validasi signature token
+			if len(s.SessionSecret) > 0 {
+				if _, ok := auth.VerifySignedCSRFToken(sentToken, s.SessionSecret); !ok {
+					http.Error(w, "Invalid CSRF token signature", http.StatusForbidden)
+					return
+				}
 			}
 		}
 
 		// Set CSRF cookie for GET requests if not exists
 		if r.Method == http.MethodGet && csrfToken == "" {
 			token, _ := auth.GenerateCSRFToken()
+			if len(s.SessionSecret) > 0 {
+				token = auth.SignCSRFToken(token, s.SessionSecret)
+			}
 			csrfToken = token
-			secure := s.Env != "dev"
 			http.SetCookie(w, &http.Cookie{
-				Name:     "gb_csrf",
+				Name:     cookieName,
 				Value:    token,
 				Path:     "/",
-				HttpOnly: false, // Must be readable by JS if needed, or we just put it in templates
-				Secure:   secure,
+				HttpOnly: false,
+				Secure:   s.isProd(),
 				SameSite: http.SameSiteLaxMode,
 			})
 		}
@@ -319,5 +450,3 @@ func (s *Server) CSRFMiddleware(next http.Handler) http.Handler {
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
-
-// We need Env in server to check secure cookie

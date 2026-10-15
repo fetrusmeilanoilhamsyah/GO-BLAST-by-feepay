@@ -116,7 +116,7 @@
     </main>
 </div>
 
-<script>
+<script nonce="{{ .Nonce }}">
 document.addEventListener('DOMContentLoaded', function() {
     function toggleInputs(checkId, ...inputIds) {
         const check = document.getElementById(checkId);

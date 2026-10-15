@@ -2,7 +2,7 @@
 <!-- BILAH ATAS (TOPBAR) -->
 <header class="worker-topbar">
     <!-- KIRI MOBILE: TOMBOL MENU NAVIGASI (MEMBUKA SIDEBAR KIRI) -->
-    <button type="button" class="worker-topbar-btn mobile-only" onclick="toggleDrawer('drawer-left')" aria-label="{{ call .T "worker.menu" }}" style="padding: 6px 10px;">
+    <button type="button" class="worker-topbar-btn mobile-only" id="btn-worker-drawer-left" aria-label="{{ call .T "worker.menu" }}" style="padding: 6px 10px;">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
             <line x1="4" y1="7" x2="20" y2="7"></line>
             <line x1="4" y1="17" x2="20" y2="17"></line>
@@ -32,7 +32,7 @@
 
     <!-- KANAN: LONCENG NOTIFIKASI & TOMBOL AKUN PENGGUNA -->
     <div style="display: flex; align-items: center; gap: 8px;">
-        <button type="button" class="worker-topbar-btn" id="notif-bell-btn" onclick="toggleNotifPanel()" aria-label="Notifikasi" style="position: relative; padding: 7px 10px;">
+        <button type="button" class="worker-topbar-btn" id="notif-bell-btn" aria-label="Notifikasi" style="position: relative; padding: 7px 10px;">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
                 <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
@@ -40,7 +40,7 @@
             <span id="notif-badge" class="notif-badge">0</span>
         </button>
 
-        <button type="button" class="worker-topbar-btn" onclick="toggleDrawer('drawer-right')" aria-label="{{ call .T "worker.account_info" }}" style="padding: 5px 8px;">
+        <button type="button" class="worker-topbar-btn" id="btn-worker-drawer-right" aria-label="{{ call .T "worker.account_info" }}" style="padding: 5px 8px;">
             <span class="worker-avatar-badge">{{if .User.Username}}{{printf "%.1s" .User.Username}}{{else if .User.DisplayName}}{{printf "%.1s" .User.DisplayName}}{{else}}W{{end}}</span>
             <span class="desktop-only" style="max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 600;">
                 {{if .User.Username}}{{.User.Username}}{{else}}{{.User.DisplayName}}{{end}}
@@ -56,7 +56,7 @@
 <div id="notif-panel" style="display: none; position: fixed; top: 56px; right: 12px; width: 340px; max-width: calc(100vw - 24px); max-height: 440px; overflow-y: auto; background-color: var(--color-card); border: 1px solid var(--color-border); border-radius: 10px; box-shadow: 0 4px 16px var(--color-shadow); z-index: 1000;">
     <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--color-border); position: sticky; top: 0; background-color: var(--color-card); z-index: 2;">
         <span style="font-weight: 700; font-size: 14px; color: var(--color-text);">Notifikasi</span>
-        <button type="button" onclick="markAllNotificationsRead()" style="font-size: 12px; color: var(--color-link); background: none; border: none; cursor: pointer; padding: 0;">
+        <button type="button" id="btn-mark-all-notifs" style="font-size: 12px; color: var(--color-link); background: none; border: none; cursor: pointer; padding: 0;">
             Tandai semua dibaca
         </button>
     </div>
@@ -66,7 +66,7 @@
 </div>
 
 <!-- OVERLAY BACKDROP -->
-<div id="drawer-backdrop" class="drawer-backdrop" onclick="closeAllDrawers()"></div>
+<div id="drawer-backdrop" class="drawer-backdrop"></div>
 
 <!-- SIDEBAR KIRI: BERANDA, PERANGKAT, PENARIKAN, REFERRAL, BAHASA, MODE -->
 <aside id="drawer-left" class="worker-drawer worker-drawer-left" aria-label="{{ call .T "worker.main_nav" }}">
@@ -75,7 +75,7 @@
             <span class="worker-topbar-brand-title">{{ call .T "app.name" }}</span>
             <span class="worker-topbar-brand-sub">{{ call .T "app.tagline" }}</span>
         </div>
-        <button type="button" class="worker-drawer-close" onclick="closeDrawer('drawer-left')" aria-label="{{ call .T "worker.close" }}">
+        <button type="button" class="worker-drawer-close" id="btn-close-drawer-left" aria-label="{{ call .T "worker.close" }}">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <line x1="18" y1="6" x2="6" y2="18"></line>
                 <line x1="6" y1="6" x2="18" y2="18"></line>
@@ -188,7 +188,7 @@
                 </div>
             </div>
         </div>
-        <button type="button" class="worker-drawer-close" onclick="closeDrawer('drawer-right')" aria-label="{{ call .T "worker.close" }}">
+        <button type="button" class="worker-drawer-close" id="btn-close-drawer-right" aria-label="{{ call .T "worker.close" }}">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <line x1="18" y1="6" x2="6" y2="18"></line>
                 <line x1="6" y1="6" x2="18" y2="18"></line>
@@ -292,7 +292,7 @@
                         <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
                         <div class="field" style="margin-bottom: 8px;">
                             <label for="drawer-wallet-method" style="font-size: 12px; font-weight: 600; color: var(--color-muted);">{{ call .T "worker.withdraw_method" }}</label>
-                            <select id="drawer-wallet-method" name="method" class="input" required style="padding: 8px 10px; font-size: 13px;" onchange="handleDrawerWalletMethodChange(this.value)">
+                            <select id="drawer-wallet-method" name="method" class="input" required style="padding: 8px 10px; font-size: 13px;">
                                 <option value="seabank"{{if eq .User.PayoutMethod "seabank"}} selected{{end}}>SeaBank</option>
                                 <option value="bca"{{if eq .User.PayoutMethod "bca"}} selected{{end}}>BCA</option>
                                 <option value="dana"{{if eq .User.PayoutMethod "dana"}} selected{{end}}>DANA</option>
@@ -361,7 +361,7 @@
 </aside>
 
 <!-- TOMBOL MENGAMBANG (FAB) BANTUAN & CS -->
-<button type="button" class="worker-help-fab" onclick="openHelpdeskModal()" aria-label="Bantuan dan Layanan CS" title="Pusat Bantuan & CS">
+<button type="button" class="worker-help-fab" id="btn-helpdesk-fab" aria-label="Bantuan dan Layanan CS" title="Pusat Bantuan & CS">
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <circle cx="12" cy="12" r="10"></circle>
         <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
@@ -370,7 +370,7 @@
 </button>
 
 <!-- OVERLAY BACKDROP MODAL BANTUAN -->
-<div id="helpdesk-backdrop" class="drawer-backdrop" onclick="closeHelpdeskModal()"></div>
+<div id="helpdesk-backdrop" class="drawer-backdrop"></div>
 
 <!-- MODAL POPUP BANTUAN CS & FAQ -->
 <div id="helpdesk-modal" class="helpdesk-modal" role="dialog" aria-modal="true" aria-labelledby="helpdesk-title">
@@ -379,7 +379,7 @@
             <div id="helpdesk-title" style="font-weight: 700; font-size: 15px; color: var(--color-text);">Pusat Bantuan & Layanan</div>
             <div style="font-size: 12px; color: var(--color-muted); margin-top: 2px;">Jawaban instan, kontak resmi, atau kirim laporan</div>
         </div>
-        <button type="button" class="worker-drawer-close" onclick="closeHelpdeskModal()" aria-label="Tutup Bantuan">
+        <button type="button" class="worker-drawer-close" id="btn-helpdesk-close" aria-label="Tutup Bantuan">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <line x1="18" y1="6" x2="6" y2="18"></line>
                 <line x1="6" y1="6" x2="18" y2="18"></line>
@@ -388,9 +388,9 @@
     </div>
 
     <div class="helpdesk-tab-nav">
-        <button type="button" class="helpdesk-tab-btn active" id="tab-btn-faq" onclick="switchHelpTab('faq')">FAQ Cerdas</button>
-        <button type="button" class="helpdesk-tab-btn" id="tab-btn-contact" onclick="switchHelpTab('contact')">Kontak CS</button>
-        <button type="button" class="helpdesk-tab-btn" id="tab-btn-ticket" onclick="switchHelpTab('ticket')">Kirim Laporan</button>
+        <button type="button" class="helpdesk-tab-btn active" id="tab-btn-faq">FAQ Cerdas</button>
+        <button type="button" class="helpdesk-tab-btn" id="tab-btn-contact">Kontak CS</button>
+        <button type="button" class="helpdesk-tab-btn" id="tab-btn-ticket">Kirim Laporan</button>
     </div>
 
     <div class="helpdesk-modal-body">
@@ -401,7 +401,7 @@
             </div>
 
             <div class="faq-item" id="faq-item-1">
-                <div class="faq-question" onclick="toggleFaq('faq-item-1')">
+                <div class="faq-question">
                     <span>Bagaimana cara menghubungkan WhatsApp?</span>
                     <svg class="faq-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <polyline points="6 9 12 15 18 9"></polyline>
@@ -413,7 +413,7 @@
             </div>
 
             <div class="faq-item" id="faq-item-2">
-                <div class="faq-question" onclick="toggleFaq('faq-item-2')">
+                <div class="faq-question">
                     <span>Mengapa saldo penarikan belum masuk ke rekening?</span>
                     <svg class="faq-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <polyline points="6 9 12 15 18 9"></polyline>
@@ -425,7 +425,7 @@
             </div>
 
             <div class="faq-item" id="faq-item-3">
-                <div class="faq-question" onclick="toggleFaq('faq-item-3')">
+                <div class="faq-question">
                     <span>Berapa lama akun WhatsApp aman digunakan untuk blast?</span>
                     <svg class="faq-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <polyline points="6 9 12 15 18 9"></polyline>
@@ -437,7 +437,7 @@
             </div>
 
             <div class="faq-item" id="faq-item-4">
-                <div class="faq-question" onclick="toggleFaq('faq-item-4')">
+                <div class="faq-question">
                     <span>Bagaimana perhitungan upah per pesan?</span>
                     <svg class="faq-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <polyline points="6 9 12 15 18 9"></polyline>
@@ -449,7 +449,7 @@
             </div>
 
             <div class="faq-item" id="faq-item-5">
-                <div class="faq-question" onclick="toggleFaq('faq-item-5')">
+                <div class="faq-question">
                     <span>Bisakah menghubungkan banyak nomor WhatsApp sekaligus?</span>
                     <svg class="faq-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <polyline points="6 9 12 15 18 9"></polyline>
@@ -543,7 +543,7 @@
 </div>
 
 <!-- JAVASCRIPT KONTROL DRAWER & ACCORDION -->
-<script>
+<script nonce="{{ .Nonce }}">
 function toggleDrawer(id) {
     const drawer = document.getElementById(id);
     const backdrop = document.getElementById('drawer-backdrop');
@@ -669,7 +669,7 @@ function loadNotifications() {
                 var isUnread = !n.read_at;
                 var bg = isUnread ? 'var(--color-surface-muted)' : 'transparent';
                 var fw = isUnread ? '700' : '500';
-                return '<div onclick="readSingleNotification(' + n.id + ', this)" style="padding: 12px 16px; border-bottom: 1px solid var(--color-border); cursor: pointer; background-color: ' + bg + ';">' +
+                return '<div class="notif-item" data-notif-id="' + n.id + '" style="padding: 12px 16px; border-bottom: 1px solid var(--color-border); cursor: pointer; background-color: ' + bg + ';">' +
                     '<div style="font-weight: ' + fw + '; font-size: 13px; color: var(--color-text); margin-bottom: 3px;">' + escapeNotifHtml(n.title) + '</div>' +
                     '<div style="font-size: 12px; color: var(--color-muted); line-height: 1.4;">' + escapeNotifHtml(n.message) + '</div>' +
                     '<div style="font-size: 11px; color: var(--color-muted); margin-top: 4px;">' + formatNotifDate(n.created_at) + '</div>' +
@@ -758,6 +758,68 @@ document.addEventListener('DOMContentLoaded', function() {
         })
         .catch(function() {});
     loadWorkerTickets();
+
+    // Event listeners
+    var btnLeft = document.getElementById('btn-worker-drawer-left');
+    if (btnLeft) btnLeft.addEventListener('click', function() { toggleDrawer('drawer-left'); });
+
+    var btnRight = document.getElementById('btn-worker-drawer-right');
+    if (btnRight) btnRight.addEventListener('click', function() { toggleDrawer('drawer-right'); });
+
+    var bellBtn = document.getElementById('notif-bell-btn');
+    if (bellBtn) bellBtn.addEventListener('click', toggleNotifPanel);
+
+    var markAllBtn = document.getElementById('btn-mark-all-notifs');
+    if (markAllBtn) markAllBtn.addEventListener('click', markAllNotificationsRead);
+
+    var backdrop = document.getElementById('drawer-backdrop');
+    if (backdrop) backdrop.addEventListener('click', closeAllDrawers);
+
+    var closeLeft = document.getElementById('btn-close-drawer-left');
+    if (closeLeft) closeLeft.addEventListener('click', function() { closeDrawer('drawer-left'); });
+
+    var closeRight = document.getElementById('btn-close-drawer-right');
+    if (closeRight) closeRight.addEventListener('click', function() { closeDrawer('drawer-right'); });
+
+    var walletMethod = document.getElementById('drawer-wallet-method');
+    if (walletMethod) walletMethod.addEventListener('change', function() { handleDrawerWalletMethodChange(this.value); });
+
+    var helpFab = document.getElementById('btn-helpdesk-fab');
+    if (helpFab) helpFab.addEventListener('click', openHelpdeskModal);
+
+    var helpBackdrop = document.getElementById('helpdesk-backdrop');
+    if (helpBackdrop) helpBackdrop.addEventListener('click', closeHelpdeskModal);
+
+    var helpClose = document.getElementById('btn-helpdesk-close');
+    if (helpClose) helpClose.addEventListener('click', closeHelpdeskModal);
+
+    var tabFaq = document.getElementById('tab-btn-faq');
+    if (tabFaq) tabFaq.addEventListener('click', function() { switchHelpTab('faq'); });
+
+    var tabContact = document.getElementById('tab-btn-contact');
+    if (tabContact) tabContact.addEventListener('click', function() { switchHelpTab('contact'); });
+
+    var tabTicket = document.getElementById('tab-btn-ticket');
+    if (tabTicket) tabTicket.addEventListener('click', function() { switchHelpTab('ticket'); });
+
+    // FAQ items toggle
+    document.querySelectorAll('#help-pane-faq .faq-question').forEach(function(q) {
+        q.addEventListener('click', function() {
+            var item = q.closest('.faq-item');
+            if (item) item.classList.toggle('is-open');
+        });
+    });
+
+    // Delegasi klik notifikasi
+    var notifList = document.getElementById('notif-list');
+    if (notifList) {
+        notifList.addEventListener('click', function(e) {
+            var item = e.target.closest('.notif-item');
+            if (item && item.dataset.notifId) {
+                readSingleNotification(item.dataset.notifId, item);
+            }
+        });
+    }
 });
 
 function loadWorkerTickets() {
@@ -859,13 +921,13 @@ document.querySelectorAll('.worker-accordion').forEach(function(acc) {
         </div>
 
         <div style="display: flex; justify-content: flex-end; margin-top: 20px;">
-            <button type="button" id="btn-dismiss-lock-modal" onclick="dismissSystemLockModal()" class="btn btn-primary" style="padding: 10px 24px; font-size: 13px; font-weight: 700; cursor: pointer; border-radius: 8px;">
+            <button type="button" id="btn-dismiss-lock-modal" class="btn btn-primary" style="padding: 10px 24px; font-size: 13px; font-weight: 700; cursor: pointer; border-radius: 8px;">
                 Mengerti
             </button>
         </div>
     </div>
 </div>
-<script>
+<script nonce="{{ .Nonce }}">
 (function() {
     try {
         if (!sessionStorage.getItem('dismissed_lock_modal')) {
@@ -873,6 +935,10 @@ document.querySelectorAll('.worker-accordion').forEach(function(acc) {
             if (m) m.style.display = 'flex';
         }
     } catch (e) {}
+    var btn = document.getElementById('btn-dismiss-lock-modal');
+    if (btn) {
+        btn.addEventListener('click', dismissSystemLockModal);
+    }
 })();
 function dismissSystemLockModal() {
     try {

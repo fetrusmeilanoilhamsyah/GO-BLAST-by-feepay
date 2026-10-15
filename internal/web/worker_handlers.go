@@ -396,6 +396,7 @@ func (s *Server) HandleWorkerHome(w http.ResponseWriter, r *http.Request) {
 		Accounts                  []WorkerAccountSummaryView
 		Incomes                   []CurrencyIncomeView
 		Activities                []WorkerActivityView
+		Nonce                     string
 		T                         func(string) string
 	}{
 		CSLinks:                   s.csLinks(r.Context()),
@@ -403,6 +404,7 @@ func (s *Server) HandleWorkerHome(w http.ResponseWriter, r *http.Request) {
 		Title:                     i18n.T(lang, "worker.home_title"),
 		Theme:                     getTheme(r),
 		CSRFToken:                 getCSRF(r),
+		Nonce:                     getNonce(r),
 		ActiveNav:                 "home",
 		User:                      user,
 		Success:                   r.URL.Query().Get("success"),
@@ -522,6 +524,7 @@ func (s *Server) HandleWorkerHistoryGET(w http.ResponseWriter, r *http.Request) 
 		PrevPage     int
 		NextPage     int
 		HasMore      bool
+		Nonce        string
 		T            func(string) string
 	}{
 		CSLinks:      s.csLinks(r.Context()),
@@ -529,6 +532,7 @@ func (s *Server) HandleWorkerHistoryGET(w http.ResponseWriter, r *http.Request) 
 		Title:        i18n.T(lang, "nav.history"),
 		Theme:        getTheme(r),
 		CSRFToken:    getCSRF(r),
+		Nonce:        getNonce(r),
 		ActiveNav:    "history",
 		User:         user,
 		HistoryItems: historyItems,
@@ -684,6 +688,7 @@ func (s *Server) HandleWorkerWithdrawalsGET(w http.ResponseWriter, r *http.Reque
 		Withdrawals             []WorkerWithdrawalView
 		Error                   string
 		Success                 string
+		Nonce                   string
 		T                       func(string) string
 	}{
 		CSLinks:                 s.csLinks(r.Context()),
@@ -691,6 +696,7 @@ func (s *Server) HandleWorkerWithdrawalsGET(w http.ResponseWriter, r *http.Reque
 		Title:                   i18n.T(lang, "nav.withdrawals"),
 		Theme:                   getTheme(r),
 		CSRFToken:               getCSRF(r),
+		Nonce:                   getNonce(r),
 		ActiveNav:               "withdrawals",
 		User:                    user,
 		Balance:                 balanceIDR,
@@ -1216,6 +1222,7 @@ func (s *Server) HandleWorkerReferralGET(w http.ResponseWriter, r *http.Request)
 		FriendsCount int64
 		TotalBonus   int64
 		BonusList    []WorkerActivityView
+		Nonce        string
 		T            func(string) string
 	}{
 		CSLinks:      s.csLinks(r.Context()),
@@ -1223,6 +1230,7 @@ func (s *Server) HandleWorkerReferralGET(w http.ResponseWriter, r *http.Request)
 		Title:        i18n.T(lang, "nav.referral"),
 		Theme:        getTheme(r),
 		CSRFToken:    getCSRF(r),
+		Nonce:        getNonce(r),
 		ActiveNav:    "referral",
 		User:         user,
 		ReferralCode: referralCode,
@@ -1295,6 +1303,10 @@ func (s *Server) HandleWorkerSecurityPOST(w http.ResponseWriter, r *http.Request
 		http.Redirect(w, r, target+sep+"error=Kata+sandi+baru+minimal+10+karakter", http.StatusSeeOther)
 		return
 	}
+	if len(newPass) > config.MaxPasswordBytes {
+		http.Redirect(w, r, target+sep+"error=Kata+sandi+baru+terlalu+panjang+(maksimal+128+karakter)", http.StatusSeeOther)
+		return
+	}
 	if newPass != confirmPass {
 		http.Redirect(w, r, target+sep+"error=Konfirmasi+kata+sandi+tidak+cocok", http.StatusSeeOther)
 		return
@@ -1307,7 +1319,7 @@ func (s *Server) HandleWorkerSecurityPOST(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	match, err := auth.VerifyPassword(oldPass, currentHash)
+	match, err := auth.VerifyPasswordGated(r.Context(), oldPass, currentHash)
 	if err != nil || !match {
 		http.Redirect(w, r, target+sep+"error=Kata+sandi+lama+salah", http.StatusSeeOther)
 		return
@@ -1320,6 +1332,13 @@ func (s *Server) HandleWorkerSecurityPOST(w http.ResponseWriter, r *http.Request
 	}
 
 	_, _ = s.DB.Pool.Exec(r.Context(), "UPDATE users SET password_hash = $1, must_change_password = FALSE WHERE id = $2", newHash, user.ID)
+
+	// H5a: Batalkan semua sesi lain pengguna itu kecuali sesi yang sedang dipakai saat ini
+	currentSessionHash, _ := r.Context().Value(sessionKey).(string)
+	if currentSessionHash != "" {
+		_, _ = s.DB.Pool.Exec(r.Context(), "DELETE FROM web_sessions WHERE user_id = $1 AND token_hash != $2", user.ID, currentSessionHash)
+	}
+
 	s.logAudit(&user.ID, "change_password", "users", strconv.FormatInt(user.ID, 10), "password updated")
 	http.Redirect(w, r, target+sep+"success=Kata+sandi+berhasil+diperbarui", http.StatusSeeOther)
 }

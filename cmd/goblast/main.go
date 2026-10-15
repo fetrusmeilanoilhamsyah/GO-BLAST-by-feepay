@@ -16,6 +16,7 @@ import (
 	"goblast/internal/engine"
 	"goblast/internal/i18n"
 	"goblast/internal/platform"
+	"goblast/internal/turnstile"
 	"goblast/internal/wa"
 	"goblast/internal/web"
 )
@@ -97,6 +98,12 @@ func main() {
 	srv.CSWhatsAppURL = cfg.CSWhatsAppURL
 	srv.CSTelegramURL = cfg.CSTelegramURL
 	srv.ChannelTelegramURL = cfg.ChannelTelegramURL
+	srv.SessionSecret = cfg.SessionSecret
+	srv.TrustedProxyCIDRs = cfg.ParsedTrustedCIDRs
+	srv.ClientIPHeader = cfg.ClientIPHeader
+	if cfg.TurnstileSecretKey != "" {
+		srv.Turnstile = turnstile.NewClient(cfg.TurnstileSecretKey, cfg.TurnstileSiteKey, cfg.AppPublicHost)
+	}
 
 	mux := http.NewServeMux()
 	srv.RegisterRoutes(mux)

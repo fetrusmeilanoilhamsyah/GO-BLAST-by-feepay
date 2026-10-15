@@ -22,7 +22,7 @@
         </p>
 
         <div style="display: flex; gap: 12px; justify-content: center; flex-wrap: wrap;">
-            <button type="button" onclick="location.reload()" class="btn btn-secondary" style="padding: 10px 20px; font-size: 14px; cursor: pointer;">
+            <button type="button" id="btn-refresh" class="btn btn-secondary" style="padding: 10px 20px; font-size: 14px; cursor: pointer;">
                 {{ call .T "maintenance.refresh_btn" }}
             </button>
             {{if not .IsActive}}
@@ -33,4 +33,10 @@
         </div>
     </div>
 </main>
+<script nonce="{{ .Nonce }}">
+document.addEventListener('DOMContentLoaded', function() {
+    var btn = document.getElementById('btn-refresh');
+    if (btn) btn.addEventListener('click', function() { location.reload(); });
+});
+</script>
 {{end}}
