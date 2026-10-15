@@ -1,0 +1,35 @@
+{{ define "content" }}
+<div class="container" style="max-width: 400px; margin: 40px auto; padding: 24px; background-color: var(--color-card); border: 1px solid var(--color-border); border-radius: 10px; box-shadow: 0 1px 3px var(--color-shadow);">
+    <h2 style="text-align: center; color: var(--color-text); margin-top: 0;">GO BLAST <small style="font-size: 0.5em; color: var(--color-muted);">by feepay</small></h2>
+    <h3 style="text-align: center; margin-bottom: 20px; font-size: 16px;">Verifikasi Dua Langkah (TOTP)</h3>
+    
+    {{ if .Error }}
+    <div style="background-color: var(--color-surface-muted); color: var(--color-danger); border: 1px solid var(--color-danger); padding: 10px; border-radius: 6px; margin-bottom: 20px; text-align: center; font-size: 13px;">
+        {{ .Error }}
+    </div>
+    {{ end }}
+
+    <form method="POST" action="/login/totp">
+        <input type="hidden" name="csrf_token" value="{{ .CSRFToken }}">
+        
+        <div style="margin-bottom: 20px;">
+            <label style="display: block; margin-bottom: 5px; font-size: 13px; font-weight: 500;">Kode Autentikasi (6 Digit) atau Kode Cadangan</label>
+            <input type="text" name="totp_code" required autofocus placeholder="Contoh: 123456 atau XXXXX-XXXXX" autocomplete="one-time-code" style="width: 100%; padding: 10px 12px; box-sizing: border-box; background-color: var(--color-input-bg); color: var(--color-input-text); border: 1px solid var(--color-border); border-radius: 6px; font-size: 16px; text-align: center; letter-spacing: 2px;">
+            <small style="color: var(--color-muted); font-size: 0.8em; display: block; margin-top: 5px; text-align: center;">Buka aplikasi Google Authenticator, Aegis, atau Bitwarden Anda</small>
+        </div>
+
+        <button type="submit" class="btn btn-primary" style="width: 100%; padding: 10px; font-size: 14px; font-weight: bold; cursor: pointer;">
+            Verifikasi Masuk
+        </button>
+    </form>
+
+    <div style="text-align: center; margin-top: 20px;">
+        <form method="POST" action="/logout" style="margin: 0; display: inline;">
+            <input type="hidden" name="csrf_token" value="{{ .CSRFToken }}">
+            <button type="submit" style="background: none; border: none; color: var(--color-link); font-size: 13px; cursor: pointer; text-decoration: underline;">
+                Batal dan Keluar
+            </button>
+        </form>
+    </div>
+</div>
+{{ end }}

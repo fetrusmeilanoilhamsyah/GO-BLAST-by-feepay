@@ -1,0 +1,41 @@
+{{ define "content" }}
+<div class="container" style="max-width: 450px; margin: 40px auto; padding: 24px; background-color: var(--color-card); border: 1px solid var(--color-border); border-radius: 10px; box-shadow: 0 1px 3px var(--color-shadow);">
+    <h2 style="color: var(--color-text); margin-top: 0; text-align: center;">Konfirmasi Keamanan (Step-Up)</h2>
+    <p style="color: var(--color-muted); font-size: 13px; text-align: center; margin-bottom: 20px;">
+        Aksi yang Anda tuju merupakan tindakan administratif yang sensitif. Demi keamanan sistem, silakan masukkan kata sandi akun Anda atau 6 digit kode TOTP.
+    </p>
+
+    {{ if .Error }}
+    <div style="background-color: var(--color-surface-muted); color: var(--color-danger); border: 1px solid var(--color-danger); padding: 10px; border-radius: 6px; margin-bottom: 20px; text-align: center; font-size: 13px;">
+        {{ .Error }}
+    </div>
+    {{ end }}
+
+    <form method="POST" action="/admin/stepup">
+        <input type="hidden" name="csrf_token" value="{{ .CSRFToken }}">
+        <input type="hidden" name="redirect" value="{{ .RedirectURL }}">
+
+        <div style="margin-bottom: 15px;">
+            <label style="display: block; margin-bottom: 5px; font-size: 13px; font-weight: 500;">Kata Sandi Admin</label>
+            <input type="password" name="password" placeholder="Masukkan kata sandi admin" style="width: 100%; padding: 10px 12px; box-sizing: border-box; background-color: var(--color-input-bg); color: var(--color-input-text); border: 1px solid var(--color-border); border-radius: 6px; font-size: 14px;">
+        </div>
+
+        <div style="text-align: center; margin: 15px 0; color: var(--color-muted); font-size: 12px; font-weight: bold;">
+            — ATAU —
+        </div>
+
+        <div style="margin-bottom: 20px;">
+            <label style="display: block; margin-bottom: 5px; font-size: 13px; font-weight: 500;">Kode TOTP Authenticator (6 Digit)</label>
+            <input type="text" name="totp_code" maxlength="6" placeholder="Contoh: 123456" autocomplete="off" style="width: 100%; padding: 10px 12px; box-sizing: border-box; background-color: var(--color-input-bg); color: var(--color-input-text); border: 1px solid var(--color-border); border-radius: 6px; font-size: 16px; text-align: center; letter-spacing: 2px;">
+        </div>
+
+        <button type="submit" class="btn btn-primary" style="width: 100%; padding: 10px; font-size: 14px; font-weight: bold; cursor: pointer;">
+            Konfirmasi & Lanjutkan
+        </button>
+    </form>
+
+    <div style="text-align: center; margin-top: 20px;">
+        <a href="/admin" style="color: var(--color-link); font-size: 13px;">Batal kembali ke Dashboard</a>
+    </div>
+</div>
+{{ end }}

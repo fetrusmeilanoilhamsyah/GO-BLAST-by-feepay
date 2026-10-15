@@ -78,7 +78,8 @@ func (s *Server) HandleAdminHome(w http.ResponseWriter, r *http.Request) {
 
 	data, err := s.fetchDashboardData(r.Context())
 	if err != nil {
-		http.Error(w, "Gagal memuat statistik: "+err.Error(), http.StatusInternalServerError)
+		slog.Error("Gagal memuat statistik dashboard", "err", err)
+		http.Error(w, "Gagal memuat statistik", http.StatusInternalServerError)
 		return
 	}
 
@@ -332,7 +333,8 @@ type SettingsViewData struct {
 func (s *Server) HandleAdminSettingsGET(w http.ResponseWriter, r *http.Request) {
 	settings, err := s.readSettingsFromDB(r.Context())
 	if err != nil {
-		http.Error(w, "Gagal membaca pengaturan: "+err.Error(), http.StatusInternalServerError)
+		slog.Error("Gagal membaca pengaturan sistem", "err", err)
+		http.Error(w, "Gagal membaca pengaturan", http.StatusInternalServerError)
 		return
 	}
 
@@ -484,7 +486,8 @@ func (s *Server) HandleAdminSettingsPOST(w http.ResponseWriter, r *http.Request)
 
 	for _, up := range updates {
 		if err := s.updateSettingWithAudit(r.Context(), admin.ID, up.key, up.value, ip); err != nil {
-			s.renderSettingsError(w, r, "Gagal menyimpan pengaturan: "+err.Error())
+			slog.Error("Gagal menyimpan pengaturan sistem", "err", err, "key", up.key)
+			s.renderSettingsError(w, r, "Gagal menyimpan pengaturan. Silakan coba lagi.")
 			return
 		}
 	}
@@ -668,7 +671,8 @@ type WalletViewData struct {
 func (s *Server) HandleAdminWalletGET(w http.ResponseWriter, r *http.Request) {
 	walletData, err := s.fetchWalletData(r.Context())
 	if err != nil {
-		http.Error(w, "Gagal memuat dompet: "+err.Error(), http.StatusInternalServerError)
+		slog.Error("Gagal memuat data dompet admin", "err", err)
+		http.Error(w, "Gagal memuat dompet", http.StatusInternalServerError)
 		return
 	}
 
@@ -749,7 +753,8 @@ func (s *Server) HandleAdminWalletTopupPOST(w http.ResponseWriter, r *http.Reque
 		RETURNING id
 	`, currency, amount, note, admin.ID).Scan(&entryID)
 	if err != nil {
-		http.Error(w, "Gagal mencatat isi ulang: "+err.Error(), http.StatusInternalServerError)
+		slog.Error("Gagal mencatat isi ulang dompet", "err", err, "admin_id", admin.ID)
+		http.Redirect(w, r, "/admin/wallet?err=Gagal+mencatat+isi+ulang", http.StatusSeeOther)
 		return
 	}
 
@@ -1060,7 +1065,8 @@ func (s *Server) HandleAdminWithdrawalApprovePOST(w http.ResponseWriter, r *http
 		WHERE id = $2
 	`, payoutRefPtr, withdrawalID)
 	if err != nil {
-		http.Redirect(w, r, "/admin/withdrawals?err=Gagal+menyetujui+penarikan: "+err.Error(), http.StatusSeeOther)
+		slog.Error("Gagal menyetujui penarikan", "err", err, "withdrawal_id", withdrawalID)
+		http.Redirect(w, r, "/admin/withdrawals?err=Gagal+menyetujui+penarikan", http.StatusSeeOther)
 		return
 	}
 
@@ -1131,7 +1137,8 @@ func (s *Server) HandleAdminWithdrawalRejectPOST(w http.ResponseWriter, r *http.
 		VALUES ($1, 'koreksi', $2, $3, $4)
 	`, userID, currency, amount, refundNote)
 	if err != nil {
-		http.Redirect(w, r, "/admin/withdrawals?err=Gagal+mengembalikan+saldo: "+err.Error(), http.StatusSeeOther)
+		slog.Error("Gagal mengembalikan saldo penarikan", "err", err, "withdrawal_id", withdrawalID)
+		http.Redirect(w, r, "/admin/withdrawals?err=Gagal+mengembalikan+saldo", http.StatusSeeOther)
 		return
 	}
 
@@ -1149,7 +1156,8 @@ func (s *Server) HandleAdminWithdrawalRejectPOST(w http.ResponseWriter, r *http.
 		VALUES ($1, $2, $3, 'system', $4)
 	`, userID, notifTitle, notifMsg, withdrawalID)
 	if err != nil {
-		http.Redirect(w, r, "/admin/withdrawals?err=Gagal+membuat+notifikasi: "+err.Error(), http.StatusSeeOther)
+		slog.Error("Gagal membuat notifikasi penolakan penarikan", "err", err, "withdrawal_id", withdrawalID)
+		http.Redirect(w, r, "/admin/withdrawals?err=Gagal+membuat+notifikasi", http.StatusSeeOther)
 		return
 	}
 
@@ -1221,7 +1229,8 @@ func (s *Server) HandleAdminWorkers(w http.ResponseWriter, r *http.Request) {
 
 	rows, err := s.DB.Pool.Query(ctx, query, args...)
 	if err != nil {
-		http.Error(w, "Gagal memuat pekerja: "+err.Error(), http.StatusInternalServerError)
+		slog.Error("Gagal memuat pekerja dari database", "err", err)
+		http.Error(w, "Gagal memuat pekerja", http.StatusInternalServerError)
 		return
 	}
 	defer rows.Close()
@@ -1513,7 +1522,8 @@ func (s *Server) HandleAdminTicketResolvePOST(w http.ResponseWriter, r *http.Req
 		WHERE id = $4
 	`, replyMsg, adminUser.ID, now, id)
 	if err != nil {
-		http.Redirect(w, r, "/admin/tickets?error=Gagal+memperbarui+status+tiket: "+err.Error(), http.StatusSeeOther)
+		slog.Error("Gagal memperbarui status tiket", "err", err, "ticket_id", id)
+		http.Redirect(w, r, "/admin/tickets?error=Gagal+memperbarui+status+tiket", http.StatusSeeOther)
 		return
 	}
 
@@ -1621,7 +1631,8 @@ func (s *Server) HandleAdminBroadcastNewPOST(w http.ResponseWriter, r *http.Requ
 		RETURNING id
 	`, title, message, badge, isActive, adminUser.ID).Scan(&bID)
 	if err != nil {
-		http.Redirect(w, r, "/admin/broadcasts?error=Gagal+membuat+broadcast: "+err.Error(), http.StatusSeeOther)
+		slog.Error("Gagal membuat broadcast", "err", err)
+		http.Redirect(w, r, "/admin/broadcasts?error=Gagal+membuat+broadcast", http.StatusSeeOther)
 		return
 	}
 
@@ -1670,7 +1681,8 @@ func (s *Server) HandleAdminBroadcastTogglePOST(w http.ResponseWriter, r *http.R
 		RETURNING is_active, title, message
 	`, id).Scan(&newActive, &bTitle, &bMessage)
 	if err != nil {
-		http.Redirect(w, r, "/admin/broadcasts?error=Gagal+mengubah+status+broadcast: "+err.Error(), http.StatusSeeOther)
+		slog.Error("Gagal mengubah status broadcast", "err", err, "broadcast_id", id)
+		http.Redirect(w, r, "/admin/broadcasts?error=Gagal+mengubah+status+broadcast", http.StatusSeeOther)
 		return
 	}
 
@@ -1707,7 +1719,8 @@ func (s *Server) HandleAdminBroadcastDeletePOST(w http.ResponseWriter, r *http.R
 
 	_, err = s.DB.Pool.Exec(r.Context(), `DELETE FROM broadcasts WHERE id = $1`, id)
 	if err != nil {
-		http.Redirect(w, r, "/admin/broadcasts?error=Gagal+menghapus+broadcast: "+err.Error(), http.StatusSeeOther)
+		slog.Error("Gagal menghapus broadcast", "err", err, "broadcast_id", id)
+		http.Redirect(w, r, "/admin/broadcasts?error=Gagal+menghapus+broadcast", http.StatusSeeOther)
 		return
 	}
 
@@ -2306,7 +2319,8 @@ func (s *Server) HandleAdminMaintenanceTogglePOST(w http.ResponseWriter, r *http
 	newMode := !current
 
 	if err := s.updateSettingWithAudit(ctx, admin.ID, "maintenance_mode", newMode, getIP(r)); err != nil {
-		http.Redirect(w, r, "/admin/maintenance?err=Gagal+mengubah+mode+pemeliharaan: "+url.QueryEscape(err.Error()), http.StatusSeeOther)
+		slog.Error("Gagal mengubah mode pemeliharaan", "err", err)
+		http.Redirect(w, r, "/admin/maintenance?err=Gagal+mengubah+mode+pemeliharaan", http.StatusSeeOther)
 		return
 	}
 
@@ -2346,7 +2360,8 @@ func (s *Server) HandleAdminMaintenanceLocksPOST(w http.ResponseWriter, r *http.
 
 	for _, u := range updates {
 		if err := s.updateSettingWithAudit(ctx, admin.ID, u.key, u.val, ip); err != nil {
-			http.Redirect(w, r, "/admin/maintenance?err=Gagal+menyimpan+kunci: "+url.QueryEscape(err.Error()), http.StatusSeeOther)
+			slog.Error("Gagal menyimpan kunci pemeliharaan", "err", err, "key", u.key)
+			http.Redirect(w, r, "/admin/maintenance?err=Gagal+menyimpan+kunci", http.StatusSeeOther)
 			return
 		}
 	}
@@ -2386,7 +2401,8 @@ func (s *Server) HandleAdminMaintenanceLockTogglePOST(w http.ResponseWriter, r *
 	newVal := !current
 
 	if err := s.updateSettingWithAudit(ctx, admin.ID, key, newVal, ip); err != nil {
-		http.Redirect(w, r, "/admin/maintenance?err=Gagal+mengubah+kunci: "+url.QueryEscape(err.Error()), http.StatusSeeOther)
+		slog.Error("Gagal mengubah kunci pemeliharaan", "err", err, "key", key)
+		http.Redirect(w, r, "/admin/maintenance?err=Gagal+mengubah+kunci", http.StatusSeeOther)
 		return
 	}
 
@@ -2547,7 +2563,8 @@ func (s *Server) HandleAdminWorkerDetailGET(w http.ResponseWriter, r *http.Reque
 			http.Error(w, "Pekerja tidak ditemukan", http.StatusNotFound)
 			return
 		}
-		http.Error(w, "Kesalahan database: "+err.Error(), http.StatusInternalServerError)
+		slog.Error("Kesalahan database saat memuat profil pekerja", "err", err, "worker_id", workerID)
+		http.Error(w, "Terjadi kesalahan sistem", http.StatusInternalServerError)
 		return
 	}
 	if emailPtr != nil {
@@ -2739,7 +2756,8 @@ func (s *Server) HandleAdminWorkerResetPasswordPOST(w http.ResponseWriter, r *ht
 	// 3. Hash kata sandi dengan argon2id
 	hash, err := auth.HashPassword(plainPassword)
 	if err != nil {
-		http.Redirect(w, r, fmt.Sprintf("/admin/workers/%d?err=Gagal+membuat+hash+kata+sandi: %s", workerID, url.QueryEscape(err.Error())), http.StatusSeeOther)
+		slog.Error("Gagal membuat hash kata sandi", "err", err, "worker_id", workerID)
+		http.Redirect(w, r, fmt.Sprintf("/admin/workers/%d?err=Gagal+membuat+hash+kata+sandi", workerID), http.StatusSeeOther)
 		return
 	}
 
@@ -2752,7 +2770,8 @@ func (s *Server) HandleAdminWorkerResetPasswordPOST(w http.ResponseWriter, r *ht
 		WHERE id = $3
 	`, hash, config.WithdrawLockAfterChangeHours, workerID)
 	if err != nil {
-		http.Redirect(w, r, fmt.Sprintf("/admin/workers/%d?err=Gagal+memperbarui+kata+sandi: %s", workerID, url.QueryEscape(err.Error())), http.StatusSeeOther)
+		slog.Error("Gagal memperbarui kata sandi pekerja", "err", err, "worker_id", workerID)
+		http.Redirect(w, r, fmt.Sprintf("/admin/workers/%d?err=Gagal+memperbarui+kata+sandi", workerID), http.StatusSeeOther)
 		return
 	}
 
@@ -2844,7 +2863,8 @@ func (s *Server) HandleAdminWorkerFreezePOST(w http.ResponseWriter, r *http.Requ
 	// 5. Update user status ke 'frozen' dan simpan freeze_reason
 	_, err = s.DB.Pool.Exec(ctx, "UPDATE users SET status = 'frozen', freeze_reason = $1 WHERE id = $2 AND role = 'worker'", freezeReason, workerID)
 	if err != nil {
-		http.Redirect(w, r, fmt.Sprintf("/admin/workers/%d?err=Gagal+membekukan+akun: %s", workerID, url.QueryEscape(err.Error())), http.StatusSeeOther)
+		slog.Error("Gagal membekukan akun pekerja", "err", err, "worker_id", workerID)
+		http.Redirect(w, r, fmt.Sprintf("/admin/workers/%d?err=Gagal+membekukan+akun", workerID), http.StatusSeeOther)
 		return
 	}
 
@@ -2888,7 +2908,8 @@ func (s *Server) HandleAdminWorkerUnfreezePOST(w http.ResponseWriter, r *http.Re
 
 	_, err = s.DB.Pool.Exec(ctx, "UPDATE users SET status = 'active', freeze_reason = NULL WHERE id = $1 AND role = 'worker'", workerID)
 	if err != nil {
-		http.Redirect(w, r, fmt.Sprintf("/admin/workers/%d?err=Gagal+mengaktifkan+akun: %s", workerID, url.QueryEscape(err.Error())), http.StatusSeeOther)
+		slog.Error("Gagal mengaktifkan akun pekerja", "err", err, "worker_id", workerID)
+		http.Redirect(w, r, fmt.Sprintf("/admin/workers/%d?err=Gagal+mengaktifkan+akun", workerID), http.StatusSeeOther)
 		return
 	}
 

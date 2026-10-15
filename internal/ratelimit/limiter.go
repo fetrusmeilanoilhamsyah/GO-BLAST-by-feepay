@@ -213,6 +213,37 @@ func (l *Limiter) Allow(key string) (bool, time.Duration) {
 	return false, retryAfter
 }
 
+// Take memeriksa dan mengonsumsi 1 token dari bucket untuk membatasi laju endpoint.
+// Jika token mencukupi, 1 token dikonsumsi dan mengembalikan (true, 0).
+// Jika token tidak mencukupi, mengembalikan (false, retryAfter).
+func (l *Limiter) Take(key string) (bool, time.Duration) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	now := l.clock()
+	e, ok := l.getOrCreate(key)
+	if !ok {
+		return false, 15 * time.Minute
+	}
+
+	if !e.limiter.AllowN(now, 1) {
+		tokens := e.limiter.TokensAt(now)
+		needed := 1.0 - tokens
+		fillRate := float64(e.rateLimit)
+		if fillRate <= 0 {
+			fillRate = float64(l.burst) / l.window.Seconds()
+		}
+		waitSec := needed / fillRate
+		if waitSec < 1.0 {
+			waitSec = 1.0
+		}
+		return false, time.Duration(math.Ceil(waitSec)) * time.Second
+	}
+
+	e.lastSeen = now
+	return true, 0
+}
+
 // RecordFailure mencatat 1 kegagalan (mengonsumsi 1 token dari bucket).
 // Mengembalikan sisa token dan status apakah kunci kini terblokir.
 func (l *Limiter) RecordFailure(key string) (tokensRemaining float64, blocked bool, retryAfter time.Duration) {

@@ -35,6 +35,19 @@ Panduan dan aturan mengenai keamanan aplikasi dan prosedur deploy sistem GO BLAS
   - Lapis 3 (Identifier Akun): 10 kegagalan per 15 menit per username/email.
   - Lapis 4 (Pasangan IP + Identifier): 5 kegagalan per 15 menit. Berhasil login me-reset pembatasan pasangan.
 - Pembatasan laju pendaftaran: 10 pendaftaran per jam per IP, dan batas harian 100 per hari per IP.
+- Pembatasan laju per endpoint (Temuan K6 & Keputusan tambahan pemilik):
+  - Setiap tombol aksi (POST) dan endpoint data dinamis (GET JSON) dipetakan ke limiter spesifik:
+    - Worker Ticket: `WorkerTicket10MinLimiter` (3/10m per user) dan `WorkerTicketDailyLimiter` (10/hari per user) untuk `POST /worker/tickets/new`.
+    - Worker Security: `WorkerSecurityLimiter` (5/15m per user) untuk `POST /worker/security` (ganti kata sandi).
+    - Worker Financial: `WorkerFinancialLimiter` (10/jam per user) untuk penarikan (`POST /worker/withdrawals`) dan konversi saldo (`POST /worker/convert`).
+    - Worker Account: `WorkerAccountUserLimiter` (20/jam per user) dan `WorkerAccountIPLimiter` (60/jam per IP) untuk manajemen akun WhatsApp (tambah, init, pair, hapus).
+    - Worker Work Controller: `WorkerWorkCtrlLimiter` (30/menit per user) untuk aksi start/stop kerja WhatsApp.
+    - Worker API Polling: `WorkerAPIPollingLimiter` (120/menit per IP) untuk polling statistik, lonceng notifikasi, dan tiket pekerja.
+    - Public & Auth: `PublicRouteLimiter` (60/menit per IP) dan `POST /logout`.
+    - Static Assets: `StaticRouteLimiter` (300/menit per IP).
+    - Admin Global: `AdminGlobalLimiter` (300/menit per user/IP) membungkus seluruh panel admin.
+    - Admin TOTP: `AdminTOTPVerifyLimiter` (5 kegagalan per 15 menit) untuk verifikasi kode 2FA.
+  - Sifat pembatasan: Tidak ada pemblokiran IP permanen. Pembatasan pulih secara otomatis setelah jeda waktu berakhir atau token terisi kembali.
 - Perlindungan bot tanpa JavaScript berat:
   - Form Timing Token (HMAC timestamp): Formulir login dan registrasi menolak pengiriman yang terlalu cepat (< 2 detik) atau kedaluwarsa (> 2 jam).
   - Honeypot Field (`website_hp`): Field tersembunyi via CSS yang jika diisi bot akan langsung ditolak tanpa eksekusi database atau argon2.
@@ -59,9 +72,28 @@ Panduan dan aturan mengenai keamanan aplikasi dan prosedur deploy sistem GO BLAS
   - Kunci enkripsi pada berkas `.env` TIDAK BOLEH disimpan bersama cadangan database (`pg_dump`).
   - Jika cadangan database dicuri atau bocor, data rekening dan tujuan penarikan pekerja tetap tidak dapat didekripsi tanpa berkas kunci terpisah. Simpan salinan darurat berkas `.env` di brankas password / secret manager terisolasi.
 
-### A6. Kontrol akses
+### A6. Kontrol akses & TOTP Admin (Keputusan E2)
 - Periksa tabel peran (admin, pekerja, publik) terhadap tiap kelompok rute di level server.
-- Cegah pekerja mengakses data milik pekerja lain atau mengakses rute admin.
+- Cegah pekerja mengakses data milik pekerja lain (IDOR) pada akun WhatsApp, tiket laporan, riwayat penarikan, maupun buku besar saldo.
+- Penegakan Logout POST-Only: Rute `GET /logout` mengembalikan HTTP `405 Method Not Allowed`. Logout hanya diproses via `POST /logout` dengan verifikasi token CSRF dan rate limiting publik.
+- Validasi Tautan CS & Channel Resmi: Tautan CS WhatsApp (`CS_WHATSAPP_URL`), CS Telegram (`CS_TELEGRAM_URL`), dan Channel Telegram (`CHANNEL_TELEGRAM_URL`) wajib diawali dengan skema `https://`. Skema berbahaya seperti `javascript:`, `data:`, `http:`, atau format non-HTTPS ditolak saat konfigurasi dimuat.
+- Autentikasi Dua Faktor (2FA) TOTP Admin (Keputusan E2):
+  - Standar RFC 6238: algoritma HMAC-SHA1, periode 30 detik, 6 digit angka, toleransi window $\pm 1$ langkah waktu (90 detik total) untuk mencegah desinkronisasi jam perangkat.
+  - Anti-Replay Attack: kolom `users.totp_last_step` menyimpan langkah waktu terakhir yang berhasil diverifikasi sehingga kode TOTP yang sama tidak dapat digunakan kembali dalam jendela waktu yang sama.
+  - Kode Pemulihan Darurat: Saat setup, sistem menerbitkan 10 kode pemulihan sekali pakai (format `XXXXX-XXXXX`). Kode di-hash menggunakan SHA-256 dan disimpan pada tabel `admin_recovery_codes`. Kode pemulihan langsung dihapus dari database begitu berhasil digunakan.
+  - Alur Setup Wajib: Admin yang baru pertama kali login atau belum mengonfigurasi TOTP otomatis dialihkan ke `/admin/totp/setup` dan dilarang mengakses panel admin lainnya sebelum setup selesai.
+  - Step-Up Verification (Masa Berlaku 5 Menit): Middleware `RequireStepUp` mewajibkan verifikasi ulang TOTP untuk aksi-aksi sensitif admin:
+    - Perubahan pengaturan sistem (`POST /admin/settings`)
+    - Pengisian dompet modal kas (`POST /admin/wallet/topup`)
+    - Persetujuan penarikan (`POST /admin/withdrawals/{id}/approve`)
+    - Penolakan penarikan (`POST /admin/withdrawals/{id}/reject`)
+    - Reset kata sandi pekerja (`POST /admin/workers/{id}/reset-password`)
+    - Pembekuan pekerja (`POST /admin/workers/{id}/freeze`)
+    - Pembukaan pembekuan pekerja (`POST /admin/workers/{id}/unfreeze`)
+    - Penonaktifan pekerja (`POST /admin/workers/{id}/disable`)
+    - Pengaktifan pekerja (`POST /admin/workers/{id}/enable`)
+    - Pengantrean ulang nomor hasil tidak pasti (`POST /admin/campaigns/{id}/requeue-uncertain`)
+  - Pemulihan Darurat CLI: Jika admin kehilangan perangkat authenticator dan kehabisan kode pemulihan, reset TOTP dapat dilakukan langsung dari terminal server menggunakan perintah `goblast reset-totp --email <email_admin>`. Perintah ini menghapus rahasia TOTP, membersihkan kode pemulihan tersisa, dan mencatat audit log `admin_totp_reset_cli`.
 
 ### A7. Privasi nomor customer
 - Cegah nomor customer masuk atau dirender ke browser pekerja.
@@ -69,16 +101,24 @@ Panduan dan aturan mengenai keamanan aplikasi dan prosedur deploy sistem GO BLAS
 - Dilarang memasukkan berkas nomor (CSV/TXT/XLSX) ke git.
 - Cegah berkas cadangan dikirim keluar server tanpa dienkripsi terlebih dahulu.
 
-### A8. Log audit
+### A8. Log audit & Sanitasi Error Internal
 - Catat pembuatan atau perubahan campaign beserta ratenya.
 - Catat penarikan manual, transfer, atau perubahan uang di buku besar.
 - Catat aktivitas masuk dan keluarnya sesi admin.
+- Catat perubahan pengaturan sistem, pembekuan/pembukaan akun pekerja, dan aksi darurat CLI (`admin_totp_reset_cli`).
+- Sanitasi Error Internal & Pencegahan Kebocoran (Error Leakage Elimination):
+  - Dilarang keras menampilkan pesan galat internal (`err.Error()`, nama database, nama tabel, kolom, sintaks SQL, atau stack trace) pada HTTP response body maupun URL query string (`?err=...`).
+  - Seluruh kegagalan database atau sistem internal disajikan sebagai pesan ramah pengguna (pesan i18n atau deskripsi generik aman).
+  - Rincian teknis galat internal dicatat secara aman ke log aplikasi server melalui `slog.Error` dengan konteks relevan tanpa mengekspos data rahasia/kredensial.
 
 ### A9. Unggahan
 - Batasi tipe file yang diizinkan (CSV, TXT, XLSX, JPG, PNG).
-- Tetapkan ukuran maksimum file unggahan (misal 5 MB).
-- Buat nama file acak di server untuk setiap unggahan.
-- Simpan file unggahan di luar folder yang dilayani langsung oleh server web.
+- Verifikasi *Magic Bytes* (File Signature) asli:
+  - Berkas XLSX diverifikasi memiliki header arsip ZIP (`PK\x03\x04`).
+  - Berkas gambar kampanye diverifikasi menggunakan `http.DetectContentType` (hanya `image/jpeg` dan `image/png`).
+- Tetapkan ukuran maksimum file unggahan (1 MB untuk gambar kampanye, 6 MB untuk berkas nomor CSV/TXT/XLSX).
+- Buat nama file acak menggunakan UUID di server untuk setiap unggahan.
+- Simpan file unggahan di luar folder yang dilayani langsung oleh server web (`neuteredFileSystem` dan isolasi direktori data).
 
 ### A10. Header keamanan
 - `Content-Security-Policy`:

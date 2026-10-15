@@ -353,9 +353,12 @@
 
         <!-- SESI & KELUAR -->
         <div class="worker-drawer-section" style="margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--color-border);">
-            <a href="/logout" class="btn btn-secondary" style="display: block; width: 100%; text-align: center; box-sizing: border-box; padding: 10px; font-size: 13px; font-weight: bold; color: var(--color-danger); border-color: var(--color-danger); text-decoration: none;">
-                {{ call .T "common.logout" }}
-            </a>
+            <form method="POST" action="/logout" style="margin: 0; width: 100%;">
+                <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+                <button type="submit" class="btn btn-secondary" style="display: block; width: 100%; text-align: center; box-sizing: border-box; padding: 10px; font-size: 13px; font-weight: bold; color: var(--color-danger); border-color: var(--color-danger); cursor: pointer;">
+                    {{ call .T "common.logout" }}
+                </button>
+            </form>
         </div>
     </div>
 </aside>

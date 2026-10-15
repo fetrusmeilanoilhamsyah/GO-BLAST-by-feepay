@@ -45,9 +45,12 @@
             </select>
         </form>
 
-        <a href="/logout" class="btn btn-secondary" style="padding: 5px 12px; font-size: 12px; color: var(--color-danger); border-color: var(--color-border); text-decoration: none; border-radius: 6px;">
-            {{ call .T "common.logout" }}
-        </a>
+        <form method="POST" action="/logout" style="margin: 0; display: inline;">
+            <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+            <button type="submit" class="btn btn-secondary" style="padding: 5px 12px; font-size: 12px; color: var(--color-danger); border-color: var(--color-border); border-radius: 6px; cursor: pointer;">
+                {{ call .T "common.logout" }}
+            </button>
+        </form>
     </div>
 </header>
 
@@ -208,14 +211,17 @@
         <hr style="border: none; border-top: 1px solid var(--color-border); margin: 20px 0;">
 
         <!-- Keluar Akun -->
-        <a href="/logout" class="btn btn-secondary" style="display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; box-sizing: border-box; color: var(--color-danger); border-color: var(--color-danger); text-decoration: none; padding: 10px; font-size: 13px; font-weight: 600;">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
-                <polyline points="16 17 21 12 16 7"></polyline>
-                <line x1="21" y1="12" x2="9" y2="12"></line>
-            </svg>
-            <span>{{ call .T "common.logout" }}</span>
-        </a>
+        <form method="POST" action="/logout" style="margin: 0; width: 100%;">
+            <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+            <button type="submit" class="btn btn-secondary" style="display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; box-sizing: border-box; color: var(--color-danger); border-color: var(--color-danger); padding: 10px; font-size: 13px; font-weight: 600; cursor: pointer;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                    <polyline points="16 17 21 12 16 7"></polyline>
+                    <line x1="21" y1="12" x2="9" y2="12"></line>
+                </svg>
+                <span>{{ call .T "common.logout" }}</span>
+            </button>
+        </form>
     </div>
 </aside>
 

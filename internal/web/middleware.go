@@ -49,6 +49,8 @@ type UserSession struct {
 	PayoutAccountName string
 	PayoutDestMasked   string
 	MustChangePassword bool
+	TOTPEnabledAt      *time.Time
+	StepUpAt           *time.Time
 }
 
 // MaskDestination menyamarkan nomor rekening, nomor e-wallet, atau alamat crypto untuk privasi dan keamanan di UI.
@@ -278,12 +280,14 @@ func (s *Server) RequireRole(next http.HandlerFunc, roles ...string) http.Handle
 		qCtx, qCancel := context.WithTimeout(r.Context(), 10*time.Second)
 		err = s.DB.Pool.QueryRow(qCtx, `
 			SELECT u.id, u.role, COALESCE(u.email, ''), COALESCE(u.username, ''), COALESCE(u.display_name, u.username, ''), u.language,
-			       u.payout_method, u.payout_account_name, ws.expires_at, COALESCE(u.must_change_password, FALSE)
+			       u.payout_method, u.payout_account_name, ws.expires_at, COALESCE(u.must_change_password, FALSE),
+			       u.totp_enabled_at, ws.stepup_at
 			FROM web_sessions ws
 			JOIN users u ON u.id = ws.user_id
 			WHERE ws.token_hash = $1 AND u.status = 'active'
 		`, hash).Scan(&user.ID, &user.Role, &user.Email, &user.Username, &user.DisplayName, &user.Language,
-			&payoutMethod, &payoutAccName, &expiresAt, &user.MustChangePassword)
+			&payoutMethod, &payoutAccName, &expiresAt, &user.MustChangePassword,
+			&user.TOTPEnabledAt, &user.StepUpAt)
 		qCancel()
 
 		if payoutMethod != nil {
@@ -323,6 +327,24 @@ func (s *Server) RequireRole(next http.HandlerFunc, roles ...string) http.Handle
 		if !roleAllowed {
 			http.Error(w, "Forbidden", http.StatusForbidden)
 			return
+		}
+
+		if user.Role == "admin" {
+			// Jika TOTP belum pernah diaktifkan (misal login pertama kali), paksa setup TOTP
+			if user.TOTPEnabledAt == nil {
+				if r.URL.Path != "/admin/totp/setup" && r.URL.Path != "/logout" {
+					http.Redirect(w, r, "/admin/totp/setup", http.StatusSeeOther)
+					return
+				}
+			} else {
+				// TOTP sudah aktif: pastikan sesi login sudah memverifikasi TOTP (stepup_at != nil)
+				if user.StepUpAt == nil {
+					if r.URL.Path != "/login/totp" && r.URL.Path != "/logout" {
+						http.Redirect(w, r, "/login/totp", http.StatusSeeOther)
+						return
+					}
+				}
+			}
 		}
 
 		if user.Role == "worker" && s.IsMaintenanceMode(r.Context()) {

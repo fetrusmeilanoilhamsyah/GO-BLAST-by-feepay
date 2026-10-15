@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -133,7 +134,8 @@ func (s *Server) HandleAdminCampaignNumbersPreview(w http.ResponseWriter, r *htt
 
 	preview, err := campaign.ProcessPreview(r.Context(), s.DB.Pool, campaignID, rawData, filename, defaultCC)
 	if err != nil {
-		http.Error(w, "Error memproses file: "+err.Error(), http.StatusBadRequest)
+		slog.Error("Gagal memproses preview nomor kampanye", "err", err, "campaign_id", campaignID)
+		http.Error(w, "Error memproses file: format atau isi tidak valid", http.StatusBadRequest)
 		return
 	}
 
@@ -216,7 +218,8 @@ func (s *Server) HandleAdminCampaignNumbersConfirm(w http.ResponseWriter, r *htt
 
 	err = campaign.ConfirmUpload(r.Context(), s.DB.Pool, campaignID, user.ID, previewID)
 	if err != nil {
-		http.Error(w, "Gagal mengonfirmasi upload: "+err.Error(), http.StatusBadRequest)
+		slog.Error("Gagal mengonfirmasi upload nomor kampanye", "err", err, "campaign_id", campaignID, "user_id", user.ID)
+		http.Error(w, "Gagal mengonfirmasi upload: sesi kedaluwarsa atau terjadi kesalahan", http.StatusBadRequest)
 		return
 	}
 

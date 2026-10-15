@@ -168,3 +168,46 @@ func TestConfigProductionValidation(t *testing.T) {
 	}
 }
 
+func TestCSURLValidation(t *testing.T) {
+	validKey := base64.StdEncoding.EncodeToString([]byte("12345678901234567890123456789012"))
+	origKey := os.Getenv("ENCRYPTION_KEY")
+	origCSWA := os.Getenv("CS_WHATSAPP_URL")
+	origCSTG := os.Getenv("CS_TELEGRAM_URL")
+	origChTG := os.Getenv("CHANNEL_TELEGRAM_URL")
+
+	defer func() {
+		os.Setenv("ENCRYPTION_KEY", origKey)
+		os.Setenv("CS_WHATSAPP_URL", origCSWA)
+		os.Setenv("CS_TELEGRAM_URL", origCSTG)
+		os.Setenv("CHANNEL_TELEGRAM_URL", origChTG)
+	}()
+
+	os.Setenv("ENCRYPTION_KEY", validKey)
+
+	// Insecure scheme javascript:
+	os.Setenv("CS_WHATSAPP_URL", "javascript:alert(1)")
+	_, err := config.Load()
+	if err == nil {
+		t.Errorf("Expected error for javascript: scheme in CS_WHATSAPP_URL, got nil")
+	}
+
+	// Insecure scheme http:
+	os.Setenv("CS_WHATSAPP_URL", "http://wa.me/6281200000000")
+	_, err = config.Load()
+	if err == nil {
+		t.Errorf("Expected error for http: scheme in CS_WHATSAPP_URL, got nil")
+	}
+
+	// Valid https:
+	os.Setenv("CS_WHATSAPP_URL", "https://wa.me/6281200000000")
+	os.Setenv("CS_TELEGRAM_URL", "https://t.me/feepay_cs")
+	os.Setenv("CHANNEL_TELEGRAM_URL", "https://t.me/goblast_channel")
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatalf("Expected success for valid https URLs, got: %v", err)
+	}
+	if cfg.CSWhatsAppURL != "https://wa.me/6281200000000" {
+		t.Errorf("Unexpected CSWhatsAppURL: %s", cfg.CSWhatsAppURL)
+	}
+}
+

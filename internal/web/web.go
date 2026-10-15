@@ -3,14 +3,17 @@ package web
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"html/template"
 	"log/slog"
+	"math"
 	"net"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
 	"runtime/debug"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -94,6 +97,20 @@ type Server struct {
 	RegisterHourlyLimiter   *ratelimit.Limiter
 	RegisterDailyLimiter    *ratelimit.Limiter
 	AuditLoginFailedLimiter *ratelimit.Limiter
+
+	// H5b Batas per Endpoint
+	WorkerTicket10MinLimiter *ratelimit.Limiter
+	WorkerTicketDailyLimiter *ratelimit.Limiter
+	WorkerSecurityLimiter    *ratelimit.Limiter
+	WorkerFinancialLimiter   *ratelimit.Limiter
+	WorkerAccountUserLimiter *ratelimit.Limiter
+	WorkerAccountIPLimiter   *ratelimit.Limiter
+	WorkerWorkCtrlLimiter    *ratelimit.Limiter
+	WorkerAPIPollingLimiter  *ratelimit.Limiter
+	PublicRouteLimiter       *ratelimit.Limiter
+	StaticRouteLimiter       *ratelimit.Limiter
+	AdminGlobalLimiter       *ratelimit.Limiter
+	AdminTOTPVerifyLimiter   *ratelimit.Limiter
 }
 
 func (s *Server) isProd() bool {
@@ -318,15 +335,18 @@ func NewServer(database *db.DB, env string, waMgr *wa.Manager, workCtrl WorkCont
 		"admin_campaign_numbers_preview.html": true,
 		"admin_tickets.html":                  true,
 		"admin_broadcasts.html":               true,
+		"admin_totp_setup.html":               true,
+		"admin_stepup.html":                   true,
 	}
 
 	pages := []string{
-		"index.html", "login.html", "register.html", "maintenance.html",
+		"index.html", "login.html", "register.html", "maintenance.html", "login_totp.html",
 		"admin_dashboard.html", "admin_settings.html", "admin_wallet.html", "admin_withdrawals.html", "admin_workers.html",
 		"admin_worker_detail.html", "admin_maintenance.html",
 		"admin_campaigns.html", "admin_campaign_form.html", "admin_campaign_detail.html",
 		"admin_campaign_numbers.html", "admin_campaign_numbers_preview.html",
 		"admin_tickets.html", "admin_broadcasts.html",
+		"admin_totp_setup.html", "admin_stepup.html",
 		"worker_accounts.html", "worker_account_new.html",
 		"worker_home.html", "worker_withdrawals.html", "worker_referral.html",
 		"worker_history.html",
@@ -419,6 +439,102 @@ func NewServer(database *db.DB, env string, waMgr *wa.Manager, workCtrl WorkCont
 			Window:     config.AuditLoginFailedRateLimitWindow,
 			MaxKeys:    config.MaxLimiterKeys,
 			FailClosed: false,
+		}),
+		WorkerTicket10MinLimiter: ratelimit.NewLimiter(ratelimit.Config{
+			Layer:      "worker_ticket_10m",
+			Rate:       rate.Every(config.WorkerTicket10MinWindow / time.Duration(config.WorkerTicket10MinAttempts)),
+			Burst:      config.WorkerTicket10MinAttempts,
+			Window:     config.WorkerTicket10MinWindow,
+			MaxKeys:    config.MaxLimiterKeys,
+			FailClosed: true,
+		}),
+		WorkerTicketDailyLimiter: ratelimit.NewLimiter(ratelimit.Config{
+			Layer:      "worker_ticket_daily",
+			Rate:       rate.Every(config.WorkerTicketDailyWindow / time.Duration(config.WorkerTicketDailyAttempts)),
+			Burst:      config.WorkerTicketDailyAttempts,
+			Window:     config.WorkerTicketDailyWindow,
+			MaxKeys:    config.MaxLimiterKeys,
+			FailClosed: true,
+		}),
+		WorkerSecurityLimiter: ratelimit.NewLimiter(ratelimit.Config{
+			Layer:      "worker_security",
+			Rate:       rate.Every(config.WorkerSecurityWindow / time.Duration(config.WorkerSecurityAttempts)),
+			Burst:      config.WorkerSecurityAttempts,
+			Window:     config.WorkerSecurityWindow,
+			MaxKeys:    config.MaxLimiterKeys,
+			FailClosed: true,
+		}),
+		WorkerFinancialLimiter: ratelimit.NewLimiter(ratelimit.Config{
+			Layer:      "worker_financial",
+			Rate:       rate.Every(config.WorkerFinancialWindow / time.Duration(config.WorkerFinancialAttempts)),
+			Burst:      config.WorkerFinancialAttempts,
+			Window:     config.WorkerFinancialWindow,
+			MaxKeys:    config.MaxLimiterKeys,
+			FailClosed: true,
+		}),
+		WorkerAccountUserLimiter: ratelimit.NewLimiter(ratelimit.Config{
+			Layer:      "worker_account_user",
+			Rate:       rate.Every(config.WorkerAccountUserWindow / time.Duration(config.WorkerAccountUserAttempts)),
+			Burst:      config.WorkerAccountUserAttempts,
+			Window:     config.WorkerAccountUserWindow,
+			MaxKeys:    config.MaxLimiterKeys,
+			FailClosed: true,
+		}),
+		WorkerAccountIPLimiter: ratelimit.NewLimiter(ratelimit.Config{
+			Layer:      "worker_account_ip",
+			Rate:       rate.Every(config.WorkerAccountIPWindow / time.Duration(config.WorkerAccountIPAttempts)),
+			Burst:      config.WorkerAccountIPAttempts,
+			Window:     config.WorkerAccountIPWindow,
+			MaxKeys:    config.MaxLimiterKeys,
+			FailClosed: true,
+		}),
+		WorkerWorkCtrlLimiter: ratelimit.NewLimiter(ratelimit.Config{
+			Layer:      "worker_work_ctrl",
+			Rate:       rate.Every(config.WorkerWorkCtrlWindow / time.Duration(config.WorkerWorkCtrlAttempts)),
+			Burst:      config.WorkerWorkCtrlAttempts,
+			Window:     config.WorkerWorkCtrlWindow,
+			MaxKeys:    config.MaxLimiterKeys,
+			FailClosed: true,
+		}),
+		WorkerAPIPollingLimiter: ratelimit.NewLimiter(ratelimit.Config{
+			Layer:      "worker_api_polling",
+			Rate:       rate.Every(config.WorkerAPIPollingWindow / time.Duration(config.WorkerAPIPollingAttempts)),
+			Burst:      config.WorkerAPIPollingBurst,
+			Window:     config.WorkerAPIPollingWindow,
+			MaxKeys:    config.MaxLimiterKeys,
+			FailClosed: true,
+		}),
+		PublicRouteLimiter: ratelimit.NewLimiter(ratelimit.Config{
+			Layer:      "public_route",
+			Rate:       rate.Every(config.PublicRouteWindow / time.Duration(config.PublicRouteAttempts)),
+			Burst:      config.PublicRouteAttempts,
+			Window:     config.PublicRouteWindow,
+			MaxKeys:    config.MaxLimiterKeys,
+			FailClosed: false,
+		}),
+		StaticRouteLimiter: ratelimit.NewLimiter(ratelimit.Config{
+			Layer:      "static_route",
+			Rate:       rate.Every(config.StaticRouteWindow / time.Duration(config.StaticRouteAttempts)),
+			Burst:      config.StaticRouteAttempts,
+			Window:     config.StaticRouteWindow,
+			MaxKeys:    config.MaxLimiterKeys,
+			FailClosed: false,
+		}),
+		AdminGlobalLimiter: ratelimit.NewLimiter(ratelimit.Config{
+			Layer:      "admin_global",
+			Rate:       rate.Every(config.AdminGlobalWindow / time.Duration(config.AdminGlobalAttempts)),
+			Burst:      config.AdminGlobalAttempts,
+			Window:     config.AdminGlobalWindow,
+			MaxKeys:    config.MaxLimiterKeys,
+			FailClosed: true,
+		}),
+		AdminTOTPVerifyLimiter: ratelimit.NewLimiter(ratelimit.Config{
+			Layer:      "admin_totp_verify",
+			Rate:       rate.Every(config.AdminTOTPVerifyWindow / time.Duration(config.AdminTOTPVerifyAttempts)),
+			Burst:      config.AdminTOTPVerifyAttempts,
+			Window:     config.AdminTOTPVerifyWindow,
+			MaxKeys:    config.MaxLimiterKeys,
+			FailClosed: true,
 		}),
 	}
 	if eng, ok := workCtrl.(*engine.Engine); ok {
@@ -578,78 +694,90 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 
 	// Serve static files dengan neutered file system (mencegah directory listing)
 	staticHandler := http.FileServer(neuteredFileSystem{fs: http.Dir(filepath.Join("web", "static"))})
-	handle("/static/", http.StripPrefix("/static/", staticHandler))
+	handle("/static/", s.RateLimitStaticMiddleware(http.StripPrefix("/static/", staticHandler)))
 
 	handleFunc("/healthz", s.handleHealthz)
 	handleFunc("GET /healthz", s.handleHealthz)
 	handleFunc("/readyz", s.handleReadyz)
 	handleFunc("GET /readyz", s.handleReadyz)
 
-	handle("/", s.CSRFMiddleware(http.HandlerFunc(s.handleIndex)))
-	handle("POST /theme", s.CSRFMiddleware(http.HandlerFunc(s.HandleThemePOST)))
-	handle("POST /language", s.CSRFMiddleware(http.HandlerFunc(s.HandleLanguagePOST)))
-	handle("/login", s.CSRFMiddleware(http.HandlerFunc(s.handleLogin)))
-	handle("/register", s.CSRFMiddleware(http.HandlerFunc(s.handleRegister)))
+	handle("/", s.RateLimitPublicMiddleware(s.CSRFMiddleware(http.HandlerFunc(s.handleIndex))))
+	handle("POST /theme", s.RateLimitPublicMiddleware(s.CSRFMiddleware(http.HandlerFunc(s.HandleThemePOST))))
+	handle("POST /language", s.RateLimitPublicMiddleware(s.CSRFMiddleware(http.HandlerFunc(s.HandleLanguagePOST))))
+	handle("/login", s.RateLimitPublicMiddleware(s.CSRFMiddleware(http.HandlerFunc(s.handleLogin))))
+	handle("/register", s.RateLimitPublicMiddleware(s.CSRFMiddleware(http.HandlerFunc(s.handleRegister))))
 
-	handle("/logout", s.CSRFMiddleware(s.RequireRole(s.handleLogout, "admin", "worker")))
-	handle("GET /maintenance", s.CSRFMiddleware(http.HandlerFunc(s.HandleMaintenancePublicGET)))
+	handle("GET /login/totp", s.RateLimitPublicMiddleware(s.CSRFMiddleware(s.RequireRole(s.HandleLoginTOTPGET, "admin"))))
+	handle("POST /login/totp", s.RateLimitPublicMiddleware(s.CSRFMiddleware(s.RequireRole(s.HandleLoginTOTPPOST, "admin"))))
+
+	handle("POST /logout", s.RateLimitPublicMiddleware(s.CSRFMiddleware(s.RequireRole(s.handleLogout, "admin", "worker"))))
+	handle("GET /logout", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+	}))
+	handle("GET /maintenance", s.RateLimitPublicMiddleware(s.CSRFMiddleware(http.HandlerFunc(s.HandleMaintenancePublicGET))))
+
+	// TOTP Setup & Step-Up Admin
+	handle("GET /admin/totp/setup", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.HandleAdminTOTPSetupGET, "admin"))))
+	handle("POST /admin/totp/setup", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.HandleAdminTOTPSetupPOST, "admin"))))
+	handle("GET /admin/stepup", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.HandleAdminStepUpGET, "admin"))))
+	handle("POST /admin/stepup", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.HandleAdminStepUpPOST, "admin"))))
 
 	// Tahap 12: Admin Dashboard, Settings, Wallet, Workers
-	handle("GET /admin", s.CSRFMiddleware(s.RequireRole(s.HandleAdminHome, "admin")))
-	handle("GET /admin/api/stats", s.RequireRole(s.HandleAdminAPIStats, "admin"))
-	handle("GET /admin/api/metrics", s.RequireRole(s.HandleAdminAPIMetrics, "admin"))
-	handle("GET /admin/settings", s.CSRFMiddleware(s.RequireRole(s.HandleAdminSettingsGET, "admin")))
-	handle("POST /admin/settings", s.CSRFMiddleware(s.RequireRole(s.HandleAdminSettingsPOST, "admin")))
-	handle("GET /admin/wallet", s.CSRFMiddleware(s.RequireRole(s.HandleAdminWalletGET, "admin")))
-	handle("POST /admin/wallet", s.CSRFMiddleware(s.RequireRole(s.HandleAdminWalletTopupPOST, "admin")))
-	handle("POST /admin/wallet/topup", s.CSRFMiddleware(s.RequireRole(s.HandleAdminWalletTopupPOST, "admin")))
-	handle("GET /admin/withdrawals", s.CSRFMiddleware(s.RequireRole(s.HandleAdminWithdrawalsGET, "admin")))
-	handle("POST /admin/withdrawals/{id}/view-destination", s.CSRFMiddleware(s.RequireRole(s.HandleAdminWithdrawalViewDestinationPOST, "admin")))
-	handle("POST /admin/withdrawals/{id}/approve", s.CSRFMiddleware(s.RequireRole(s.HandleAdminWithdrawalApprovePOST, "admin")))
-	handle("POST /admin/withdrawals/{id}/reject", s.CSRFMiddleware(s.RequireRole(s.HandleAdminWithdrawalRejectPOST, "admin")))
-	handle("GET /admin/workers", s.CSRFMiddleware(s.RequireRole(s.HandleAdminWorkers, "admin")))
-	handle("GET /admin/workers/{id}", s.CSRFMiddleware(s.RequireRole(s.HandleAdminWorkerDetailGET, "admin")))
-	handle("POST /admin/workers/{id}/reset-password", s.CSRFMiddleware(s.RequireRole(s.HandleAdminWorkerResetPasswordPOST, "admin")))
-	handle("POST /admin/workers/{id}/freeze", s.CSRFMiddleware(s.RequireRole(s.HandleAdminWorkerFreezePOST, "admin")))
-	handle("POST /admin/workers/{id}/unfreeze", s.CSRFMiddleware(s.RequireRole(s.HandleAdminWorkerUnfreezePOST, "admin")))
-	handle("POST /admin/workers/{id}/disable", s.CSRFMiddleware(s.RequireRole(s.HandleAdminWorkerDisablePOST, "admin")))
-	handle("POST /admin/workers/{id}/enable", s.CSRFMiddleware(s.RequireRole(s.HandleAdminWorkerEnablePOST, "admin")))
-	handle("GET /admin/tickets", s.CSRFMiddleware(s.RequireRole(s.HandleAdminTicketsGET, "admin")))
-	handle("POST /admin/tickets/{id}/resolve", s.CSRFMiddleware(s.RequireRole(s.HandleAdminTicketResolvePOST, "admin")))
-	handle("GET /admin/broadcasts", s.CSRFMiddleware(s.RequireRole(s.HandleAdminBroadcastsGET, "admin")))
-	handle("POST /admin/broadcasts/new", s.CSRFMiddleware(s.RequireRole(s.HandleAdminBroadcastNewPOST, "admin")))
-	handle("POST /admin/broadcasts/{id}/toggle", s.CSRFMiddleware(s.RequireRole(s.HandleAdminBroadcastTogglePOST, "admin")))
-	handle("POST /admin/broadcasts/{id}/delete", s.CSRFMiddleware(s.RequireRole(s.HandleAdminBroadcastDeletePOST, "admin")))
-	handle("GET /admin/maintenance", s.CSRFMiddleware(s.RequireRole(s.HandleAdminMaintenanceGET, "admin")))
-	handle("POST /admin/maintenance/toggle", s.CSRFMiddleware(s.RequireRole(s.HandleAdminMaintenanceTogglePOST, "admin")))
-	handle("POST /admin/maintenance/locks", s.CSRFMiddleware(s.RequireRole(s.HandleAdminMaintenanceLocksPOST, "admin")))
-	handle("POST /admin/maintenance/lock/toggle", s.CSRFMiddleware(s.RequireRole(s.HandleAdminMaintenanceLockTogglePOST, "admin")))
-	handle("POST /admin/maintenance/restrictions/release", s.CSRFMiddleware(s.RequireRole(s.HandleAdminMaintenanceRestrictionReleasePOST, "admin")))
-	handle("POST /admin/maintenance/restrictions/release-all", s.CSRFMiddleware(s.RequireRole(s.HandleAdminMaintenanceRestrictionReleaseAllPOST, "admin")))
-	handle("/admin/", s.CSRFMiddleware(s.RequireRole(func(w http.ResponseWriter, r *http.Request) { http.NotFound(w, r) }, "admin")))
+	handle("GET /admin", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.HandleAdminHome, "admin"))))
+	handle("GET /admin/api/stats", s.RateLimitAdminMiddleware(s.RequireRole(s.HandleAdminAPIStats, "admin")))
+	handle("GET /admin/api/metrics", s.RateLimitAdminMiddleware(s.RequireRole(s.HandleAdminAPIMetrics, "admin")))
+	handle("GET /admin/settings", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.HandleAdminSettingsGET, "admin"))))
+	handle("POST /admin/settings", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.RequireStepUp(s.HandleAdminSettingsPOST), "admin"))))
+	handle("GET /admin/wallet", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.HandleAdminWalletGET, "admin"))))
+	handle("POST /admin/wallet", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.RequireStepUp(s.HandleAdminWalletTopupPOST), "admin"))))
+	handle("POST /admin/wallet/topup", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.RequireStepUp(s.HandleAdminWalletTopupPOST), "admin"))))
+	handle("GET /admin/withdrawals", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.HandleAdminWithdrawalsGET, "admin"))))
+	handle("POST /admin/withdrawals/{id}/view-destination", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.RequireStepUp(s.HandleAdminWithdrawalViewDestinationPOST), "admin"))))
+	handle("POST /admin/withdrawals/{id}/approve", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.RequireStepUp(s.HandleAdminWithdrawalApprovePOST), "admin"))))
+	handle("POST /admin/withdrawals/{id}/reject", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.RequireStepUp(s.HandleAdminWithdrawalRejectPOST), "admin"))))
+	handle("GET /admin/workers", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.HandleAdminWorkers, "admin"))))
+	handle("GET /admin/workers/{id}", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.HandleAdminWorkerDetailGET, "admin"))))
+	handle("POST /admin/workers/{id}/reset-password", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.RequireStepUp(s.HandleAdminWorkerResetPasswordPOST), "admin"))))
+	handle("POST /admin/workers/{id}/freeze", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.RequireStepUp(s.HandleAdminWorkerFreezePOST), "admin"))))
+	handle("POST /admin/workers/{id}/unfreeze", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.RequireStepUp(s.HandleAdminWorkerUnfreezePOST), "admin"))))
+	handle("POST /admin/workers/{id}/disable", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.RequireStepUp(s.HandleAdminWorkerDisablePOST), "admin"))))
+	handle("POST /admin/workers/{id}/enable", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.RequireStepUp(s.HandleAdminWorkerEnablePOST), "admin"))))
+	handle("GET /admin/tickets", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.HandleAdminTicketsGET, "admin"))))
+	handle("POST /admin/tickets/{id}/resolve", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.HandleAdminTicketResolvePOST, "admin"))))
+	handle("GET /admin/broadcasts", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.HandleAdminBroadcastsGET, "admin"))))
+	handle("POST /admin/broadcasts/new", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.HandleAdminBroadcastNewPOST, "admin"))))
+	handle("POST /admin/broadcasts/{id}/toggle", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.HandleAdminBroadcastTogglePOST, "admin"))))
+	handle("POST /admin/broadcasts/{id}/delete", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.HandleAdminBroadcastDeletePOST, "admin"))))
+	handle("GET /admin/maintenance", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.HandleAdminMaintenanceGET, "admin"))))
+	handle("POST /admin/maintenance/toggle", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.HandleAdminMaintenanceTogglePOST, "admin"))))
+	handle("POST /admin/maintenance/locks", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.HandleAdminMaintenanceLocksPOST, "admin"))))
+	handle("POST /admin/maintenance/lock/toggle", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.HandleAdminMaintenanceLockTogglePOST, "admin"))))
+	handle("POST /admin/maintenance/restrictions/release", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.HandleAdminMaintenanceRestrictionReleasePOST, "admin"))))
+	handle("POST /admin/maintenance/restrictions/release-all", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.HandleAdminMaintenanceRestrictionReleaseAllPOST, "admin"))))
+	handle("/admin/", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(func(w http.ResponseWriter, r *http.Request) { http.NotFound(w, r) }, "admin"))))
 
 	// Tahap 8
-	handle("GET /admin/campaigns", s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaigns, "admin")))
-	handle("GET /admin/campaigns/new", s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignNewGET, "admin")))
-	handle("POST /admin/campaigns/new", s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignNewPOST, "admin")))
-	handle("GET /admin/campaigns/{id}", s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignDetail, "admin")))
-	handle("POST /admin/campaigns/{id}/start", s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignStart, "admin")))
-	handle("POST /admin/campaigns/{id}/pause", s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignPause, "admin")))
-	handle("POST /admin/campaigns/{id}/finish", s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignFinish, "admin")))
-	handle("POST /admin/campaigns/{id}/delete", s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignDelete, "admin")))
-	handle("POST /admin/campaigns/{id}/archive", s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignArchive, "admin")))
-	handle("POST /admin/campaigns/{id}/requeue-uncertain", s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignRequeueUncertain, "admin")))
-	handle("GET /admin/campaigns/{id}/edit", s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignEditGET, "admin")))
-	handle("POST /admin/campaigns/{id}/edit", s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignEditPOST, "admin")))
-	handle("POST /admin/campaigns/preview", s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignPreview, "admin")))
-	handle("GET /uploads/{filename}", s.RequireRole(s.HandleServeUpload, "admin"))
+	handle("GET /admin/campaigns", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaigns, "admin"))))
+	handle("GET /admin/campaigns/new", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignNewGET, "admin"))))
+	handle("POST /admin/campaigns/new", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignNewPOST, "admin"))))
+	handle("GET /admin/campaigns/{id}", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignDetail, "admin"))))
+	handle("POST /admin/campaigns/{id}/start", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignStart, "admin"))))
+	handle("POST /admin/campaigns/{id}/pause", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignPause, "admin"))))
+	handle("POST /admin/campaigns/{id}/finish", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignFinish, "admin"))))
+	handle("POST /admin/campaigns/{id}/delete", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignDelete, "admin"))))
+	handle("POST /admin/campaigns/{id}/archive", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignArchive, "admin"))))
+	handle("POST /admin/campaigns/{id}/requeue-uncertain", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.RequireStepUp(s.HandleAdminCampaignRequeueUncertain), "admin"))))
+	handle("GET /admin/campaigns/{id}/edit", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignEditGET, "admin"))))
+	handle("POST /admin/campaigns/{id}/edit", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignEditPOST, "admin"))))
+	handle("POST /admin/campaigns/preview", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignPreview, "admin"))))
+	handle("GET /uploads/{filename}", s.RateLimitAdminMiddleware(s.RequireRole(s.HandleServeUpload, "admin")))
 
 	// Tahap 7
-	handle("GET /admin/campaigns/{id}/numbers", s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignNumbersGET, "admin")))
-	handle("GET /admin/campaigns/{id}/numbers/upload", s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignNumbersGET, "admin")))
-	handle("POST /admin/campaigns/{id}/numbers/preview", s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignNumbersPreview, "admin")))
-	handle("POST /admin/campaigns/{id}/numbers/confirm", s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignNumbersConfirm, "admin")))
-	handle("GET /admin/campaigns/{id}/numbers/rejected/{previewId}", s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignNumbersRejected, "admin")))
+	handle("GET /admin/campaigns/{id}/numbers", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.RequireStepUp(s.HandleAdminCampaignNumbersGET), "admin"))))
+	handle("GET /admin/campaigns/{id}/numbers/upload", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.RequireStepUp(s.HandleAdminCampaignNumbersGET), "admin"))))
+	handle("POST /admin/campaigns/{id}/numbers/preview", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.RequireStepUp(s.HandleAdminCampaignNumbersPreview), "admin"))))
+	handle("POST /admin/campaigns/{id}/numbers/confirm", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.RequireStepUp(s.HandleAdminCampaignNumbersConfirm), "admin"))))
+	handle("GET /admin/campaigns/{id}/numbers/rejected/{previewId}", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignNumbersRejected, "admin"))))
 
 	// Tahap 11: Worker Panel
 	handle("GET /worker", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerHome, "worker")))
@@ -662,18 +790,18 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	handle("GET /worker/referral", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerReferralGET, "worker")))
 	handle("GET /worker/history", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerHistoryGET, "worker")))
 	handle("POST /worker/ticket", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerTicketPOST, "worker")))
-	handle("GET /worker/api/notifications", s.RequireRole(s.HandleWorkerNotificationsAPI, "worker"))
-	handle("GET /worker/api/tickets", s.RequireRole(s.HandleWorkerTicketsAPI, "worker"))
-	handle("GET /worker/api/stats", s.RequireRole(s.HandleWorkerAPIStats, "worker"))
-	handle("POST /worker/notifications/read", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerNotificationsReadAllPOST, "worker")))
-	handle("POST /worker/notifications/{id}/read", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerNotificationReadOnePOST, "worker")))
+	handle("GET /worker/api/notifications", s.RateLimitWorkerAPIPollingMiddleware(s.RequireRole(s.HandleWorkerNotificationsAPI, "worker")))
+	handle("GET /worker/api/tickets", s.RateLimitWorkerAPIPollingMiddleware(s.RequireRole(s.HandleWorkerTicketsAPI, "worker")))
+	handle("GET /worker/api/stats", s.RateLimitWorkerAPIPollingMiddleware(s.RequireRole(s.HandleWorkerAPIStats, "worker")))
+	handle("POST /worker/notifications/read", s.RateLimitWorkerAPIPollingMiddleware(s.CSRFMiddleware(s.RequireRole(s.HandleWorkerNotificationsReadAllPOST, "worker"))))
+	handle("POST /worker/notifications/{id}/read", s.RateLimitWorkerAPIPollingMiddleware(s.CSRFMiddleware(s.RequireRole(s.HandleWorkerNotificationReadOnePOST, "worker"))))
 
 	// Tahap 9
 	handle("GET /worker/accounts", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerAccounts, "worker")))
 	handle("POST /worker/accounts/init", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerAccountInitPOST, "worker")))
 	handle("GET /worker/accounts/new", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerAccountNewGET, "worker")))
 	handle("POST /worker/accounts/new", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerAccountNewPOST, "worker")))
-	handle("GET /worker/accounts/{id}/status", s.RequireRole(s.HandleWorkerAccountStatus, "worker"))
+	handle("GET /worker/accounts/{id}/status", s.RateLimitWorkerAPIPollingMiddleware(s.RequireRole(s.HandleWorkerAccountStatus, "worker")))
 	handle("POST /worker/accounts/{id}/pair", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerAccountPairPOST, "worker")))
 	handle("POST /worker/accounts/{id}/settings", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerAccountSettingsPOST, "worker")))
 	handle("POST /worker/accounts/{id}/delete", s.CSRFMiddleware(s.RequireRole(s.HandleWorkerAccountDelete, "worker")))
@@ -882,4 +1010,118 @@ func validateLang(lang string) string {
 	default:
 		return "id"
 	}
+}
+
+func (s *Server) writeRateLimitJSON(w http.ResponseWriter, r *http.Request, actionName string, retryAfter time.Duration) {
+	clientIP := s.getClientIP(r)
+	var userIDStr string
+	if user, ok := currentUser(r); ok {
+		userIDStr = strconv.FormatInt(user.ID, 10)
+	}
+	slog.Warn("Rate limit exceeded (API)", "action", actionName, "ip", clientIP, "user_id", userIDStr, "retry_after", retryAfter)
+
+	retrySecs := int(math.Ceil(retryAfter.Seconds()))
+	if retrySecs < 1 {
+		retrySecs = 1
+	}
+	w.Header().Set("Retry-After", strconv.Itoa(retrySecs))
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusTooManyRequests)
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"ok":          false,
+		"error":       "rate_limit_exceeded",
+		"message":     fmt.Sprintf("Terlalu banyak permintaan. Silakan tunggu %d detik.", retrySecs),
+		"retry_after": retrySecs,
+	})
+}
+
+func (s *Server) redirectRateLimit(w http.ResponseWriter, r *http.Request, targetURL, actionName string, retryAfter time.Duration) {
+	clientIP := s.getClientIP(r)
+	var userIDStr string
+	if user, ok := currentUser(r); ok {
+		userIDStr = strconv.FormatInt(user.ID, 10)
+	}
+	slog.Warn("Rate limit exceeded (Form)", "action", actionName, "ip", clientIP, "user_id", userIDStr, "retry_after", retryAfter)
+
+	retrySecs := int(math.Ceil(retryAfter.Seconds()))
+	if retrySecs < 1 {
+		retrySecs = 1
+	}
+	sep := "?"
+	if strings.Contains(targetURL, "?") {
+		sep = "&"
+	}
+	msg := fmt.Sprintf("Terlalu banyak permintaan. Silakan tunggu %d detik.", retrySecs)
+	http.Redirect(w, r, targetURL+sep+"error="+url.QueryEscape(msg), http.StatusSeeOther)
+}
+
+func (s *Server) RateLimitPublicMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if s.PublicRouteLimiter != nil {
+			clientIP := s.getClientIP(r)
+			if allowed, wait := s.PublicRouteLimiter.Take(clientIP); !allowed {
+				s.writeRateLimitJSON(w, r, "public_route", wait)
+				return
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func (s *Server) RateLimitStaticMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if s.StaticRouteLimiter != nil {
+			clientIP := s.getClientIP(r)
+			if allowed, wait := s.StaticRouteLimiter.Take(clientIP); !allowed {
+				retrySecs := int(math.Ceil(wait.Seconds()))
+				if retrySecs < 1 {
+					retrySecs = 1
+				}
+				w.Header().Set("Retry-After", strconv.Itoa(retrySecs))
+				http.Error(w, "Too Many Requests", http.StatusTooManyRequests)
+				return
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func (s *Server) RateLimitAdminMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if s.AdminGlobalLimiter != nil {
+			var key string
+			if user, ok := currentUser(r); ok {
+				key = strconv.FormatInt(user.ID, 10)
+			} else {
+				key = s.getClientIP(r)
+			}
+			if allowed, wait := s.AdminGlobalLimiter.Take(key); !allowed {
+				if strings.Contains(r.Header.Get("Accept"), "application/json") || strings.HasPrefix(r.URL.Path, "/admin/api/") {
+					s.writeRateLimitJSON(w, r, "admin_global", wait)
+				} else {
+					s.redirectRateLimit(w, r, "/admin", "admin_global", wait)
+				}
+				return
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func (s *Server) RateLimitWorkerAPIPollingMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if s.WorkerAPIPollingLimiter != nil {
+			var key string
+			if user, ok := currentUser(r); ok {
+				key = strconv.FormatInt(user.ID, 10)
+			} else {
+				key = s.getClientIP(r)
+			}
+			if allowed, wait := s.WorkerAPIPollingLimiter.Take(key); !allowed {
+				s.writeRateLimitJSON(w, r, "worker_api_polling", wait)
+				return
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
 }

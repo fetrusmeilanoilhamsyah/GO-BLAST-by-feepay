@@ -3,7 +3,9 @@ package config
 import (
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"net"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -66,6 +68,16 @@ func Load() (*Config, error) {
 
 	if cfg.ChannelTelegramURL == "" {
 		cfg.ChannelTelegramURL = "https://t.me/goblast_channel"
+	}
+
+	if err := validateHTTPSURL(cfg.CSWhatsAppURL, "CS_WHATSAPP_URL"); err != nil {
+		return nil, err
+	}
+	if err := validateHTTPSURL(cfg.CSTelegramURL, "CS_TELEGRAM_URL"); err != nil {
+		return nil, err
+	}
+	if err := validateHTTPSURL(cfg.ChannelTelegramURL, "CHANNEL_TELEGRAM_URL"); err != nil {
+		return nil, err
 	}
 
 	if cfg.ClientIPHeader == "" {
@@ -236,5 +248,16 @@ func IsTurnstileTestKey(k string) bool {
 		return false
 	}
 	return strings.HasPrefix(k, "1x0000") || strings.HasPrefix(k, "2x0000") || strings.HasPrefix(k, "3x0000")
+}
+
+func validateHTTPSURL(rawURL, paramName string) error {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return fmt.Errorf("%s: invalid URL: %w", paramName, err)
+	}
+	if u.Scheme != "https" || u.Host == "" {
+		return fmt.Errorf("%s: URL must use https scheme with a valid host, got %q", paramName, rawURL)
+	}
+	return nil
 }
 

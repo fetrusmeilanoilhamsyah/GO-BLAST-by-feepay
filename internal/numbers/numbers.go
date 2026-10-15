@@ -105,6 +105,10 @@ func Read(r io.Reader, filename string) ([]Item, error) {
 	} else if strings.HasSuffix(lowerName, ".txt") {
 		return ReadTXT(data)
 	} else if strings.HasSuffix(lowerName, ".xlsx") {
+		// Validasi magic bytes format XLSX / ZIP (PK\x03\x04)
+		if len(data) < 4 || data[0] != 0x50 || data[1] != 0x4b || data[2] != 0x03 || data[3] != 0x04 {
+			return nil, errors.New("file XLSX tidak valid (format arsip rusak)")
+		}
 		return ReadXLSX(data)
 	}
 	return nil, ErrUnsupported

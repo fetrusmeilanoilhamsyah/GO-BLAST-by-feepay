@@ -42,6 +42,9 @@ func main() {
 		case "seed":
 			runSeed(cfg)
 			return
+		case "reset-totp":
+			runResetTOTP(cfg)
+			return
 		}
 	}
 

@@ -3,6 +3,7 @@ package web
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -116,6 +117,21 @@ func (s *Server) HandleWorkerAccountInitPOST(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	userIDStr := strconv.FormatInt(user.ID, 10)
+	clientIP := s.getClientIP(r)
+	if s.WorkerAccountUserLimiter != nil {
+		if allowed, wait := s.WorkerAccountUserLimiter.Take(userIDStr); !allowed {
+			s.writeRateLimitJSON(w, r, "worker_account_init_user", wait)
+			return
+		}
+	}
+	if s.WorkerAccountIPLimiter != nil {
+		if allowed, wait := s.WorkerAccountIPLimiter.Take(clientIP); !allowed {
+			s.writeRateLimitJSON(w, r, "worker_account_init_ip", wait)
+			return
+		}
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 
 	if s.IsLinkingLocked(r.Context()) {
@@ -165,9 +181,10 @@ func (s *Server) HandleWorkerAccountInitPOST(w http.ResponseWriter, r *http.Requ
 			user.ID, label, speed,
 		).Scan(&activeAccountID)
 		if err != nil {
+			slog.Error("Gagal membuat akun WA", "err", err, "user_id", user.ID)
 			json.NewEncoder(w).Encode(map[string]interface{}{
 				"ok":    false,
-				"error": "Gagal membuat akun: " + err.Error(),
+				"error": "Gagal membuat akun. Silakan coba beberapa saat lagi.",
 			})
 			return
 		}
@@ -216,6 +233,21 @@ func (s *Server) HandleWorkerAccountNewPOST(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	userIDStr := strconv.FormatInt(user.ID, 10)
+	clientIP := s.getClientIP(r)
+	if s.WorkerAccountUserLimiter != nil {
+		if allowed, wait := s.WorkerAccountUserLimiter.Take(userIDStr); !allowed {
+			s.redirectRateLimit(w, r, "/worker/accounts", "worker_account_new_user", wait)
+			return
+		}
+	}
+	if s.WorkerAccountIPLimiter != nil {
+		if allowed, wait := s.WorkerAccountIPLimiter.Take(clientIP); !allowed {
+			s.redirectRateLimit(w, r, "/worker/accounts", "worker_account_new_ip", wait)
+			return
+		}
+	}
+
 	if s.IsLinkingLocked(r.Context()) {
 		http.Redirect(w, r, "/worker/accounts?err=Penautan+akun+WhatsApp+sedang+dikunci+oleh+admin", http.StatusSeeOther)
 		return
@@ -254,6 +286,21 @@ func (s *Server) HandleWorkerAccountSettingsPOST(w http.ResponseWriter, r *http.
 		return
 	}
 
+	userIDStr := strconv.FormatInt(user.ID, 10)
+	clientIP := s.getClientIP(r)
+	if s.WorkerAccountUserLimiter != nil {
+		if allowed, wait := s.WorkerAccountUserLimiter.Take(userIDStr); !allowed {
+			s.writeRateLimitJSON(w, r, "worker_account_settings_user", wait)
+			return
+		}
+	}
+	if s.WorkerAccountIPLimiter != nil {
+		if allowed, wait := s.WorkerAccountIPLimiter.Take(clientIP); !allowed {
+			s.writeRateLimitJSON(w, r, "worker_account_settings_ip", wait)
+			return
+		}
+	}
+
 	idStr := r.PathValue("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
@@ -273,17 +320,23 @@ func (s *Server) HandleWorkerAccountSettingsPOST(w http.ResponseWriter, r *http.
 		speed = "medium"
 	}
 
-	_, err = s.DB.Pool.Exec(r.Context(),
+	res, err := s.DB.Pool.Exec(r.Context(),
 		`UPDATE wa_accounts SET label = $1, speed = $2 WHERE id = $3 AND worker_id = $4`,
 		label, speed, id, user.ID)
 
 	w.Header().Set("Content-Type", "application/json")
 	if err != nil {
-		json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
+		slog.Error("Gagal menyimpan pengaturan akun WA", "err", err, "account_id", id, "user_id", user.ID)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": "Gagal menyimpan pengaturan akun"})
+		return
+	}
+	if res.RowsAffected() == 0 {
+		w.WriteHeader(http.StatusNotFound)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": "Akun tidak ditemukan"})
 		return
 	}
 
-	json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "label": label, "speed": speed})
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "label": label, "speed": speed})
 }
 
 func (s *Server) HandleWorkerAccountPairPOST(w http.ResponseWriter, r *http.Request) {
@@ -293,8 +346,40 @@ func (s *Server) HandleWorkerAccountPairPOST(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	idStr := r.PathValue("id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		http.Error(w, "Invalid ID", http.StatusBadRequest)
+		return
+	}
+
+	isJSON := strings.Contains(r.Header.Get("Accept"), "application/json") || r.FormValue("format") == "json"
+
+	userIDStr := strconv.FormatInt(user.ID, 10)
+	clientIP := s.getClientIP(r)
+	if s.WorkerAccountUserLimiter != nil {
+		if allowed, wait := s.WorkerAccountUserLimiter.Take(userIDStr); !allowed {
+			if isJSON {
+				s.writeRateLimitJSON(w, r, "worker_account_pair_user", wait)
+			} else {
+				s.redirectRateLimit(w, r, fmt.Sprintf("/worker/accounts?open=%d", id), "worker_account_pair_user", wait)
+			}
+			return
+		}
+	}
+	if s.WorkerAccountIPLimiter != nil {
+		if allowed, wait := s.WorkerAccountIPLimiter.Take(clientIP); !allowed {
+			if isJSON {
+				s.writeRateLimitJSON(w, r, "worker_account_pair_ip", wait)
+			} else {
+				s.redirectRateLimit(w, r, fmt.Sprintf("/worker/accounts?open=%d", id), "worker_account_pair_ip", wait)
+			}
+			return
+		}
+	}
+
 	if s.IsLinkingLocked(r.Context()) {
-		if strings.Contains(r.Header.Get("Accept"), "application/json") || r.FormValue("format") == "json" {
+		if isJSON {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusForbidden)
 			_ = json.NewEncoder(w).Encode(map[string]interface{}{
@@ -307,10 +392,17 @@ func (s *Server) HandleWorkerAccountPairPOST(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	idStr := r.PathValue("id")
-	id, err := strconv.ParseInt(idStr, 10, 64)
-	if err != nil {
-		http.Error(w, "Invalid ID", http.StatusBadRequest)
+	// IDOR check: verifikasi akun milik worker yang login
+	var ownerID int64
+	err = s.DB.Pool.QueryRow(r.Context(), "SELECT worker_id FROM wa_accounts WHERE id = $1", id).Scan(&ownerID)
+	if err != nil || ownerID != user.ID {
+		if isJSON {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusNotFound)
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": "Akun WhatsApp tidak ditemukan"})
+			return
+		}
+		http.Redirect(w, r, "/worker/accounts?error="+urlQueryEscape("Akun WhatsApp tidak ditemukan"), http.StatusSeeOther)
 		return
 	}
 
@@ -322,12 +414,10 @@ func (s *Server) HandleWorkerAccountPairPOST(w http.ResponseWriter, r *http.Requ
 		phone = "62" + phone[1:]
 	}
 
-	isJSON := strings.Contains(r.Header.Get("Accept"), "application/json") || r.FormValue("format") == "json"
-
 	if phone == "" {
 		if isJSON {
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": "Nomor HP wajib diisi"})
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": "Nomor HP wajib diisi"})
 			return
 		}
 		http.Redirect(w, r, fmt.Sprintf("/worker/accounts?open=%d&error=%s", id, urlQueryEscape("Nomor HP wajib diisi")), http.StatusSeeOther)
@@ -337,7 +427,7 @@ func (s *Server) HandleWorkerAccountPairPOST(w http.ResponseWriter, r *http.Requ
 	if s.WaManager == nil {
 		if isJSON {
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": "WhatsApp manager tidak tersedia"})
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": "WhatsApp manager tidak tersedia"})
 			return
 		}
 		http.Redirect(w, r, fmt.Sprintf("/worker/accounts?open=%d&error=%s", id, urlQueryEscape("WhatsApp manager tidak tersedia")), http.StatusSeeOther)
@@ -349,30 +439,32 @@ func (s *Server) HandleWorkerAccountPairPOST(w http.ResponseWriter, r *http.Requ
 	if sess == nil {
 		_, _, err = s.WaManager.Connect(r.Context(), id, user.ID)
 		if err != nil {
+			slog.Error("Gagal menghubungkan sesi WhatsApp", "err", err, "account_id", id, "user_id", user.ID)
 			if isJSON {
 				w.Header().Set("Content-Type", "application/json")
-				json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
+				_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": "Gagal menghubungkan ke WhatsApp"})
 				return
 			}
-			http.Redirect(w, r, fmt.Sprintf("/worker/accounts?open=%d&error=%s", id, urlQueryEscape(err.Error())), http.StatusSeeOther)
+			http.Redirect(w, r, fmt.Sprintf("/worker/accounts?open=%d&error=%s", id, urlQueryEscape("Gagal menghubungkan ke WhatsApp")), http.StatusSeeOther)
 			return
 		}
 	}
 
 	code, err := s.WaManager.PairPhone(id, phone)
 	if err != nil {
+		slog.Error("Gagal pairing nomor WhatsApp", "err", err, "account_id", id, "user_id", user.ID)
 		if isJSON {
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": err.Error()})
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": "Gagal memproses kode pairing"})
 			return
 		}
-		http.Redirect(w, r, fmt.Sprintf("/worker/accounts?open=%d&error=%s", id, urlQueryEscape(err.Error())), http.StatusSeeOther)
+		http.Redirect(w, r, fmt.Sprintf("/worker/accounts?open=%d&error=%s", id, urlQueryEscape("Gagal memproses kode pairing")), http.StatusSeeOther)
 		return
 	}
 
 	if isJSON {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "pairing_code": code})
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "pairing_code": code})
 		return
 	}
 
@@ -395,6 +487,43 @@ func (s *Server) HandleWorkerAccountDelete(w http.ResponseWriter, r *http.Reques
 
 	isJSON := strings.Contains(r.Header.Get("Accept"), "application/json") || r.FormValue("format") == "json"
 
+	userIDStr := strconv.FormatInt(user.ID, 10)
+	clientIP := s.getClientIP(r)
+	if s.WorkerAccountUserLimiter != nil {
+		if allowed, wait := s.WorkerAccountUserLimiter.Take(userIDStr); !allowed {
+			if isJSON {
+				s.writeRateLimitJSON(w, r, "worker_account_delete_user", wait)
+			} else {
+				s.redirectRateLimit(w, r, "/worker/accounts", "worker_account_delete_user", wait)
+			}
+			return
+		}
+	}
+	if s.WorkerAccountIPLimiter != nil {
+		if allowed, wait := s.WorkerAccountIPLimiter.Take(clientIP); !allowed {
+			if isJSON {
+				s.writeRateLimitJSON(w, r, "worker_account_delete_ip", wait)
+			} else {
+				s.redirectRateLimit(w, r, "/worker/accounts", "worker_account_delete_ip", wait)
+			}
+			return
+		}
+	}
+
+	// IDOR check: verifikasi akun milik worker yang login
+	var ownerID int64
+	err = s.DB.Pool.QueryRow(r.Context(), "SELECT worker_id FROM wa_accounts WHERE id = $1", id).Scan(&ownerID)
+	if err != nil || ownerID != user.ID {
+		if isJSON {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusNotFound)
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": "Akun WhatsApp tidak ditemukan"})
+			return
+		}
+		http.Redirect(w, r, "/worker/accounts?error="+urlQueryEscape("Akun WhatsApp tidak ditemukan"), http.StatusSeeOther)
+		return
+	}
+
 	var delErr error
 	if s.WaManager != nil {
 		delErr = s.WaManager.Delete(r.Context(), id, user.ID)
@@ -405,18 +534,22 @@ func (s *Server) HandleWorkerAccountDelete(w http.ResponseWriter, r *http.Reques
 		_, delErr = s.DB.Pool.Exec(r.Context(), `DELETE FROM wa_accounts WHERE id = $1 AND worker_id = $2`, id, user.ID)
 	}
 
+	if delErr != nil {
+		slog.Error("Gagal menghapus akun WhatsApp", "err", delErr, "account_id", id, "user_id", user.ID)
+	}
+
 	if isJSON {
 		w.Header().Set("Content-Type", "application/json")
 		if delErr != nil {
-			json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": delErr.Error()})
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": "Gagal menghapus akun. Silakan coba beberapa saat lagi."})
 		} else {
-			json.NewEncoder(w).Encode(map[string]interface{}{"ok": true})
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true})
 		}
 		return
 	}
 
 	if delErr != nil {
-		http.Redirect(w, r, fmt.Sprintf("/worker/accounts?error=%s", urlQueryEscape(delErr.Error())), http.StatusSeeOther)
+		http.Redirect(w, r, fmt.Sprintf("/worker/accounts?error=%s", urlQueryEscape("Gagal menghapus akun. Silakan coba beberapa saat lagi.")), http.StatusSeeOther)
 		return
 	}
 
@@ -483,9 +616,33 @@ func (s *Server) HandleWorkerAccountDisconnect(w http.ResponseWriter, r *http.Re
 		return
 	}
 
+	userIDStr := strconv.FormatInt(user.ID, 10)
+	clientIP := s.getClientIP(r)
+	if s.WorkerAccountUserLimiter != nil {
+		if allowed, wait := s.WorkerAccountUserLimiter.Take(userIDStr); !allowed {
+			s.redirectRateLimit(w, r, "/worker/accounts", "worker_account_disconnect_user", wait)
+			return
+		}
+	}
+	if s.WorkerAccountIPLimiter != nil {
+		if allowed, wait := s.WorkerAccountIPLimiter.Take(clientIP); !allowed {
+			s.redirectRateLimit(w, r, "/worker/accounts", "worker_account_disconnect_ip", wait)
+			return
+		}
+	}
+
+	// IDOR check: verifikasi akun milik worker yang login
+	var ownerID int64
+	err = s.DB.Pool.QueryRow(r.Context(), "SELECT worker_id FROM wa_accounts WHERE id = $1", id).Scan(&ownerID)
+	if err != nil || ownerID != user.ID {
+		http.Redirect(w, r, "/worker/accounts?error="+urlQueryEscape("Akun WhatsApp tidak ditemukan"), http.StatusSeeOther)
+		return
+	}
+
 	if s.WaManager != nil {
 		if err := s.WaManager.Disconnect(r.Context(), id, user.ID); err != nil {
-			http.Redirect(w, r, fmt.Sprintf("/worker/accounts?error=%s", urlQueryEscape(err.Error())), http.StatusSeeOther)
+			slog.Error("Gagal memutuskan sambungan WhatsApp", "err", err, "account_id", id, "user_id", user.ID)
+			http.Redirect(w, r, fmt.Sprintf("/worker/accounts?error=%s", urlQueryEscape("Gagal memutuskan sambungan akun.")), http.StatusSeeOther)
 			return
 		}
 	}
@@ -507,9 +664,33 @@ func (s *Server) HandleWorkerAccountStop(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	userIDStr := strconv.FormatInt(user.ID, 10)
+	clientIP := s.getClientIP(r)
+	if s.WorkerAccountUserLimiter != nil {
+		if allowed, wait := s.WorkerAccountUserLimiter.Take(userIDStr); !allowed {
+			s.redirectRateLimit(w, r, "/worker/accounts", "worker_account_stop_user", wait)
+			return
+		}
+	}
+	if s.WorkerAccountIPLimiter != nil {
+		if allowed, wait := s.WorkerAccountIPLimiter.Take(clientIP); !allowed {
+			s.redirectRateLimit(w, r, "/worker/accounts", "worker_account_stop_ip", wait)
+			return
+		}
+	}
+
+	// IDOR check: verifikasi akun milik worker yang login
+	var ownerID int64
+	err = s.DB.Pool.QueryRow(r.Context(), "SELECT worker_id FROM wa_accounts WHERE id = $1", id).Scan(&ownerID)
+	if err != nil || ownerID != user.ID {
+		http.Redirect(w, r, "/worker/accounts?error="+urlQueryEscape("Akun WhatsApp tidak ditemukan"), http.StatusSeeOther)
+		return
+	}
+
 	if s.WaManager != nil {
 		if err := s.WaManager.Stop(r.Context(), id, user.ID, "user_stop"); err != nil {
-			http.Redirect(w, r, fmt.Sprintf("/worker/accounts?error=%s", urlQueryEscape(err.Error())), http.StatusSeeOther)
+			slog.Error("Gagal menghentikan akun WhatsApp", "err", err, "account_id", id, "user_id", user.ID)
+			http.Redirect(w, r, fmt.Sprintf("/worker/accounts?error=%s", urlQueryEscape("Gagal menghentikan akun.")), http.StatusSeeOther)
 			return
 		}
 	}
@@ -522,6 +703,20 @@ func (s *Server) HandleWorkerAccountWorkStart(w http.ResponseWriter, r *http.Req
 	if !ok {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
+	}
+
+	target := "/worker/accounts"
+	if referer := r.Header.Get("Referer"); referer != "" {
+		if refURL, err := url.Parse(referer); err == nil && (refURL.Path == "/worker" || refURL.Path == "/worker/accounts") {
+			target = refURL.RequestURI()
+		}
+	}
+
+	if s.WorkerWorkCtrlLimiter != nil {
+		if allowed, wait := s.WorkerWorkCtrlLimiter.Take(strconv.FormatInt(user.ID, 10)); !allowed {
+			s.redirectRateLimit(w, r, target, "worker_work_start", wait)
+			return
+		}
 	}
 
 	idStr := r.PathValue("id")
@@ -552,12 +747,6 @@ func (s *Server) HandleWorkerAccountWorkStart(w http.ResponseWriter, r *http.Req
 		s.WorkCtrl.StartAccount(id, user.ID)
 	}
 
-	target := "/worker/accounts"
-	if referer := r.Header.Get("Referer"); referer != "" {
-		if refURL, err := url.Parse(referer); err == nil && (refURL.Path == "/worker" || refURL.Path == "/worker/accounts") {
-			target = refURL.RequestURI()
-		}
-	}
 	http.Redirect(w, r, target, http.StatusSeeOther)
 }
 
@@ -566,6 +755,20 @@ func (s *Server) HandleWorkerAccountWorkStop(w http.ResponseWriter, r *http.Requ
 	if !ok {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
+	}
+
+	target := "/worker/accounts"
+	if referer := r.Header.Get("Referer"); referer != "" {
+		if refURL, err := url.Parse(referer); err == nil && (refURL.Path == "/worker" || refURL.Path == "/worker/accounts") {
+			target = refURL.RequestURI()
+		}
+	}
+
+	if s.WorkerWorkCtrlLimiter != nil {
+		if allowed, wait := s.WorkerWorkCtrlLimiter.Take(strconv.FormatInt(user.ID, 10)); !allowed {
+			s.redirectRateLimit(w, r, target, "worker_work_stop", wait)
+			return
+		}
 	}
 
 	idStr := r.PathValue("id")
@@ -589,12 +792,6 @@ func (s *Server) HandleWorkerAccountWorkStop(w http.ResponseWriter, r *http.Requ
 		s.WorkCtrl.StopAccount(id)
 	}
 
-	target := "/worker/accounts"
-	if referer := r.Header.Get("Referer"); referer != "" {
-		if refURL, err := url.Parse(referer); err == nil && (refURL.Path == "/worker" || refURL.Path == "/worker/accounts") {
-			target = refURL.RequestURI()
-		}
-	}
 	http.Redirect(w, r, target, http.StatusSeeOther)
 }
 

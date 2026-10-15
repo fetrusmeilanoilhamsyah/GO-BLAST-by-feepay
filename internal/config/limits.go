@@ -151,5 +151,67 @@ var (
 	AuditLoginFailedRateLimitAttempts = 20
 	// AuditLoginFailedRateLimitWindow jendela waktu batas audit login_failed (1 menit).
 	AuditLoginFailedRateLimitWindow = 1 * time.Minute
+
+	// --- Konstanta Keamanan Akses Tahap H5b (Batas per Endpoint & CS) ---
+
+	// WorkerTicket10MinAttempts batas kirim tiket per pekerja per 10 menit (3).
+	WorkerTicket10MinAttempts = 3
+	WorkerTicket10MinWindow   = 10 * time.Minute
+
+	// WorkerTicketDailyAttempts batas kirim tiket per pekerja per hari (10).
+	WorkerTicketDailyAttempts = 10
+	WorkerTicketDailyWindow   = 24 * time.Hour
+
+	// MaxOpenTicketsPerWorker batas maksimal tiket berstatus open/menunggu per pekerja (20).
+	MaxOpenTicketsPerWorker = 20
+
+	// WorkerTicketMinRunes batas minimal karakter pesan tiket (5).
+	WorkerTicketMinRunes = 5
+	// WorkerTicketMaxRunes batas maksimal karakter pesan tiket (2000).
+	WorkerTicketMaxRunes = 2000
+
+	// WorkerSecurityAttempts batas ganti kata sandi per pekerja per 15 menit (5).
+	WorkerSecurityAttempts = 5
+	WorkerSecurityWindow   = 15 * time.Minute
+
+	// WorkerFinancialAttempts batas operasi finansial (tarik, konversi, ubah rekening) per pekerja per 10 menit (10).
+	WorkerFinancialAttempts = 10
+	WorkerFinancialWindow   = 10 * time.Minute
+
+	// WorkerAccountUserAttempts batas inisialisasi / tambah / pair akun WA per pekerja per 10 menit (6).
+	WorkerAccountUserAttempts = 6
+	WorkerAccountUserWindow   = 10 * time.Minute
+
+	// WorkerAccountIPAttempts batas inisialisasi / tambah / pair akun WA per IP per 10 menit (20).
+	WorkerAccountIPAttempts = 20
+	WorkerAccountIPWindow   = 10 * time.Minute
+
+	// WorkerWorkCtrlAttempts batas start/stop kerja per pekerja per menit (30).
+	WorkerWorkCtrlAttempts = 30
+	WorkerWorkCtrlWindow   = 1 * time.Minute
+
+	// WorkerAPIPollingAttempts batas polling API (stats, notif, tiket, akun status) per pekerja per menit (120).
+	WorkerAPIPollingAttempts = 120
+	WorkerAPIPollingBurst    = 30
+	WorkerAPIPollingWindow   = 1 * time.Minute
+
+	// PublicRouteAttempts batas akses rute publik per IP per menit (100).
+	PublicRouteAttempts = 100
+	PublicRouteWindow   = 1 * time.Minute
+
+	// StaticRouteAttempts batas akses aset statis per IP per menit (300).
+	StaticRouteAttempts = 300
+	StaticRouteWindow   = 1 * time.Minute
+
+	// AdminGlobalAttempts batas seluruh rute admin per admin per menit (300).
+	AdminGlobalAttempts = 300
+	AdminGlobalWindow   = 1 * time.Minute
+
+	// AdminTOTPVerifyAttempts batas percobaan verifikasi TOTP admin per 15 menit (5).
+	AdminTOTPVerifyAttempts = 5
+	AdminTOTPVerifyWindow   = 15 * time.Minute
+
+	// AdminStepUpDuration durasi keabsahan step-up TOTP untuk aksi sensitif (5 menit).
+	AdminStepUpDuration = 5 * time.Minute
 )
 

@@ -4,11 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"goblast/internal/auth"
 	"goblast/internal/campaign"
@@ -732,6 +734,13 @@ func (s *Server) HandleWorkerWithdrawalsPOST(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	if s.WorkerFinancialLimiter != nil {
+		if allowed, wait := s.WorkerFinancialLimiter.Take(strconv.FormatInt(user.ID, 10)); !allowed {
+			s.redirectRateLimit(w, r, "/worker/withdrawals", "worker_withdrawals", wait)
+			return
+		}
+	}
+
 	ctx := r.Context()
 	if s.IsWithdrawalsLocked(ctx) {
 		http.Redirect(w, r, "/worker/withdrawals?error=Fitur+penarikan+dana+sedang+dikunci+sementara", http.StatusSeeOther)
@@ -930,6 +939,13 @@ func (s *Server) HandleWorkerConvertPOST(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	if s.WorkerFinancialLimiter != nil {
+		if allowed, wait := s.WorkerFinancialLimiter.Take(strconv.FormatInt(user.ID, 10)); !allowed {
+			s.redirectRateLimit(w, r, "/worker/withdrawals", "worker_convert", wait)
+			return
+		}
+	}
+
 	ctx := r.Context()
 	if s.IsWithdrawalsLocked(ctx) {
 		http.Redirect(w, r, "/worker/withdrawals?error=Fitur+konversi+saldo+sedang+dikunci+sementara", http.StatusSeeOther)
@@ -1093,6 +1109,13 @@ func (s *Server) HandleWorkerWalletPOST(w http.ResponseWriter, r *http.Request) 
 			}
 		}
 	}
+
+	if s.WorkerFinancialLimiter != nil {
+		if allowed, wait := s.WorkerFinancialLimiter.Take(strconv.FormatInt(user.ID, 10)); !allowed {
+			s.redirectRateLimit(w, r, target, "worker_wallet", wait)
+			return
+		}
+	}
 	sep := "?"
 	if strings.Contains(target, "?") {
 		sep = "&"
@@ -1254,12 +1277,6 @@ func (s *Server) HandleWorkerProfilePOST(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	name := strings.TrimSpace(r.FormValue("display_name"))
-	if len(name) > 0 && len(name) <= 100 {
-		_, _ = s.DB.Pool.Exec(r.Context(), "UPDATE users SET display_name = $1 WHERE id = $2", name, user.ID)
-		s.logAudit(&user.ID, "update_profile", "users", strconv.FormatInt(user.ID, 10), "display name updated")
-	}
-
 	target := "/worker"
 	referer := r.Header.Get("Referer")
 	if referer != "" {
@@ -1268,6 +1285,19 @@ func (s *Server) HandleWorkerProfilePOST(w http.ResponseWriter, r *http.Request)
 				target = refURL.RequestURI()
 			}
 		}
+	}
+
+	if s.WorkerSecurityLimiter != nil {
+		if allowed, wait := s.WorkerSecurityLimiter.Take(strconv.FormatInt(user.ID, 10)); !allowed {
+			s.redirectRateLimit(w, r, target, "worker_profile", wait)
+			return
+		}
+	}
+
+	name := strings.TrimSpace(r.FormValue("display_name"))
+	if len(name) > 0 && len(name) <= 100 {
+		_, _ = s.DB.Pool.Exec(r.Context(), "UPDATE users SET display_name = $1 WHERE id = $2", name, user.ID)
+		s.logAudit(&user.ID, "update_profile", "users", strconv.FormatInt(user.ID, 10), "display name updated")
 	}
 
 	http.Redirect(w, r, target, http.StatusSeeOther)
@@ -1291,6 +1321,13 @@ func (s *Server) HandleWorkerSecurityPOST(w http.ResponseWriter, r *http.Request
 			if (refURL.Host == "" || refURL.Host == r.Host) && strings.HasPrefix(refURL.Path, "/") && !strings.HasPrefix(refURL.Path, "//") {
 				target = refURL.RequestURI()
 			}
+		}
+	}
+
+	if s.WorkerSecurityLimiter != nil {
+		if allowed, wait := s.WorkerSecurityLimiter.Take(strconv.FormatInt(user.ID, 10)); !allowed {
+			s.redirectRateLimit(w, r, target, "worker_security", wait)
+			return
 		}
 	}
 
@@ -1367,15 +1404,49 @@ func (s *Server) HandleWorkerTicketPOST(w http.ResponseWriter, r *http.Request) 
 	category := strings.TrimSpace(r.FormValue("category"))
 	message := strings.TrimSpace(r.FormValue("message"))
 
-	if category == "" {
-		category = "Lainnya"
+	// Rate limiting: 3/10m dan 10/hari per pekerja
+	userIDStr := strconv.FormatInt(user.ID, 10)
+	if s.WorkerTicket10MinLimiter != nil {
+		if allowed, wait := s.WorkerTicket10MinLimiter.Take(userIDStr); !allowed {
+			s.redirectRateLimit(w, r, target, "worker_ticket_10m", wait)
+			return
+		}
 	}
-	if len(message) < 5 {
-		http.Redirect(w, r, target+sep+"error=Pesan+laporan+terlalu+pendek+(minimal+5+karakter)", http.StatusSeeOther)
+	if s.WorkerTicketDailyLimiter != nil {
+		if allowed, wait := s.WorkerTicketDailyLimiter.Take(userIDStr); !allowed {
+			s.redirectRateLimit(w, r, target, "worker_ticket_daily", wait)
+			return
+		}
+	}
+
+	// Batas maksimal 20 tiket terbuka per worker
+	var openCount int
+	_ = s.DB.Pool.QueryRow(r.Context(), "SELECT COUNT(*) FROM support_tickets WHERE user_id = $1 AND status = 'open'", user.ID).Scan(&openCount)
+	if openCount >= config.MaxOpenTicketsPerWorker {
+		http.Redirect(w, r, target+sep+"error="+url.QueryEscape("Batas maksimal 20 tiket terbuka telah tercapai. Harap tunggu balasan tiket sebelumnya."), http.StatusSeeOther)
 		return
 	}
-	if len(message) > 2000 {
-		http.Redirect(w, r, target+sep+"error=Pesan+laporan+maksimal+2000+karakter", http.StatusSeeOther)
+
+	// Whitelist kategori: Penarikan Dana, Koneksi WhatsApp, Masalah Saldo / Upah, Lainnya
+	switch strings.ToLower(category) {
+	case "penarikan dana", "kendala_penarikan":
+		category = "Penarikan Dana"
+	case "koneksi whatsapp", "kendala_akun":
+		category = "Koneksi WhatsApp"
+	case "masalah saldo / upah", "saran":
+		category = "Masalah Saldo / Upah"
+	default:
+		category = "Lainnya"
+	}
+
+	// Validasi panjang pesan berdasarkan jumlah rune (5 - 2000 rune)
+	runeCount := utf8.RuneCountInString(message)
+	if runeCount < config.WorkerTicketMinRunes {
+		http.Redirect(w, r, target+sep+"error="+url.QueryEscape("Pesan laporan terlalu pendek (minimal 5 karakter)"), http.StatusSeeOther)
+		return
+	}
+	if runeCount > config.WorkerTicketMaxRunes {
+		http.Redirect(w, r, target+sep+"error="+url.QueryEscape("Pesan laporan maksimal 2000 karakter"), http.StatusSeeOther)
 		return
 	}
 
@@ -1386,7 +1457,8 @@ func (s *Server) HandleWorkerTicketPOST(w http.ResponseWriter, r *http.Request) 
 		RETURNING id
 	`, user.ID, category, message).Scan(&ticketID)
 	if err != nil {
-		http.Redirect(w, r, target+sep+"error=Gagal+mengirim+laporan: "+err.Error(), http.StatusSeeOther)
+		slog.Error("Gagal menyimpan tiket bantuan", "err", err, "user_id", user.ID)
+		http.Redirect(w, r, target+sep+"error="+url.QueryEscape("Gagal mengirim laporan. Silakan coba beberapa saat lagi."), http.StatusSeeOther)
 		return
 	}
 

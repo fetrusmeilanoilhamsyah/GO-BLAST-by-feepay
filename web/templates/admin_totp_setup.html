@@ -1,0 +1,54 @@
+{{ define "content" }}
+<div class="container" style="max-width: 600px; margin: 40px auto; padding: 24px; background-color: var(--color-card); border: 1px solid var(--color-border); border-radius: 10px; box-shadow: 0 1px 3px var(--color-shadow);">
+    <h2 style="color: var(--color-text); margin-top: 0; text-align: center;">Konfigurasi Keamanan TOTP Admin</h2>
+    <p style="color: var(--color-muted); font-size: 14px; text-align: center; margin-bottom: 24px;">
+        Sebagai administrator, Anda wajib mengaktifkan autentikasi dua faktor (TOTP RFC 6238) sebelum dapat mengelola sistem.
+    </p>
+
+    {{ if .Error }}
+    <div style="background-color: var(--color-surface-muted); color: var(--color-danger); border: 1px solid var(--color-danger); padding: 10px; border-radius: 6px; margin-bottom: 20px; text-align: center; font-size: 13px;">
+        {{ .Error }}
+    </div>
+    {{ end }}
+
+    <div style="background-color: var(--color-surface-muted); border: 1px solid var(--color-border); border-radius: 8px; padding: 16px; margin-bottom: 24px;">
+        <h4 style="margin-top: 0; margin-bottom: 10px; font-size: 14px;">Langkah 1: Tambahkan Kunci Rahasia ke Aplikasi Authenticator</h4>
+        <p style="font-size: 13px; color: var(--color-muted); margin-bottom: 12px;">
+            Gunakan aplikasi seperti <strong>Google Authenticator</strong>, <strong>Aegis</strong>, atau <strong>Bitwarden</strong>. Masukkan Secret Base32 berikut:
+        </p>
+        <div style="background-color: var(--color-input-bg); border: 1px dashed var(--color-border); padding: 12px; border-radius: 6px; text-align: center; font-family: monospace; font-size: 18px; font-weight: bold; letter-spacing: 2px; user-select: all;">
+            {{ .SecretBase32 }}
+        </div>
+        <p style="font-size: 12px; color: var(--color-muted); margin-top: 8px; word-break: break-all;">
+            <strong>URI Otentikasi:</strong><br>
+            <code>{{ .AuthURI }}</code>
+        </p>
+    </div>
+
+    <div style="background-color: var(--color-surface-muted); border: 1px solid var(--color-border); border-radius: 8px; padding: 16px; margin-bottom: 24px;">
+        <h4 style="margin-top: 0; margin-bottom: 10px; font-size: 14px; color: var(--color-danger);">Langkah 2: Simpan Kode Cadangan Pemulihan (Recovery Codes)</h4>
+        <p style="font-size: 13px; color: var(--color-muted); margin-bottom: 12px;">
+            Simpan 10 kode cadangan sekali pakai ini di tempat aman. Jika perangkat hilang, setiap kode dapat digunakan satu kali untuk masuk:
+        </p>
+        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; background-color: var(--color-input-bg); padding: 12px; border-radius: 6px; font-family: monospace; font-size: 14px; text-align: center;">
+            {{ range .RecoveryCodes }}
+            <span style="user-select: all; padding: 4px; border: 1px solid var(--color-border); border-radius: 4px;">{{ . }}</span>
+            {{ end }}
+        </div>
+    </div>
+
+    <form method="POST" action="/admin/totp/setup">
+        <input type="hidden" name="csrf_token" value="{{ .CSRFToken }}">
+        <input type="hidden" name="setup_token" value="{{ .SetupToken }}">
+
+        <div style="margin-bottom: 20px;">
+            <label style="display: block; margin-bottom: 5px; font-size: 13px; font-weight: bold;">Langkah 3: Masukkan 6 Digit Kode dari Aplikasi Anda</label>
+            <input type="text" name="totp_code" required autofocus placeholder="123456" maxlength="6" autocomplete="off" style="width: 100%; padding: 10px 12px; box-sizing: border-box; background-color: var(--color-input-bg); color: var(--color-input-text); border: 1px solid var(--color-border); border-radius: 6px; font-size: 18px; text-align: center; letter-spacing: 4px;">
+        </div>
+
+        <button type="submit" class="btn btn-primary" style="width: 100%; padding: 12px; font-size: 14px; font-weight: bold; cursor: pointer;">
+            Aktifkan TOTP & Lanjutkan ke Dashboard
+        </button>
+    </form>
+</div>
+{{ end }}

@@ -245,7 +245,13 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		})
 
 		if role == "admin" {
-			http.Redirect(w, r, "/admin", http.StatusSeeOther)
+			var totpEnabledAt *time.Time
+			_ = s.DB.Pool.QueryRow(r.Context(), "SELECT totp_enabled_at FROM users WHERE id = $1", id).Scan(&totpEnabledAt)
+			if totpEnabledAt == nil {
+				http.Redirect(w, r, "/admin/totp/setup", http.StatusSeeOther)
+			} else {
+				http.Redirect(w, r, "/login/totp", http.StatusSeeOther)
+			}
 		} else {
 			http.Redirect(w, r, "/worker", http.StatusSeeOther)
 		}
@@ -450,7 +456,7 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 			} else if strings.Contains(errStr, "username") {
 				s.renderRegister(w, r, "Username sudah terdaftar. Coba username lain.")
 			} else {
-				s.renderRegister(w, r, "Gagal mendaftar: "+insertErr.Error())
+				s.renderRegister(w, r, "Terjadi kesalahan saat pendaftaran. Silakan coba lagi nanti.")
 			}
 			return
 		}
@@ -496,6 +502,11 @@ func (s *Server) renderRegister(w http.ResponseWriter, r *http.Request, errMsg s
 }
 
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
 	sessionHash, ok := r.Context().Value(sessionKey).(string)
 	if ok && sessionHash != "" {
 		if s.DB != nil && s.DB.Pool != nil {

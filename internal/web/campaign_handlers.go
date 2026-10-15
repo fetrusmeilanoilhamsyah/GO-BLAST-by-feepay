@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
@@ -35,7 +36,8 @@ func (s *Server) HandleAdminCampaigns(w http.ResponseWriter, r *http.Request) {
 
 	rows, err := s.DB.Pool.Query(r.Context(), query)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		slog.Error("Gagal memuat daftar kampanye", "err", err)
+		http.Error(w, "Gagal memuat kampanye", http.StatusInternalServerError)
 		return
 	}
 	defer rows.Close()
@@ -232,7 +234,8 @@ func (s *Server) HandleAdminCampaignNewPOST(w http.ResponseWriter, r *http.Reque
 	`, name, mode, body, imagePath, string(elementsJSON), userID)
 
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		slog.Error("Gagal menyimpan kampanye baru", "err", err)
+		http.Error(w, "Gagal menyimpan kampanye", http.StatusInternalServerError)
 		return
 	}
 
@@ -425,7 +428,8 @@ func (s *Server) HandleAdminCampaignEditPOST(w http.ResponseWriter, r *http.Requ
 	`, name, mode, body, imagePath, string(elementsJSON), id)
 
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		slog.Error("Gagal memperbarui kampanye", "err", err, "id", id)
+		http.Error(w, "Gagal memperbarui kampanye", http.StatusInternalServerError)
 		return
 	}
 
@@ -633,7 +637,8 @@ func (s *Server) HandleAdminCampaignStart(w http.ResponseWriter, r *http.Request
 
 	availableCount, err := campaign.CampaignAvailableCount(r.Context(), s.DB.Pool, id)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		slog.Error("Gagal menghitung nomor tersedia kampanye", "err", err, "id", id)
+		http.Error(w, "Terjadi kesalahan sistem", http.StatusInternalServerError)
 		return
 	}
 
@@ -645,7 +650,8 @@ func (s *Server) HandleAdminCampaignStart(w http.ResponseWriter, r *http.Request
 	now := time.Now()
 	_, err = s.DB.Pool.Exec(r.Context(), "UPDATE campaigns SET status = 'berjalan', started_at = COALESCE(started_at, $1) WHERE id = $2", now, id)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		slog.Error("Gagal memulai kampanye", "err", err, "id", id)
+		http.Error(w, "Terjadi kesalahan sistem", http.StatusInternalServerError)
 		return
 	}
 
@@ -677,7 +683,8 @@ func (s *Server) HandleAdminCampaignPause(w http.ResponseWriter, r *http.Request
 
 	_, err = s.DB.Pool.Exec(r.Context(), "UPDATE campaigns SET status = 'draf' WHERE id = $1", id)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		slog.Error("Gagal menjeda kampanye", "err", err, "id", id)
+		http.Error(w, "Terjadi kesalahan sistem", http.StatusInternalServerError)
 		return
 	}
 
@@ -710,7 +717,8 @@ func (s *Server) HandleAdminCampaignFinish(w http.ResponseWriter, r *http.Reques
 	now := time.Now()
 	_, err = s.DB.Pool.Exec(r.Context(), "UPDATE campaigns SET status = 'selesai', finished_at = $1 WHERE id = $2", now, id)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		slog.Error("Gagal menyelesaikan kampanye", "err", err, "id", id)
+		http.Error(w, "Terjadi kesalahan sistem", http.StatusInternalServerError)
 		return
 	}
 
@@ -794,25 +802,29 @@ func (s *Server) HandleAdminCampaignDelete(w http.ResponseWriter, r *http.Reques
 	// 4. Hapus campaign_numbers jika ada
 	_, err = tx.Exec(ctx, "DELETE FROM campaign_numbers WHERE campaign_id = $1", id)
 	if err != nil {
-		http.Error(w, "Gagal menghapus nomor kampanye: "+err.Error(), http.StatusInternalServerError)
+		slog.Error("Gagal menghapus nomor kampanye", "err", err, "id", id)
+		http.Error(w, "Gagal menghapus kampanye", http.StatusInternalServerError)
 		return
 	}
 
 	// 5. Hapus number_batches jika ada
 	_, err = tx.Exec(ctx, "DELETE FROM number_batches WHERE campaign_id = $1", id)
 	if err != nil {
-		http.Error(w, "Gagal menghapus batch nomor kampanye: "+err.Error(), http.StatusInternalServerError)
+		slog.Error("Gagal menghapus batch nomor kampanye", "err", err, "id", id)
+		http.Error(w, "Gagal menghapus kampanye", http.StatusInternalServerError)
 		return
 	}
 
 	// 6. Hapus campaign
 	_, err = tx.Exec(ctx, "DELETE FROM campaigns WHERE id = $1", id)
 	if err != nil {
-		http.Error(w, "Gagal menghapus kampanye: "+err.Error(), http.StatusInternalServerError)
+		slog.Error("Gagal menghapus kampanye", "err", err, "id", id)
+		http.Error(w, "Gagal menghapus kampanye", http.StatusInternalServerError)
 		return
 	}
 
 	if err := tx.Commit(ctx); err != nil {
+		slog.Error("Gagal commit transaksi penghapusan kampanye", "err", err, "id", id)
 		http.Error(w, "Gagal menyelesaikan penghapusan kampanye", http.StatusInternalServerError)
 		return
 	}
@@ -862,7 +874,8 @@ func (s *Server) HandleAdminCampaignArchive(w http.ResponseWriter, r *http.Reque
 
 	_, err = s.DB.Pool.Exec(ctx, "UPDATE campaigns SET archived_at = CURRENT_TIMESTAMP WHERE id = $1", id)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		slog.Error("Gagal mengarsipkan kampanye", "err", err, "id", id)
+		http.Error(w, "Terjadi kesalahan sistem", http.StatusInternalServerError)
 		return
 	}
 
@@ -908,7 +921,8 @@ func (s *Server) HandleAdminCampaignRequeueUncertain(w http.ResponseWriter, r *h
 		  AND last_error = 'hasil_tidak_pasti'
 	`, id)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		slog.Error("Gagal memperbarui status nomor kampanye (requeue uncertain)", "err", err, "id", id)
+		http.Error(w, "Terjadi kesalahan sistem", http.StatusInternalServerError)
 		return
 	}
 
