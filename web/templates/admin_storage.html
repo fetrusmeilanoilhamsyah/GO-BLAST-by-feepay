@@ -1,0 +1,270 @@
+{{define "content"}}
+<div class="admin-layout">
+    {{ template "admin_nav" . }}
+    <main class="admin-content">
+        <div style="max-width: 1100px; margin: 0 auto;">
+
+            <!-- PESAN & NOTIFIKASI -->
+            {{if .Message}}
+            <div style="background-color: var(--color-surface-muted); border: 1px solid var(--color-status-done); color: var(--color-status-done); padding: 12px 16px; border-radius: 8px; margin-bottom: 20px; font-weight: 500;">
+                {{.Message}}
+            </div>
+            {{end}}
+            {{if .Error}}
+            <div style="background-color: var(--color-surface-muted); border: 1px solid var(--color-danger); color: var(--color-danger); padding: 12px 16px; border-radius: 8px; margin-bottom: 20px; font-weight: 500;">
+                {{.Error}}
+            </div>
+            {{end}}
+
+            <!-- HEADER UTAMA -->
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 12px;">
+                <div>
+                    <h2 style="margin: 0 0 6px 0; font-size: 22px; font-weight: 800; letter-spacing: -0.02em;">Penyimpanan &amp; Retensi Data</h2>
+                    <p style="margin: 0; color: var(--color-muted); font-size: 14px;">
+                        Pemantauan ruang disk database &amp; direktori sistem, serta pembersihan manual yang aman dan idempoten.
+                    </p>
+                </div>
+                <div>
+                    <a href="/admin/maintenance" class="btn btn-secondary" style="font-size: 13px;">
+                        &larr; Diagnostik &amp; Pemeliharaan
+                    </a>
+                </div>
+            </div>
+
+            <!-- GRID STATISTIK UKURAN RUANG -->
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; margin-bottom: 24px;">
+
+                <!-- KARTU 1: TABEL DATABASE UTAMA -->
+                <div style="background-color: var(--color-card); border: 1px solid var(--color-border); border-radius: 8px; padding: 18px; box-shadow: 0 2px 4px var(--color-shadow);">
+                    <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 12px; border-bottom: 1px solid var(--color-border); padding-bottom: 8px;">
+                        <span style="font-weight: 700; font-size: 14px;">Tabel Database Utama</span>
+                        <span style="font-size: 13px; font-weight: 700; color: var(--color-accent);">Total: {{.TotalDBPretty}}</span>
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 8px;">
+                        {{range .TableSizes}}
+                        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 13px;">
+                            <code style="color: var(--color-text);">{{.Name}}</code>
+                            <span style="font-weight: 600; color: var(--color-muted);">{{.PrettySize}}</span>
+                        </div>
+                        {{else}}
+                        <div style="color: var(--color-muted); font-size: 13px;">Tidak ada data tabel</div>
+                        {{end}}
+                    </div>
+                </div>
+
+                <!-- KARTU 2: FOLDER SISTEM -->
+                <div style="background-color: var(--color-card); border: 1px solid var(--color-border); border-radius: 8px; padding: 18px; box-shadow: 0 2px 4px var(--color-shadow);">
+                    <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 12px; border-bottom: 1px solid var(--color-border); padding-bottom: 8px;">
+                        <span style="font-weight: 700; font-size: 14px;">Folder Penyimpanan Berkas</span>
+                        <span style="font-size: 12px; color: var(--color-muted);">Filesystem VPS</span>
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 8px;">
+                        {{range .FolderSizes}}
+                        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 13px;">
+                            <code style="color: var(--color-text);">{{.Path}}</code>
+                            <span style="font-weight: 600; color: var(--color-muted);">
+                                {{.PrettySize}} <span style="font-size: 11px; font-weight: normal;">({{.FileCount}} file)</span>
+                            </span>
+                        </div>
+                        {{else}}
+                        <div style="color: var(--color-muted); font-size: 13px;">Tidak ada folder terdeteksi</div>
+                        {{end}}
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- AKSI PEMBERSIHAN MANUAL (DENGAN PRATINJAU) -->
+            <div style="background-color: var(--color-card); border: 1px solid var(--color-border); border-radius: 8px; padding: 20px; margin-bottom: 24px; box-shadow: 0 2px 4px var(--color-shadow);">
+                <div style="margin-bottom: 16px;">
+                    <h3 style="margin: 0 0 4px 0; font-size: 16px; font-weight: 700;">Aksi Pembersihan Server (Manual &amp; Terkendali)</h3>
+                    <p style="margin: 0; color: var(--color-muted); font-size: 13px;">
+                        Setiap aksi menampilkan pratinjau volume data yang akan dihapus. Dibatasi maksimal 5 kali per jam per admin.
+                    </p>
+                </div>
+
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px;">
+
+                    <!-- AKSI 1: FILE SEMENTARA -->
+                    <div style="background-color: var(--color-surface-muted); border: 1px solid var(--color-border); border-radius: 8px; padding: 14px; display: flex; flex-direction: column; justify-content: space-between;">
+                        <div>
+                            <div style="font-weight: 700; font-size: 13px; margin-bottom: 4px;">File Sementara (data/tmp)</div>
+                            <p style="margin: 0 0 10px 0; font-size: 12px; color: var(--color-muted);">
+                                Berkas pratinjau unggahan nomor kadaluwarsa (&gt; 1 jam).
+                            </p>
+                            <div style="font-size: 12px; margin-bottom: 12px; padding: 6px 8px; background-color: var(--color-card); border-radius: 4px;">
+                                <strong>Pratinjau:</strong> {{.TmpPreview.FileCount}} file ({{.TmpPreview.PrettySize}})
+                            </div>
+                        </div>
+                        <form method="POST" action="/admin/storage/clean-tmp" class="form-confirm-action" data-confirm="Hapus {{.TmpPreview.FileCount}} file sementara di data/tmp?">
+                            <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+                            <button type="submit" class="btn btn-secondary" style="width: 100%; font-size: 12px;" {{if eq .TmpPreview.FileCount 0}}disabled{{end}}>
+                                Bersihkan File Sementara
+                            </button>
+                        </form>
+                    </div>
+
+                    <!-- AKSI 2: FILE YATIM UPLOADS -->
+                    <div style="background-color: var(--color-surface-muted); border: 1px solid var(--color-border); border-radius: 8px; padding: 14px; display: flex; flex-direction: column; justify-content: space-between;">
+                        <div>
+                            <div style="font-weight: 700; font-size: 13px; margin-bottom: 4px;">File Gambar Yatim (uploads/)</div>
+                            <p style="margin: 0 0 10px 0; font-size: 12px; color: var(--color-muted);">
+                                File gambar di server yang tidak lagi terikat pada kampanye mana pun.
+                            </p>
+                            <div style="font-size: 12px; margin-bottom: 12px; padding: 6px 8px; background-color: var(--color-card); border-radius: 4px;">
+                                <strong>Pratinjau:</strong> {{.OrphansPreview.FileCount}} file ({{.OrphansPreview.PrettySize}})
+                            </div>
+                        </div>
+                        <form method="POST" action="/admin/storage/clean-orphans" class="form-confirm-action" data-confirm="Hapus {{.OrphansPreview.FileCount}} file gambar yatim dari server?">
+                            <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+                            <button type="submit" class="btn btn-secondary" style="width: 100%; font-size: 12px;" {{if eq .OrphansPreview.FileCount 0}}disabled{{end}}>
+                                Bersihkan File Yatim
+                            </button>
+                        </form>
+                    </div>
+
+                    <!-- AKSI 3: RETENSI SISTEM -->
+                    <div style="background-color: var(--color-surface-muted); border: 1px solid var(--color-border); border-radius: 8px; padding: 14px; display: flex; flex-direction: column; justify-content: space-between;">
+                        <div>
+                            <div style="font-weight: 700; font-size: 13px; margin-bottom: 4px;">Data Retensi Sistem</div>
+                            <p style="margin: 0 0 10px 0; font-size: 12px; color: var(--color-muted);">
+                                Sesi kedaluwarsa, audit log gagal &gt; 30 hari, notifikasi dibaca &gt; 90 hari.
+                            </p>
+                            <div style="font-size: 12px; margin-bottom: 12px; padding: 6px 8px; background-color: var(--color-card); border-radius: 4px;">
+                                <strong>Pratinjau:</strong> {{.RetentionPreview.TotalRows}} baris siap dibersihkan ({{.RetentionPreview.ExpiredSessions}} sesi, {{.RetentionPreview.FailedAudits}} audit gagal, {{.RetentionPreview.ReadNotifs}} notif)
+                            </div>
+                        </div>
+                        <form method="POST" action="/admin/storage/clean-retention" class="form-confirm-action" data-confirm="Hapus {{.RetentionPreview.TotalRows}} baris data retensi lama dari database?">
+                            <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+                            <button type="submit" class="btn btn-secondary" style="width: 100%; font-size: 12px;" {{if eq .RetentionPreview.TotalRows 0}}disabled{{end}}>
+                                Bersihkan Data Retensi
+                            </button>
+                        </form>
+                    </div>
+
+                    <!-- AKSI 4: VACUUM ANALYZE -->
+                    <div style="background-color: var(--color-surface-muted); border: 1px solid var(--color-border); border-radius: 8px; padding: 14px; display: flex; flex-direction: column; justify-content: space-between;">
+                        <div>
+                            <div style="font-weight: 700; font-size: 13px; margin-bottom: 4px;">Optimasi Database (VACUUM)</div>
+                            <p style="margin: 0 0 10px 0; font-size: 12px; color: var(--color-muted);">
+                                Jalankan VACUUM ANALYZE pada tabel-tabel utama (bukan FULL, tanpa lock eksklusif).
+                            </p>
+                            <div style="font-size: 12px; margin-bottom: 12px; padding: 6px 8px; background-color: var(--color-card); border-radius: 4px;">
+                                <strong>Pratinjau Dead Tuples:</strong>
+                                {{range .VacuumStats}}
+                                <div style="font-size: 11px; display: flex; justify-content: space-between;">
+                                    <span>{{.TableName}}:</span>
+                                    <span>{{.DeadTuples}} dead</span>
+                                </div>
+                                {{end}}
+                            </div>
+                        </div>
+                        <form method="POST" action="/admin/storage/vacuum" class="form-confirm-action" data-confirm="Jalankan VACUUM ANALYZE pada semua tabel database utama sekarang?">
+                            <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+                            <button type="submit" class="btn btn-primary" style="width: 100%; font-size: 12px;">
+                                Jalankan VACUUM ANALYZE
+                            </button>
+                        </form>
+                    </div>
+
+                </div>
+            </div>
+
+            <!-- DAFTAR KAMPANYE TERARSIP & SELESAI -->
+            <div style="background-color: var(--color-card); border: 1px solid var(--color-border); border-radius: 8px; padding: 20px; box-shadow: 0 2px 4px var(--color-shadow);">
+                <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 16px; border-bottom: 1px solid var(--color-border); padding-bottom: 10px;">
+                    <div>
+                        <h3 style="margin: 0 0 4px 0; font-size: 16px; font-weight: 700;">Kampanye Terarsip &amp; Selesai</h3>
+                        <p style="margin: 0; color: var(--color-muted); font-size: 13px;">
+                            Kampanye yang tidak aktif. Nomor customer dapat dibersihkan dan dianonimkan untuk menjaga privasi customer.
+                        </p>
+                    </div>
+                </div>
+
+                <!-- TABEL KAMPANYE -->
+                <div style="overflow-x: auto;">
+                    <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+                        <thead>
+                            <tr style="text-align: left; border-bottom: 1px solid var(--color-border); color: var(--color-muted);">
+                                <th style="padding: 10px 8px;">Kampanye</th>
+                                <th style="padding: 10px 8px;">Status</th>
+                                <th style="padding: 10px 8px;">Umur</th>
+                                <th style="padding: 10px 8px; text-align: center;">Tersedia</th>
+                                <th style="padding: 10px 8px; text-align: center;">Terkirim</th>
+                                <th style="padding: 10px 8px; text-align: center;">Gagal</th>
+                                <th style="padding: 10px 8px; text-align: center;">Tidak Ada</th>
+                                <th style="padding: 10px 8px; text-align: center;">Total</th>
+                                <th style="padding: 10px 8px; text-align: center;">Pembersihan</th>
+                                <th style="padding: 10px 8px; text-align: right;">Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {{range .Campaigns}}
+                            <tr style="border-bottom: 1px solid var(--color-border);">
+                                <td style="padding: 10px 8px; font-weight: 600;">
+                                    <a href="/admin/campaigns/{{.ID}}" style="color: var(--color-text); text-decoration: none;">
+                                        {{.Name}}
+                                    </a>
+                                </td>
+                                <td style="padding: 10px 8px;">
+                                    {{if .ArchivedAt}}
+                                    <span class="badge badge-muted" style="font-size: 11px;">Terarsip</span>
+                                    {{else}}
+                                    <span class="badge" style="font-size: 11px; background-color: var(--color-status-done); color: var(--color-on-primary);">Selesai</span>
+                                    {{end}}
+                                </td>
+                                <td style="padding: 10px 8px; color: var(--color-muted);">
+                                    {{.AgeDays}} hari
+                                </td>
+                                <td style="padding: 10px 8px; text-align: center;">{{.Tersedia}}</td>
+                                <td style="padding: 10px 8px; text-align: center; color: var(--color-status-done); font-weight: 600;">{{.Terkirim}}</td>
+                                <td style="padding: 10px 8px; text-align: center; color: var(--color-danger);">{{.Gagal}}</td>
+                                <td style="padding: 10px 8px; text-align: center; color: var(--color-muted);">{{.TidakTerdaftar}}</td>
+                                <td style="padding: 10px 8px; text-align: center; font-weight: 600;">{{.Total}}</td>
+                                <td style="padding: 10px 8px; text-align: center;">
+                                    {{if .IsPurged}}
+                                    <span style="font-size: 11px; font-weight: bold; padding: 2px 8px; border-radius: 12px; background-color: var(--color-surface-muted); color: var(--color-status-done); border: 1px solid var(--color-status-done);">
+                                        Dibersihkan
+                                    </span>
+                                    {{else}}
+                                    <span style="font-size: 11px; font-weight: bold; padding: 2px 8px; border-radius: 12px; background-color: var(--color-surface-muted); color: var(--color-warning); border: 1px solid var(--color-warning);">
+                                        Belum
+                                    </span>
+                                    {{end}}
+                                </td>
+                                <td style="padding: 10px 8px; text-align: right; white-space: nowrap;">
+                                    <a href="/admin/campaigns/{{.ID}}" class="btn btn-secondary" style="padding: 4px 8px; font-size: 12px;">
+                                        Detail
+                                    </a>
+                                </td>
+                            </tr>
+                            {{else}}
+                            <tr>
+                                <td colspan="10" style="padding: 24px; text-align: center; color: var(--color-muted);">
+                                    Tidak ada kampanye terarsip atau selesai saat ini.
+                                </td>
+                            </tr>
+                            {{end}}
+                        </tbody>
+                    </table>
+                </div>
+
+            </div>
+
+        </div>
+    </main>
+</div>
+
+<script nonce="{{ .Nonce }}">
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.form-confirm-action').forEach(function(form) {
+        form.addEventListener('submit', function(e) {
+            var msg = form.getAttribute('data-confirm') || 'Lanjutkan aksi pembersihan ini?';
+            if (!confirm(msg)) {
+                e.preventDefault();
+            }
+        });
+    });
+});
+</script>
+{{end}}

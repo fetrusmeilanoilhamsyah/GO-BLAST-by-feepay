@@ -22,12 +22,21 @@
                 {{ call $.T "campaign.archived_badge" }}
             </span>
             {{end}}
+            {{if .Campaign.PurgedAt}}
+            <span style="padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: bold; background-color: var(--color-surface-muted); color: var(--color-status-done); border: 1px solid var(--color-status-done);">
+                {{ call $.T "campaign.purged_badge" }}
+            </span>
+            {{end}}
         </div>
     </div>
 
-    {{if .Campaign.ArchivedAt}}
+    {{if .Campaign.PurgedAt}}
+    <div style="background-color: var(--color-surface-muted); border: 1px solid var(--color-status-done); color: var(--color-status-done); padding: 12px 16px; border-radius: 6px; margin-bottom: 20px; font-size: 14px;">
+        <strong>Data nomor telah dibersihkan:</strong> Nomor customer telah dianonimkan untuk menjaga privasi customer. Riwayat transaksi buku besar dan laporan 14 hari tetap utuh.
+    </div>
+    {{else if .Campaign.ArchivedAt}}
     <div style="background-color: var(--color-surface-muted); border: 1px solid var(--color-border); color: var(--color-muted); padding: 12px 16px; border-radius: 6px; margin-bottom: 20px; font-size: 14px;">
-        Campaign telah diarsipkan (hanya-baca). Tidak menerima unggahan nomor baru atau modifikasi.
+        <strong>Campaign terarsip (hanya-baca):</strong> Arsip hanya menyembunyikan campaign. Data nomor tetap tersimpan di server sampai Anda membersihkannya dengan tombol "Bersihkan Data Nomor".
     </div>
     {{end}}
 
@@ -102,10 +111,18 @@
             </form>
             <a href="/admin/campaigns/{{.Campaign.ID}}/numbers" class="btn btn-secondary">Tambah Nomor</a>
             {{else}}
+            {{if not .Campaign.ArchivedAt}}
             <form method="post" action="/admin/campaigns/{{.Campaign.ID}}/archive" class="form-confirm-archive" style="margin: 0;">
                 <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
                 <button type="submit" class="btn btn-secondary">{{ call $.T "campaign.archive_btn" }}</button>
             </form>
+            {{end}}
+            {{end}}
+
+            {{if and (ne .Campaign.Status "berjalan") (not .Campaign.PurgedAt)}}
+            <button type="button" class="btn btn-secondary" id="btn-open-purge-modal" style="color: var(--color-danger); border-color: var(--color-danger); font-weight: 600;">
+                {{ call $.T "campaign.purge_btn" }}
+            </button>
             {{end}}
 
             {{if and (not .Campaign.ArchivedAt) (gt .UncertainCount 0)}}
@@ -118,11 +135,65 @@
             {{end}}
         </div>
     </div>
+
+    {{if and (ne .Campaign.Status "berjalan") (not .Campaign.PurgedAt)}}
+    <div id="purge-modal" style="display: none; position: fixed; inset: 0; background-color: var(--color-modal-backdrop); z-index: 9999; align-items: center; justify-content: center;">
+        <div style="background: var(--color-card); border: 1px solid var(--color-border); border-radius: 8px; max-width: 500px; width: 90%; padding: 24px; box-shadow: 0 4px 12px var(--color-shadow);">
+            <h3 style="margin-top: 0; margin-bottom: 12px; color: var(--color-danger); font-size: 18px;">
+                {{ call $.T "campaign.purge_confirm_title" }}
+            </h3>
+            <p style="font-size: 13px; color: var(--color-text); line-height: 1.5; margin-bottom: 16px;">
+                Pembersihan data nomor bersifat <strong>permanen</strong>. Nomor yang belum dikirim (tersedia) akan dihapus. Nomor terkirim, gagal, dan tidak terdaftar akan <strong>dianonimkan</strong> demi perlindungan privasi customer. Buku besar dan laporan performa tidak akan berubah.
+            </p>
+            <form method="POST" action="/admin/campaigns/{{.Campaign.ID}}/purge" id="form-purge-campaign">
+                <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+                
+                {{if .Campaign.ImagePath}}
+                <div style="margin-bottom: 16px; padding: 10px; background: var(--color-surface-muted); border-radius: 6px;">
+                    <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer;">
+                        <input type="checkbox" name="delete_image" value="1" checked>
+                        <span>Hapus file gambar template dari server (uploads/)</span>
+                    </label>
+                </div>
+                {{end}}
+
+                <div style="margin-bottom: 16px;">
+                    <label style="display: block; font-size: 12px; font-weight: 600; color: var(--color-muted); margin-bottom: 6px;">
+                        Ketik nama campaign persis untuk konfirmasi: <strong style="color: var(--color-text);">{{.Campaign.Name}}</strong>
+                    </label>
+                    <input type="text" name="confirm_name" required placeholder="{{.Campaign.Name}}" autocomplete="off" style="width: 100%; padding: 8px 12px; border: 1px solid var(--color-border); border-radius: 6px; background: var(--color-input-bg); color: var(--color-input-text); font-size: 13px; box-sizing: border-box;">
+                </div>
+
+                <div style="display: flex; justify-content: flex-end; gap: 10px;">
+                    <button type="button" class="btn btn-secondary" id="btn-close-purge-modal">Batal</button>
+                    <button type="submit" class="btn btn-danger" style="background-color: var(--color-danger); color: var(--color-on-primary);">
+                        Konfirmasi &amp; Bersihkan
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+    {{end}}
+
     </div>
     </main>
 </div>
 <script nonce="{{ .Nonce }}">
 document.addEventListener('DOMContentLoaded', function() {
+    var purgeBtn = document.getElementById('btn-open-purge-modal');
+    var purgeModal = document.getElementById('purge-modal');
+    var purgeClose = document.getElementById('btn-close-purge-modal');
+    if (purgeBtn && purgeModal) {
+        purgeBtn.addEventListener('click', function() {
+            purgeModal.style.display = 'flex';
+        });
+    }
+    if (purgeClose && purgeModal) {
+        purgeClose.addEventListener('click', function() {
+            purgeModal.style.display = 'none';
+        });
+    }
+
     document.querySelectorAll('.form-confirm-archive').forEach(function(form) {
         form.addEventListener('submit', function(e) {
             if (!confirm('{{ call $.T "campaign.archive_confirm" }}')) {

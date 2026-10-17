@@ -364,6 +364,56 @@ Sesuai hasil audit Tahap H2 terhadap seluruh kode Go (`internal/`, `cmd/`, `web/
    - *Usulan:* Pertahankan kolom ini untuk keperluan pelaporan analitik durasi online akun WhatsApp.
 
 5. **Kolom Persiapan Tahap Berikutnya (Sengaja Disiapkan di H2)**:
-   - `campaigns.purged_at` & `campaigns.purge_summary`: Untuk fitur pembersihan data kampanye (**Tahap H8**).
-   - `users.totp_secret_encrypted`, `users.totp_enabled_at`, `users.totp_last_step`, `web_sessions.stepup_at`, dan tabel `admin_recovery_codes`: Untuk keamanan 2FA TOTP Admin (**Tahap H5b**).
+   - `campaigns.purged_at` & `campaigns.purge_summary`: Diimplementasikan pada **Tahap H8**.
+   - `users.totp_secret_encrypted`, `users.totp_enabled_at`, `users.totp_last_step`, `web_sessions.stepup_at`, dan tabel `admin_recovery_codes`: Diimplementasikan pada **Tahap H5b**.
    - Tabel `backups`: Untuk sistem backup dan verifikasi otomatis (**Tahap H9**).
+
+---
+
+## 7. Siklus Hidup Data, Retensi, dan Pembersihan (Tahap H8)
+
+Sesuai arsitektur dan keputusan pemilik (Opsi B: Pembersihan manual tanpa penghapusan otomatis data customer; nomor terkirim dianonimkan demi privasi), siklus hidup data kampanye dan retensi server diatur sebagai berikut:
+
+### 7.1 Status Siklus Kampanye
+1. **Aktif / Berjalan (`berjalan`)**: Kampanye aktif mendistribusikan target pesan kepada akun WhatsApp pekerja.
+2. **Selesai (`selesai`)**: Seluruh nomor selesai diproses (`finished_at IS NOT NULL`).
+3. **Diarsip (`archived_at IS NOT NULL`)**: Kampanye disembunyikan dari daftar utama admin dan dialihkan menjadi status hanya-baca (*read-only*). **Pengarsipan tidak menghapus data apa pun**; semua nomor, riwayat pengiriman, dan berkas CSV tetap utuh hingga admin menjalankan pembersihan manual.
+4. **Dibersihkan (`purged_at IS NOT NULL`)**: Admin secara manual mengeksekusi aksi *Purge* setelah masa retensi atau setelah kampanye selesai/diarsip.
+
+### 7.2 Prosedur Pembersihan Kampanye (*Purge*, Opsi B)
+Aksi pembersihan kampanye dijalankan melalui `POST /admin/campaigns/{id}/purge` dengan perlindungan Step-Up TOTP dan validasi nama kampanye:
+- **Pencatatan Snapshot Ringkasan (`campaigns.purge_summary`)**:
+  Sebelum mutasi data, sistem menghitung dan merekam snapshot statistik ke dalam kolom JSONB:
+  `{"total": N, "terkirim": N, "gagal": N, "tidak_terdaftar": N, "dihapus_tersedia": N}`.
+- **Penghapusan Nomor Tersedia**:
+  Hanya nomor dengan status `'tersedia'` (belum pernah diambil/diproses) yang dihapus secara fisik dari database.
+- **Anonimisasi Data Customer**:
+  Nomor dengan status `'terkirim'`, `'gagal'`, dan `'tidak_terdaftar'` **tidak dihapus** melainkan disamarkan:
+  - `phone_e164` diubah menjadi `'x' || id` (pseudonim deterministik unik).
+  - `country_code` diubah menjadi `'XX'`.
+  - `recipient_name` dikosongkan (`NULL`).
+  - `custom_data` dikosongkan (`NULL`).
+- **Sanitasi Pesan Kesalahan (`last_error`)**:
+  - Pada nomor `'terkirim'` dan `'tidak_terdaftar'`, `last_error` dikosongkan (`NULL`).
+  - Pada nomor `'gagal'`, `last_error` disanitasi: jika memuat nilai whitelist (`hasil_tidak_pasti`, `terkirim_tidak_tercatat`, `galat_internal`), nilai dipertahankan; selain itu disederhanakan menjadi `'lainnya'` untuk menghindari kebocoran nomor atau data sensitif di pesan error WhatsApp.
+- **Integritas Finansial & Audit Ledger**:
+  Constraint `FOREIGN KEY (campaign_number_id) REFERENCES campaign_numbers(id) ON DELETE RESTRICT` pada tabel `ledger_entries` tetap terjaga utuh. Catatan upah pekerja, komisi referral, dan saldo dompet tidak mengalami perubahan maupun fragmentasi.
+- **Pembersihan Berkas Batch**:
+  Kolom `number_batches.filename` dikosongkan (`''`), dan berkas gambar template kampanye di folder `uploads/` dapat dihapus jika dipilih admin dan tidak digunakan kampanye aktif lain.
+- **Waktu Purge**:
+  Kolom `campaigns.purged_at` diisi `CURRENT_TIMESTAMP`.
+
+### 7.3 Retensi Server & Pembersihan Rutin (/admin/storage)
+Halaman admin `/admin/storage` menyediakan metrik visual ukuran database, tabel utama, dan folder server serta 4 aksi pembersihan mandiri (dengan pembatasan laju 5 kali/jam per admin dan proteksi Step-Up TOTP):
+1. **Berkas Unggahan Sementara (`data/tmp/`)**:
+   Membersihkan berkas pecahan CSV dan metadata upload yang kedaluwarsa lebih dari 1 jam (`TmpFilesMaxAge = 1 hour`).
+2. **File Gambar Yatim (`uploads/`)**:
+   Memeriksa disk terhadap database kampanye, lalu menghapus gambar yang tidak lagi dirujuk oleh kampanye mana pun.
+3. **Retensi Data Sistem (Database)**:
+   - Menghapus sesi login kedaluwarsa di tabel `web_sessions` (`expires_at < NOW()`).
+   - Menghapus riwayat audit percobaan login gagal di tabel `audit_logs` (`login_failed`, `login_rejected`, `totp_login_failed`, `admin_stepup_failed`) yang berumur lebih dari 30 hari.
+   - Menghapus notifikasi pekerja yang telah dibaca di tabel `notifications` (`read_at IS NOT NULL`) yang berumur lebih dari 90 hari.
+4. **Optimasi Penyimpanan Database (`VACUUM ANALYZE`)**:
+   Menjalankan `VACUUM ANALYZE` secara mandiri pada koneksi khusus dengan batas waktu kunci aman (`SET lock_timeout = '5s'`) untuk 4 tabel dengan churn tinggi: `campaign_numbers`, `ledger_entries`, `audit_logs`, dan `web_sessions`.
+5. **Pengingat Retensi Kampanye Terarsip**:
+   Fitur pemeriksaan kesehatan di `/admin/maintenance` mendeteksi kampanye terarsip yang berumur lebih dari 90 hari dan belum dibersihkan, menampilkan peringatan agar admin mempertimbangkan pembersihan data demi efisiensi storage VPS.

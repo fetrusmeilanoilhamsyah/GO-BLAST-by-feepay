@@ -31,7 +31,7 @@ func (s *Server) HandleAdminCampaigns(w http.ResponseWriter, r *http.Request) {
 
 	showArchived := r.URL.Query().Get("show_archived") == "1" || r.URL.Query().Get("archived") == "1"
 
-	query := "SELECT id, name, status, button_mode, created_at, archived_at, started_at FROM campaigns"
+	query := "SELECT id, name, status, button_mode, created_at, archived_at, started_at, purged_at FROM campaigns"
 	if !showArchived {
 		query += " WHERE archived_at IS NULL"
 	}
@@ -48,7 +48,7 @@ func (s *Server) HandleAdminCampaigns(w http.ResponseWriter, r *http.Request) {
 	var campaigns []campaign.Campaign
 	for rows.Next() {
 		var c campaign.Campaign
-		if err := rows.Scan(&c.ID, &c.Name, &c.Status, &c.ButtonMode, &c.CreatedAt, &c.ArchivedAt, &c.StartedAt); err != nil {
+		if err := rows.Scan(&c.ID, &c.Name, &c.Status, &c.ButtonMode, &c.CreatedAt, &c.ArchivedAt, &c.StartedAt, &c.PurgedAt); err != nil {
 			continue
 		}
 		campaigns = append(campaigns, c)
@@ -556,9 +556,9 @@ func (s *Server) HandleAdminCampaignDetail(w http.ResponseWriter, r *http.Reques
 	var elJSON string
 	var imgPath *string
 	err = s.DB.Pool.QueryRow(r.Context(), `
-		SELECT id, name, status, button_mode, body, image_path, elements, created_at, started_at, finished_at, archived_at 
+		SELECT id, name, status, button_mode, body, image_path, elements, created_at, started_at, finished_at, archived_at, purged_at, purge_summary 
 		FROM campaigns WHERE id = $1
-	`, id).Scan(&c.ID, &c.Name, &c.Status, &c.ButtonMode, &c.Body, &imgPath, &elJSON, &c.CreatedAt, &c.StartedAt, &c.FinishedAt, &c.ArchivedAt)
+	`, id).Scan(&c.ID, &c.Name, &c.Status, &c.ButtonMode, &c.Body, &imgPath, &elJSON, &c.CreatedAt, &c.StartedAt, &c.FinishedAt, &c.ArchivedAt, &c.PurgedAt, &c.PurgeSummary)
 
 	if err != nil {
 		http.NotFound(w, r)
@@ -594,6 +594,13 @@ func (s *Server) HandleAdminCampaignDetail(w http.ResponseWriter, r *http.Reques
 			}
 		}
 		rows.Close()
+	}
+
+	// Jika campaign sudah dibersihkan, gunakan angka ringkasan historis
+	if c.PurgedAt != nil && c.PurgeSummary != nil {
+		for k, v := range c.PurgeSummary {
+			counts[k] = v
+		}
 	}
 
 	var uncertainCount int
@@ -1104,4 +1111,77 @@ func sanitizeCSVCell(v string) string {
 	}
 	return v
 }
+
+// HandleAdminCampaignPurgePOST membersihkan dan menganonimkan data customer pada campaign (Keputusan Pemilik Opsi B).
+func (s *Server) HandleAdminCampaignPurgePOST(w http.ResponseWriter, r *http.Request) {
+	user, ok := currentUser(r)
+	if !ok || user.Role != "admin" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	idStr := r.PathValue("id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		http.Error(w, "ID tidak valid", http.StatusBadRequest)
+		return
+	}
+
+	lang := "id"
+	if user.Language != "" {
+		lang = user.Language
+	}
+
+	if s.AdminStoragePurgeLimiter != nil {
+		key := fmt.Sprintf("admin_purge_%d", user.ID)
+		if allowed, wait := s.AdminStoragePurgeLimiter.Take(key); !allowed {
+			w.Header().Set("Retry-After", strconv.Itoa(int(wait.Seconds())+1))
+			errMsg := i18n.T(lang, "campaign.err_purge_rate_limit")
+			http.Redirect(w, r, fmt.Sprintf("/admin/campaigns/%d?err=%s", id, url.QueryEscape(errMsg)), http.StatusSeeOther)
+			return
+		}
+	}
+
+	ctx := r.Context()
+
+	var name, status string
+	err = s.DB.Pool.QueryRow(ctx, "SELECT name, status FROM campaigns WHERE id = $1", id).Scan(&name, &status)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+
+	confirmName := strings.TrimSpace(r.FormValue("confirm_name"))
+	if confirmName != name {
+		errMsg := i18n.T(lang, "campaign.err_purge_confirm_mismatch")
+		http.Redirect(w, r, fmt.Sprintf("/admin/campaigns/%d?err=%s", id, url.QueryEscape(errMsg)), http.StatusSeeOther)
+		return
+	}
+
+	deleteImage := r.FormValue("delete_image") == "1" || r.FormValue("delete_image") == "true"
+	result, err := campaign.Purge(ctx, s.DB.Pool, id, deleteImage)
+	if err != nil {
+		if errors.Is(err, campaign.ErrCampaignRunning) {
+			errMsg := i18n.T(lang, "campaign.err_purge_running")
+			http.Redirect(w, r, fmt.Sprintf("/admin/campaigns/%d?err=%s", id, url.QueryEscape(errMsg)), http.StatusSeeOther)
+			return
+		}
+		if errors.Is(err, campaign.ErrCampaignHasInFlight) {
+			errMsg := i18n.T(lang, "campaign.err_purge_has_inflight")
+			http.Redirect(w, r, fmt.Sprintf("/admin/campaigns/%d?err=%s", id, url.QueryEscape(errMsg)), http.StatusSeeOther)
+			return
+		}
+		slog.Error("Gagal membersihkan campaign", "err", err, "id", id)
+		http.Error(w, "Terjadi kesalahan sistem saat pembersihan data", http.StatusInternalServerError)
+		return
+	}
+
+	auditMeta := fmt.Sprintf("tersedia_deleted: %d, terkirim_anon: %d, gagal_anon: %d, tidak_terdaftar_anon: %d, image_deleted: %v",
+		result.TersediaDeleted, result.TerkirimAnon, result.GagalAnon, result.TidakTerdaftarAnon, result.ImageDeleted)
+	s.logAudit(&user.ID, "campaign_purge", "campaign", strconv.FormatInt(id, 10), auditMeta)
+
+	msg := i18n.T(lang, "campaign.purge_success")
+	http.Redirect(w, r, fmt.Sprintf("/admin/campaigns/%d?msg=%s", id, url.QueryEscape(msg)), http.StatusSeeOther)
+}
+
 

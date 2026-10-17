@@ -2123,6 +2123,28 @@ func (s *Server) RunHealthChecks(ctx context.Context) []HealthCheckItem {
 		})
 	}
 
+	// 10. Pengingat retensi arsip campaign > 90 hari (Tahap H8)
+	var oldArchivedCount int64
+	_ = s.DB.Pool.QueryRow(ctx, `
+		SELECT COUNT(*) FROM campaigns
+		WHERE archived_at IS NOT NULL AND purged_at IS NULL AND archived_at < NOW() - INTERVAL '90 days'
+	`).Scan(&oldArchivedCount)
+	if oldArchivedCount > 0 {
+		results = append(results, HealthCheckItem{
+			Key:     "archived_campaigns_retention",
+			Name:    "Retensi Kampanye Terarsip",
+			Status:  "peringatan",
+			Message: fmt.Sprintf("Ada %d kampanye terarsip > 90 hari yang belum dibersihkan (pertimbangkan pembersihan di menu Penyimpanan)", oldArchivedCount),
+		})
+	} else {
+		results = append(results, HealthCheckItem{
+			Key:     "archived_campaigns_retention",
+			Name:    "Retensi Kampanye Terarsip",
+			Status:  "ok",
+			Message: "Semua kampanye terarsip dalam batas retensi wajar atau sudah dibersihkan",
+		})
+	}
+
 	return results
 }
 

@@ -85,7 +85,11 @@
             {{end}}
         </div>
         <div style="display: flex; gap: 10px; align-items: center;">
-            <a href="/admin/campaigns/{{.CampaignID}}/numbers" class="btn btn-secondary">Batal</a>
+            <form method="POST" action="/admin/campaigns/{{.CampaignID}}/numbers/cancel" style="margin: 0;">
+                <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+                <input type="hidden" name="preview_id" value="{{.PreviewID}}">
+                <button type="submit" class="btn btn-secondary">Batal</button>
+            </form>
             <form method="POST" action="/admin/campaigns/{{.CampaignID}}/numbers/confirm" style="margin: 0;">
                 <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
                 <input type="hidden" name="preview_id" value="{{.PreviewID}}">

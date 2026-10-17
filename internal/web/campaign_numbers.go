@@ -246,3 +246,21 @@ func (s *Server) HandleAdminCampaignNumbersRejected(w http.ResponseWriter, r *ht
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"rejected_%s.csv\"", previewID))
 	w.Write(data)
 }
+
+// HandleAdminCampaignNumbersCancel POST membatalkan upload preview dan membersihkan berkas sementara
+func (s *Server) HandleAdminCampaignNumbersCancel(w http.ResponseWriter, r *http.Request) {
+	idStr := r.PathValue("id")
+	campaignID, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		http.Error(w, "ID campaign tidak valid", http.StatusBadRequest)
+		return
+	}
+
+	previewID := r.FormValue("preview_id")
+	if previewID != "" && campaign.IsValidPreviewID(previewID) {
+		_ = campaign.CancelUpload(previewID)
+	}
+
+	http.Redirect(w, r, fmt.Sprintf("/admin/campaigns/%d/numbers", campaignID), http.StatusSeeOther)
+}
+

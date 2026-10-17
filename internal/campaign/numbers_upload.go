@@ -387,10 +387,23 @@ func ConfirmUpload(ctx context.Context, db *pgxpool.Pool, campaignID int64, user
 		return err
 	}
 
-	// Clean up temp files
-	os.Remove(metaPath)
-	os.Remove(validPath)
+	// Clean up temp files (meta, valid, and rejected CSV)
+	_ = os.Remove(metaPath)
+	_ = os.Remove(validPath)
+	_ = os.Remove(filepath.Join("data", "tmp", previewID+"_rejected.csv"))
 
+	return nil
+}
+
+// CancelUpload removes all temporary files associated with a preview ID (meta, valid, rejected).
+func CancelUpload(previewID string) error {
+	if !IsValidPreviewID(previewID) {
+		return errors.New("preview ID tidak valid")
+	}
+	tmpDir := filepath.Join("data", "tmp")
+	_ = os.Remove(filepath.Join(tmpDir, previewID+"_meta.json"))
+	_ = os.Remove(filepath.Join(tmpDir, previewID+"_valid.json"))
+	_ = os.Remove(filepath.Join(tmpDir, previewID+"_rejected.csv"))
 	return nil
 }
 
@@ -415,8 +428,8 @@ func CleanTmpFiles(maxAge time.Duration) {
 
 // StartTmpCleaner starts a background goroutine that cleans data/tmp every hour with panic recovery.
 func StartTmpCleaner(ctx context.Context) {
-	CleanTmpFiles(24 * time.Hour)
+	CleanTmpFiles(config.TmpFilesMaxAge)
 	safe.Loop(ctx, "campaign.tmp_cleaner", 1*time.Hour, func(c context.Context) {
-		CleanTmpFiles(24 * time.Hour)
+		CleanTmpFiles(config.TmpFilesMaxAge)
 	})
 }

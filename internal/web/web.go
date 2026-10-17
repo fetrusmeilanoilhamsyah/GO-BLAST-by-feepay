@@ -112,6 +112,8 @@ type Server struct {
 	AdminGlobalLimiter                *ratelimit.Limiter
 	AdminTOTPVerifyLimiter            *ratelimit.Limiter
 	AdminCampaignExportNumbersLimiter *ratelimit.Limiter
+	AdminStoragePurgeLimiter          *ratelimit.Limiter
+	AdminStorageCleanLimiter          *ratelimit.Limiter
 }
 
 func (s *Server) isProd() bool {
@@ -338,6 +340,7 @@ func NewServer(database *db.DB, env string, waMgr *wa.Manager, workCtrl WorkCont
 		"admin_broadcasts.html":               true,
 		"admin_totp_setup.html":               true,
 		"admin_stepup.html":                   true,
+		"admin_storage.html":                  true,
 	}
 
 	pages := []string{
@@ -347,7 +350,7 @@ func NewServer(database *db.DB, env string, waMgr *wa.Manager, workCtrl WorkCont
 		"admin_campaigns.html", "admin_campaign_form.html", "admin_campaign_detail.html",
 		"admin_campaign_numbers.html", "admin_campaign_numbers_preview.html",
 		"admin_tickets.html", "admin_broadcasts.html",
-		"admin_totp_setup.html", "admin_stepup.html",
+		"admin_totp_setup.html", "admin_stepup.html", "admin_storage.html",
 		"worker_accounts.html", "worker_account_new.html",
 		"worker_home.html", "worker_withdrawals.html", "worker_referral.html",
 		"worker_history.html",
@@ -542,6 +545,22 @@ func NewServer(database *db.DB, env string, waMgr *wa.Manager, workCtrl WorkCont
 			Rate:       rate.Every(config.AdminCampaignExportNumbersWindow / time.Duration(config.AdminCampaignExportNumbersAttempts)),
 			Burst:      config.AdminCampaignExportNumbersAttempts,
 			Window:     config.AdminCampaignExportNumbersWindow,
+			MaxKeys:    config.MaxLimiterKeys,
+			FailClosed: true,
+		}),
+		AdminStoragePurgeLimiter: ratelimit.NewLimiter(ratelimit.Config{
+			Layer:      "admin_storage_purge",
+			Rate:       rate.Every(config.AdminStoragePurgeWindow / time.Duration(config.AdminStoragePurgeAttempts)),
+			Burst:      config.AdminStoragePurgeAttempts,
+			Window:     config.AdminStoragePurgeWindow,
+			MaxKeys:    config.MaxLimiterKeys,
+			FailClosed: true,
+		}),
+		AdminStorageCleanLimiter: ratelimit.NewLimiter(ratelimit.Config{
+			Layer:      "admin_storage_clean",
+			Rate:       rate.Every(config.AdminStoragePurgeWindow / time.Duration(config.AdminStoragePurgeAttempts)),
+			Burst:      config.AdminStoragePurgeAttempts,
+			Window:     config.AdminStoragePurgeWindow,
 			MaxKeys:    config.MaxLimiterKeys,
 			FailClosed: true,
 		}),
@@ -763,6 +782,14 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	handle("POST /admin/maintenance/lock/toggle", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.HandleAdminMaintenanceLockTogglePOST, "admin"))))
 	handle("POST /admin/maintenance/restrictions/release", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.HandleAdminMaintenanceRestrictionReleasePOST, "admin"))))
 	handle("POST /admin/maintenance/restrictions/release-all", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.HandleAdminMaintenanceRestrictionReleaseAllPOST, "admin"))))
+
+	// Tahap H8: Penyimpanan Data & Pembersihan Server
+	handle("GET /admin/storage", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.HandleAdminStorageGET, "admin"))))
+	handle("POST /admin/storage/clean-tmp", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.RequireStepUp(s.HandleAdminStorageCleanTmpPOST), "admin"))))
+	handle("POST /admin/storage/clean-orphans", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.RequireStepUp(s.HandleAdminStorageCleanOrphansPOST), "admin"))))
+	handle("POST /admin/storage/clean-retention", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.RequireStepUp(s.HandleAdminStorageCleanRetentionPOST), "admin"))))
+	handle("POST /admin/storage/vacuum", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.RequireStepUp(s.HandleAdminStorageVacuumPOST), "admin"))))
+
 	handle("/admin/", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(func(w http.ResponseWriter, r *http.Request) { http.NotFound(w, r) }, "admin"))))
 
 	// Tahap 8
@@ -775,6 +802,7 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	handle("POST /admin/campaigns/{id}/finish", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignFinish, "admin"))))
 	handle("POST /admin/campaigns/{id}/delete", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignDelete, "admin"))))
 	handle("POST /admin/campaigns/{id}/archive", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignArchive, "admin"))))
+	handle("POST /admin/campaigns/{id}/purge", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.RequireStepUp(s.HandleAdminCampaignPurgePOST), "admin"))))
 	handle("POST /admin/campaigns/{id}/requeue-uncertain", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.RequireStepUp(s.HandleAdminCampaignRequeueUncertain), "admin"))))
 	handle("GET /admin/campaigns/{id}/edit", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignEditGET, "admin"))))
 	handle("POST /admin/campaigns/{id}/edit", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignEditPOST, "admin"))))
@@ -786,6 +814,7 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	handle("GET /admin/campaigns/{id}/numbers/upload", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.RequireStepUp(s.HandleAdminCampaignNumbersGET), "admin"))))
 	handle("POST /admin/campaigns/{id}/numbers/preview", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.RequireStepUp(s.HandleAdminCampaignNumbersPreview), "admin"))))
 	handle("POST /admin/campaigns/{id}/numbers/confirm", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.RequireStepUp(s.HandleAdminCampaignNumbersConfirm), "admin"))))
+	handle("POST /admin/campaigns/{id}/numbers/cancel", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.RequireStepUp(s.HandleAdminCampaignNumbersCancel), "admin"))))
 	handle("GET /admin/campaigns/{id}/numbers/export", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.RequireStepUp(s.HandleAdminCampaignExportNumbers), "admin"))))
 	handle("GET /admin/campaigns/{id}/numbers/rejected/{previewId}", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.HandleAdminCampaignNumbersRejected, "admin"))))
 

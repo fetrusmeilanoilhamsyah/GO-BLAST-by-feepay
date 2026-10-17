@@ -221,5 +221,24 @@ var (
 	AdminCampaignExportNumbersAttempts = 5
 	// AdminCampaignExportNumbersWindow jendela waktu ekspor sisa nomor per admin (1 jam).
 	AdminCampaignExportNumbersWindow = 1 * time.Hour
+
+	// --- Konstanta Retensi dan Pembersihan Tahap H8 ---
+
+	// TmpFilesMaxAge umur maksimal berkas sementara data/tmp sebelum dibersihkan (1 jam).
+	TmpFilesMaxAge = 1 * time.Hour
+
+	// ArchivedPurgeReminderDays batas hari campaign terarsip sebelum memicu pengingat di health check (90 hari).
+	ArchivedPurgeReminderDays = 90
+
+	// AdminStoragePurgeAttempts batas pembersihan campaign per admin per jam (5).
+	AdminStoragePurgeAttempts = 5
+	// AdminStoragePurgeWindow jendela waktu batas pembersihan campaign (1 jam).
+	AdminStoragePurgeWindow = 1 * time.Hour
+
+	// RetentionAuditDays batas retensi log audit login_failed & login_rejected (30 hari).
+	RetentionAuditDays = 30
+
+	// RetentionNotificationDays batas retensi notifikasi terbaca (90 hari).
+	RetentionNotificationDays = 90
 )
 

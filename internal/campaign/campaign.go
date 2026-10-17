@@ -31,10 +31,17 @@ type Campaign struct {
 	Elements   Elements   `json:"elements"`
 	CreatedBy  int64      `json:"created_by"`
 	CreatedAt  time.Time  `json:"created_at"`
-	StartedAt  *time.Time `json:"started_at"`
-	FinishedAt *time.Time `json:"finished_at"`
-	ArchivedAt *time.Time `json:"archived_at"`
+	StartedAt    *time.Time     `json:"started_at"`
+	FinishedAt   *time.Time     `json:"finished_at"`
+	ArchivedAt   *time.Time     `json:"archived_at"`
+	PurgedAt     *time.Time     `json:"purged_at"`
+	PurgeSummary map[string]int `json:"purge_summary"`
 }
+
+func (c Campaign) IsPurged() bool {
+	return c.PurgedAt != nil
+}
+
 
 type Elements struct {
 	CSActive bool   `json:"cs_active"`

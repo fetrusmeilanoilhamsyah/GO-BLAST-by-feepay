@@ -2,6 +2,7 @@ package campaign
 
 import (
 	"context"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -43,14 +44,16 @@ func CampaignAvailableCount(ctx context.Context, q Queryer, campaignID int64) (i
 
 // CampaignStatRow merepresentasikan ringkasan jumlah nomor per status untuk sebuah kampanye.
 type CampaignStatRow struct {
-	ID             int64  `json:"id"`
-	Name           string `json:"name"`
-	Status         string `json:"status"`
-	Tersedia       int    `json:"tersedia"`
-	Dikirim        int    `json:"dikirim"`
-	Terkirim       int    `json:"terkirim"`
-	Gagal          int    `json:"gagal"`
-	TidakTerdaftar int    `json:"tidak_terdaftar"`
+	ID             int64          `json:"id"`
+	Name           string         `json:"name"`
+	Status         string         `json:"status"`
+	PurgedAt       *time.Time     `json:"purged_at"`
+	PurgeSummary   map[string]int `json:"purge_summary"`
+	Tersedia       int            `json:"tersedia"`
+	Dikirim        int            `json:"dikirim"`
+	Terkirim       int            `json:"terkirim"`
+	Gagal          int            `json:"gagal"`
+	TidakTerdaftar int            `json:"tidak_terdaftar"`
 }
 
 type RowsQueryer interface {
@@ -60,7 +63,7 @@ type RowsQueryer interface {
 // GetCampaignStats mengambil ringkasan statistik per kampanye untuk laporan dashboard.
 func GetCampaignStats(ctx context.Context, q RowsQueryer) ([]CampaignStatRow, error) {
 	cRows, err := q.Query(ctx, `
-		SELECT c.id, c.name, c.status,
+		SELECT c.id, c.name, c.status, c.purged_at, c.purge_summary,
 		       COUNT(CASE WHEN cn.status = 'tersedia' THEN 1 END) AS count_tersedia,
 		       COUNT(CASE WHEN cn.status = 'dikirim' THEN 1 END) AS count_dikirim,
 		       COUNT(CASE WHEN cn.status = 'terkirim' THEN 1 END) AS count_terkirim,
@@ -68,7 +71,7 @@ func GetCampaignStats(ctx context.Context, q RowsQueryer) ([]CampaignStatRow, er
 		       COUNT(CASE WHEN cn.status = 'tidak_terdaftar' THEN 1 END) AS count_tidak_terdaftar
 		FROM campaigns c
 		LEFT JOIN campaign_numbers cn ON cn.campaign_id = c.id
-		GROUP BY c.id, c.name, c.status
+		GROUP BY c.id, c.name, c.status, c.purged_at, c.purge_summary
 		ORDER BY c.id DESC
 	`)
 	if err != nil {
@@ -79,7 +82,13 @@ func GetCampaignStats(ctx context.Context, q RowsQueryer) ([]CampaignStatRow, er
 	var campaigns []CampaignStatRow
 	for cRows.Next() {
 		var c CampaignStatRow
-		if err := cRows.Scan(&c.ID, &c.Name, &c.Status, &c.Tersedia, &c.Dikirim, &c.Terkirim, &c.Gagal, &c.TidakTerdaftar); err == nil {
+		if err := cRows.Scan(&c.ID, &c.Name, &c.Status, &c.PurgedAt, &c.PurgeSummary, &c.Tersedia, &c.Dikirim, &c.Terkirim, &c.Gagal, &c.TidakTerdaftar); err == nil {
+			// Jika sudah dibersihkan, gunakan nilai tersedia historis dari purge_summary jika ada
+			if c.PurgedAt != nil && c.PurgeSummary != nil {
+				if histTersedia, ok := c.PurgeSummary["tersedia"]; ok && c.Tersedia == 0 {
+					c.Tersedia = histTersedia
+				}
+			}
 			campaigns = append(campaigns, c)
 		}
 	}
@@ -131,4 +140,71 @@ func QueryAvailableExportNumbers(ctx context.Context, q RowsQueryer, campaignID 
 		ORDER BY id ASC
 	`, campaignID)
 }
+
+// DeleteAvailableCampaignNumbers menghapus seluruh nomor berstatus tersedia milik suatu campaign (digunakan saat Purge).
+func DeleteAvailableCampaignNumbers(ctx context.Context, tx pgx.Tx, campaignID int64) (int64, error) {
+	tag, err := tx.Exec(ctx, "DELETE FROM campaign_numbers WHERE campaign_id = $1 AND status = 'tersedia'", campaignID)
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
+}
+
+type StorageCampaignStatRow struct {
+	ID             int64          `json:"id"`
+	Name           string         `json:"name"`
+	Status         string         `json:"status"`
+	CreatedAt      time.Time      `json:"created_at"`
+	ArchivedAt     *time.Time     `json:"archived_at"`
+	PurgedAt       *time.Time     `json:"purged_at"`
+	PurgeSummary   map[string]int `json:"purge_summary"`
+	Tersedia       int            `json:"tersedia"`
+	Dikirim        int            `json:"dikirim"`
+	Terkirim       int            `json:"terkirim"`
+	Gagal          int            `json:"gagal"`
+	TidakTerdaftar int            `json:"tidak_terdaftar"`
+}
+
+// GetStorageCampaignStats mengambil data kampanye yang terarsip atau selesai untuk halaman penyimpanan data.
+func GetStorageCampaignStats(ctx context.Context, q RowsQueryer) ([]StorageCampaignStatRow, error) {
+	rows, err := q.Query(ctx, `
+		SELECT c.id, c.name, c.status, c.created_at, c.archived_at, c.purged_at, c.purge_summary,
+		       COUNT(CASE WHEN cn.status = 'tersedia' THEN 1 END) AS count_tersedia,
+		       COUNT(CASE WHEN cn.status = 'dikirim' THEN 1 END) AS count_dikirim,
+		       COUNT(CASE WHEN cn.status = 'terkirim' THEN 1 END) AS count_terkirim,
+		       COUNT(CASE WHEN cn.status = 'gagal' THEN 1 END) AS count_gagal,
+		       COUNT(CASE WHEN cn.status = 'tidak_terdaftar' THEN 1 END) AS count_tidak_terdaftar
+		FROM campaigns c
+		LEFT JOIN campaign_numbers cn ON cn.campaign_id = c.id
+		WHERE c.archived_at IS NOT NULL OR c.status = 'selesai'
+		GROUP BY c.id, c.name, c.status, c.created_at, c.archived_at, c.purged_at, c.purge_summary
+		ORDER BY c.id DESC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var results []StorageCampaignStatRow
+	for rows.Next() {
+		var item StorageCampaignStatRow
+		if err := rows.Scan(
+			&item.ID, &item.Name, &item.Status, &item.CreatedAt, &item.ArchivedAt, &item.PurgedAt, &item.PurgeSummary,
+			&item.Tersedia, &item.Dikirim, &item.Terkirim, &item.Gagal, &item.TidakTerdaftar,
+		); err != nil {
+			continue
+		}
+
+		if item.PurgedAt != nil && item.PurgeSummary != nil {
+			if histTersedia, ok := item.PurgeSummary["tersedia"]; ok && item.Tersedia == 0 {
+				item.Tersedia = histTersedia
+			}
+		}
+
+		results = append(results, item)
+	}
+
+	return results, rows.Err()
+}
+
 
