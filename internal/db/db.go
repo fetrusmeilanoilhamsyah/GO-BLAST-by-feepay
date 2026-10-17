@@ -68,6 +68,7 @@ func Connect(ctx context.Context, databaseURL string) (*DB, error) {
 	poolCfg.ConnConfig.RuntimeParams["statement_timeout"] = config.DefaultDBStatementTimeout
 	poolCfg.ConnConfig.RuntimeParams["lock_timeout"] = config.DefaultDBLockTimeout
 	poolCfg.ConnConfig.RuntimeParams["idle_in_transaction_session_timeout"] = config.DefaultDBIdleInTransactionTimeout
+	poolCfg.ConnConfig.RuntimeParams["application_name"] = "goblast"
 
 	pool, err := pgxpool.NewWithConfig(ctx, poolCfg)
 	if err != nil {

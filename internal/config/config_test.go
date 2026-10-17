@@ -211,3 +211,80 @@ func TestCSURLValidation(t *testing.T) {
 	}
 }
 
+func TestConfigBackupKey(t *testing.T) {
+	origEnc := os.Getenv("ENCRYPTION_KEY")
+	origBkp := os.Getenv("BACKUP_KEY")
+	origBkpPrev := os.Getenv("BACKUP_KEY_PREV")
+	origRestore := os.Getenv("ALLOW_WEB_RESTORE")
+	origEnv := os.Getenv("APP_ENV")
+	defer func() {
+		os.Setenv("ENCRYPTION_KEY", origEnc)
+		os.Setenv("BACKUP_KEY", origBkp)
+		os.Setenv("BACKUP_KEY_PREV", origBkpPrev)
+		os.Setenv("ALLOW_WEB_RESTORE", origRestore)
+		os.Setenv("APP_ENV", origEnv)
+	}()
+
+	keyEnc := base64.StdEncoding.EncodeToString([]byte("12345678901234567890123456789012"))
+	os.Setenv("ENCRYPTION_KEY", keyEnc)
+	os.Setenv("APP_ENV", "dev")
+
+	// 1. BACKUP_KEY kosong -> fitur mati dengan peringatan, bukan error
+	os.Unsetenv("BACKUP_KEY")
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatalf("Expected nil error when BACKUP_KEY is empty, got: %v", err)
+	}
+	if cfg.BackupKey != nil {
+		t.Fatalf("Expected nil BackupKey, got: %v", cfg.BackupKey)
+	}
+
+	// 2. BACKUP_KEY sama dengan ENCRYPTION_KEY -> error
+	os.Setenv("BACKUP_KEY", keyEnc)
+	_, err = config.Load()
+	if err == nil {
+		t.Fatalf("Expected error when BACKUP_KEY equals ENCRYPTION_KEY, got nil")
+	}
+
+	// 3. BACKUP_KEY bukan base64 valid -> error
+	os.Setenv("BACKUP_KEY", "bukan-base64!!")
+	_, err = config.Load()
+	if err == nil {
+		t.Fatalf("Expected error when BACKUP_KEY is invalid base64, got nil")
+	}
+
+	// 4. BACKUP_KEY bukan 32 byte -> error
+	os.Setenv("BACKUP_KEY", base64.StdEncoding.EncodeToString([]byte("hanya-16-bytes!!")))
+	_, err = config.Load()
+	if err == nil {
+		t.Fatalf("Expected error when BACKUP_KEY is not 32 bytes, got nil")
+	}
+
+	// 5. BACKUP_KEY valid dan berbeda dari ENCRYPTION_KEY -> sukses
+	keyBkp := base64.StdEncoding.EncodeToString([]byte("abcdefghijklmnopqrstuvwxyz012345"))
+	os.Setenv("BACKUP_KEY", keyBkp)
+	os.Setenv("ALLOW_WEB_RESTORE", "true")
+	cfg, err = config.Load()
+	if err != nil {
+		t.Fatalf("Expected success for valid BACKUP_KEY, got: %v", err)
+	}
+	if cfg.BackupKey == nil || string(cfg.BackupKey) != "abcdefghijklmnopqrstuvwxyz012345" {
+		t.Fatalf("Unexpected BackupKey value")
+	}
+	if !cfg.AllowWebRestore {
+		t.Fatalf("Expected AllowWebRestore=true")
+	}
+
+	// 6. Di produksi: BACKUP_KEY lemah (semua byte sama) -> ditolak
+	os.Setenv("APP_ENV", "prod")
+	os.Setenv("DATABASE_URL", "postgres://user:pass@localhost:5432/db")
+	os.Setenv("SESSION_SECRET", "session_secret_32_characters_long_min")
+	weakKey := base64.StdEncoding.EncodeToString([]byte("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"))
+	os.Setenv("BACKUP_KEY", weakKey)
+	_, err = config.Load()
+	if err == nil {
+		t.Fatalf("Expected error in production for weak BACKUP_KEY, got nil")
+	}
+}
+
+

@@ -188,6 +188,9 @@ Panduan dan aturan mengenai keamanan aplikasi dan prosedur deploy sistem GO BLAS
 | `SESSION_SECRET` | Rahasia cookie sesi dan tanda tangan CSRF (32 byte base64) | `(base64 dari 32 byte acak)` | Wajib |
 | `ENCRYPTION_KEY` | Kunci enkripsi data rekening penarikan (32 byte base64) | `(base64 dari 32 byte acak)` | Wajib |
 | `ENCRYPTION_KEY_PREV` | Kunci enkripsi versi sebelumnya (rotasi kunci) | `(base64 dari 32 byte)` | Opsional |
+| `BACKUP_KEY` | Kunci enkripsi cadangan database (.gbak) AES-256-GCM (32 byte base64) | `(base64 dari 32 byte acak)` | Wajib untuk fitur backup |
+| `BACKUP_KEY_PREV` | Kunci cadangan versi sebelumnya untuk rotasi kunci cadangan | `(base64 dari 32 byte)` | Opsional |
+| `ALLOW_WEB_RESTORE` | Mengizinkan pemulihan database melalui antarmuka panel admin | `false` (default false) | Opsional |
 | `TRUSTED_PROXY_CIDRS` | Daftar CIDR proxy tepercaya untuk parsing IP asli klien (Cloudflare & Loopback) | `127.0.0.1/32,::1/128,173.245.48.0/20,...` | Opsional (default internal/Cloudflare) |
 | `CLIENT_IP_HEADER` | Nama header IP klien asli dari reverse proxy | `CF-Connecting-IP` | Opsional (default CF-Connecting-IP) |
 | `TURNSTILE_SITE_KEY` | Site key Cloudflare Turnstile publik | `0x4AAAAAA...` | Opsional |
@@ -212,11 +215,73 @@ Penjelasan:
 - Lakukan deploy atau restart hanya di jam sepi, dan persiapkan pemberitahuan ke pekerja.
 - Restart aplikasi menyebabkan seluruh sesi WhatsApp terputus; pekerja wajib melakukan scan ulang untuk menghubungkan akun.
 
-### B7. Cadangan
-- Lakukan ekspor `pg_dump` secara harian.
-- Pertahankan masa penyimpanan (retention) selama 7 hari.
-- Siapkan langkah memulihkan data (misal `psql "$DATABASE_URL" < backup.sql`).
-- Uji pemulihan cadangan berkala di database terpisah/kosong.
+### B7. Cadangan Database dan Prosedur Pemulihan (Tahap H9)
+Sistem dilengkapi modul cadangan otomatis terenkripsi penuh yang beroperasi tanpa membocorkan kunci enkripsi ke berkas cadangan:
+
+1. **Jadwal dan Retensi Otomatis**:
+   - Cadangan harian dieksekusi otomatis setiap pukul **03:00 WIB**.
+   - Skema retensi GFS: menyimpan 7 cadangan harian dan 4 cadangan mingguan.
+   - Pengecekan otomatis ruang disk: minimal 2x ukuran cadangan terakhir atau 100 MB ruang kosong sebelum pembuatan cadangan dimulai.
+   - Cadangan terverifikasi terakhir dijamin **tidak pernah dihapus** oleh sistem retensi maupun penghapusan manual.
+   - Berkas cadangan fisik disimpan di folder `backups/` dalam format `.gbak` (AES-256-GCM 64 KB streaming chunks + kompresi gzip + trailer integritas).
+   - Seluruh tabel `whatsmeow_*`, `web_sessions`, dan `goose_db_version` **dikecualikan secara ketat**.
+
+2. **Penyalinan Salinan Luar Server (Off-Site Backup)**:
+   Pemilik wajib menyimpan salinan di luar server VPS secara berkala:
+   - **Manual melalui Panel Admin**:
+     Buka menu `/admin/backups`, pilih berkas cadangan terbaru, lalu klik **Unduh**. Aksi ini dilindungi oleh Step-Up TOTP 2FA.
+   - **Otomatis via rclone (direkomendasikan)**:
+     Pasang `rclone` di server VPS dan arahkan sinkronisasi ke penyimpanan cloud terpisah (seperti Cloudflare R2, AWS S3, atau Wasabi):
+     ```bash
+     # Contoh sinkronisasi harian pukul 04:00 WIB via cron:
+     rclone sync /var/www/goblast/backups/ remote-s3:goblast-offsite-backups/ --fast-list
+     ```
+   - **Otomatis via scp ke komputer/laptop pribadi pemilik**:
+     ```bash
+     scp -P 22 deploy@vps.goblast.id:/var/www/goblast/backups/*.gbak ~/Backups/goblast/
+     ```
+
+3. **Prosedur Pemulihan Bencana (Disaster Recovery Drill)**:
+   Pemulihan penuh basis data dieksekusi secara atomik menggunakan perintah CLI resmi.
+
+   **Skenario A: Pemulihan ke Database Kosong (Bencana Total)**
+   ```bash
+   # 1. Pastikan aplikasi GO BLAST tidak berjalan
+   sudo systemctl stop goblast
+
+   # 2. Siapkan database PostgreSQL target baru yang bersih
+   createdb -h localhost -U postgres goblast
+
+   # 3. Jalankan migrasi hingga versi terbaru
+   ./goblast migrate up
+
+   # 4. Eksekusi pemulihan dari berkas .gbak
+   ./goblast restore --file /var/www/goblast/backups/20261017_030000_otomatis_abc123.gbak
+
+   # 5. Nyalakan kembali aplikasi
+   sudo systemctl start goblast
+   ```
+
+   **Skenario B: Pemulihan ke Database yang Tidak Kosong**
+   ```bash
+   # Gunakan bendera --force-nonempty (sistem akan meminta konfirmasi ketik kata 'RESTORE')
+   ./goblast restore --file /var/www/goblast/backups/20261017_030000_otomatis_abc123.gbak --force-nonempty
+   ```
+
+4. **Verifikasi Pasca-Pemulihan**:
+   Proses pemulihan secara otomatis memvalidasi integritas data:
+   - Menghitung kecocokan baris dengan metadata header.
+   - Mereset seluruh sesi WhatsApp ke status `'terputus'` (pekerja menghubungkan ulang akun secara aman).
+   - Mereset seluruh sequence ID ke `MAX(id)+1`.
+   - Menguji dekripsi sampel rekening penarikan dengan `ENCRYPTION_KEY` aktif.
+   - Memastikan 0 saldo minus, 0 duplikat upah/referral, dan 0 foreign key orphan rows.
+
+5. **Latihan Uji Coba Pemulihan (Restoration Drill)**:
+   Pemilik dianjurkan melakukan uji coba pemulihan pada mesin lokal atau server staging minimal sekali setiap bulan:
+   1. Unduh berkas `.gbak` terbaru dari panel `/admin/backups`.
+   2. Pasang environment pengujian dengan `BACKUP_KEY` dan `ENCRYPTION_KEY` yang sama.
+   3. Jalankan `./goblast restore --file <berkas.gbak> --force-nonempty` pada database pengujian.
+   4. Periksa log hasil pemulihan untuk memastikan seluruh invarian data berstatus lulus (`OK`).
 
 ### B8. Rollback
 - Simpan tiga biner build terakhir yang berhasil di-deploy.

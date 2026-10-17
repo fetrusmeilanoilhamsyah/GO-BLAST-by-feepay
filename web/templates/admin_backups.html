@@ -1,0 +1,226 @@
+{{define "content"}}
+<div class="admin-layout">
+    {{ template "admin_nav" . }}
+    <main class="admin-content">
+        <div style="max-width: 1100px; margin: 0 auto;">
+
+            <!-- PESAN & NOTIFIKASI -->
+            {{if .Message}}
+            <div style="background-color: var(--color-surface-muted); border: 1px solid var(--color-status-done); color: var(--color-status-done); padding: 12px 16px; border-radius: 8px; margin-bottom: 20px; font-weight: 500;">
+                {{.Message}}
+            </div>
+            {{end}}
+            {{if .Error}}
+            <div style="background-color: var(--color-surface-muted); border: 1px solid var(--color-danger); color: var(--color-danger); padding: 12px 16px; border-radius: 8px; margin-bottom: 20px; font-weight: 500;">
+                {{.Error}}
+            </div>
+            {{end}}
+
+            <!-- HEADER UTAMA -->
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 12px;">
+                <div>
+                    <h2 style="margin: 0 0 6px 0; font-size: 22px; font-weight: 800; letter-spacing: -0.02em;">{{ call .T "backup.title" }}</h2>
+                    <p style="margin: 0; color: var(--color-muted); font-size: 14px;">
+                        {{ call .T "backup.desc" }}
+                    </p>
+                </div>
+                <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                    <form method="POST" action="/admin/backups/create" style="margin: 0;">
+                        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+                        <button type="submit" class="btn btn-primary" style="font-size: 13px;">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: -2px; margin-right: 4px;">
+                                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+                                <polyline points="17 21 17 13 7 13 7 21"></polyline>
+                            </svg>
+                            {{ call .T "backup.create_now_btn" }}
+                        </button>
+                    </form>
+                    <a href="/admin/maintenance" class="btn btn-secondary" style="font-size: 13px;">
+                        &larr; {{ call .T "admin.maintenance" }}
+                    </a>
+                </div>
+            </div>
+
+            <!-- PERINGATAN SALINAN KUNCI DI LUAR SERVER -->
+            <div style="background-color: var(--color-surface-muted); border: 1px solid var(--color-warning); border-radius: 8px; padding: 14px 18px; margin-bottom: 24px;">
+                <div style="display: flex; gap: 12px; align-items: flex-start;">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--color-warning)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0; margin-top: 2px;">
+                        <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"></path>
+                        <line x1="12" y1="9" x2="12" y2="13"></line>
+                        <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                    </svg>
+                    <div style="font-size: 13px; color: var(--color-text); line-height: 1.5;">
+                        <strong>PENTING:</strong> {{ call .T "backup.key_warning" }}
+                        <div style="margin-top: 4px; color: var(--color-muted);">
+                            Retensi otomatis: 7 cadangan harian dan 4 mingguan. Cadangan terverifikasi terakhir tidak akan pernah dihapus oleh sistem.
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- RINGKASAN METRIK CADANGAN -->
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin-bottom: 24px;">
+                <div style="background-color: var(--color-card); border: 1px solid var(--color-border); border-radius: 8px; padding: 16px; box-shadow: 0 2px 4px var(--color-shadow);">
+                    <div style="font-size: 12px; font-weight: 600; color: var(--color-muted); text-transform: uppercase; margin-bottom: 4px;">Total Berkas Cadangan</div>
+                    <div style="font-size: 24px; font-weight: 800; color: var(--color-text);">{{.TotalCount}}</div>
+                </div>
+                <div style="background-color: var(--color-card); border: 1px solid var(--color-border); border-radius: 8px; padding: 16px; box-shadow: 0 2px 4px var(--color-shadow);">
+                    <div style="font-size: 12px; font-weight: 600; color: var(--color-muted); text-transform: uppercase; margin-bottom: 4px;">Ukuran Total Cadangan</div>
+                    <div style="font-size: 24px; font-weight: 800; color: var(--color-accent);">{{.TotalSizePretty}}</div>
+                </div>
+                <div style="background-color: var(--color-card); border: 1px solid var(--color-border); border-radius: 8px; padding: 16px; box-shadow: 0 2px 4px var(--color-shadow);">
+                    <div style="font-size: 12px; font-weight: 600; color: var(--color-muted); text-transform: uppercase; margin-bottom: 4px;">Sisa Ruang Disk Bebas</div>
+                    <div style="font-size: 24px; font-weight: 800; color: var(--color-success);">{{.FreeDiskPretty}}</div>
+                </div>
+            </div>
+
+            <!-- DAFTAR CADANGAN (TABEL DESKTOP & KARTU MOBILE) -->
+            <div style="background-color: var(--color-card); border: 1px solid var(--color-border); border-radius: 8px; padding: 20px; box-shadow: 0 2px 4px var(--color-shadow);">
+                <div style="margin-bottom: 16px;">
+                    <h3 style="margin: 0; font-size: 16px; font-weight: 700;">Daftar Berkas Cadangan (.gbak)</h3>
+                </div>
+
+                {{if .Backups}}
+                <!-- DESKTOP TABLE -->
+                <div class="desktop-only" style="overflow-x: auto;">
+                    <table class="table" style="width: 100%; border-collapse: collapse; font-size: 13px;">
+                        <thead>
+                            <tr style="border-bottom: 2px solid var(--color-border); text-align: left;">
+                                <th style="padding: 10px 12px;">Waktu &amp; Jenis</th>
+                                <th style="padding: 10px 12px;">Nama Berkas</th>
+                                <th style="padding: 10px 12px;">Ukuran</th>
+                                <th style="padding: 10px 12px;">Status Verifikasi</th>
+                                <th style="padding: 10px 12px;">Ringkasan Data</th>
+                                <th style="padding: 10px 12px; text-align: right;">Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {{range .Backups}}
+                            <tr style="border-bottom: 1px solid var(--color-border);">
+                                <td style="padding: 12px;">
+                                    <div style="font-weight: 600; color: var(--color-text);">{{.CreatedAt.Format "02/01/2006 15:04"}}</div>
+                                    <div style="display: flex; gap: 6px; align-items: center; margin-top: 4px;">
+                                        <span class="badge {{if eq .Kind "otomatis"}}badge-info{{else if eq .Kind "sebelum_restore"}}badge-warning{{else}}badge-muted{{end}}" style="font-size: 11px;">
+                                            {{.Kind}}
+                                        </span>
+                                        <span style="font-size: 11px; color: var(--color-muted);">{{.AgePretty}}</span>
+                                    </div>
+                                </td>
+                                <td style="padding: 12px;">
+                                    <code style="font-size: 12px; color: var(--color-text);">{{.Filename}}</code>
+                                    <div style="font-size: 11px; color: var(--color-muted); margin-top: 2px;">
+                                        Skema v{{.SchemaVersion}} &bull; SHA: {{.SHAShort}}
+                                    </div>
+                                </td>
+                                <td style="padding: 12px; font-weight: 600;">{{.PrettySize}}</td>
+                                <td style="padding: 12px;">
+                                    {{if .IsVerified}}
+                                        <span class="badge badge-success" style="font-size: 11px;">Terverifikasi</span>
+                                        {{if .VerifiedAt}}
+                                        <div style="font-size: 10px; color: var(--color-muted); margin-top: 2px;">
+                                            {{.VerifiedAt.Format "02/01 15:04"}}
+                                        </div>
+                                        {{end}}
+                                    {{else if .IsFailed}}
+                                        <span class="badge badge-danger" style="font-size: 11px;">Gagal Verifikasi</span>
+                                    {{else}}
+                                        <span class="badge badge-muted" style="font-size: 11px;">Belum Diuji</span>
+                                    {{end}}
+                                </td>
+                                <td style="padding: 12px; font-size: 12px; color: var(--color-muted); max-width: 200px;">
+                                    {{.RowCountsSummary}}
+                                </td>
+                                <td style="padding: 12px; text-align: right;">
+                                    <div style="display: inline-flex; gap: 6px; align-items: center;">
+                                        <!-- VERIFIKASI -->
+                                        <form method="POST" action="/admin/backups/{{.ID}}/verify" style="margin: 0;">
+                                            <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                                            <button type="submit" class="btn btn-secondary" style="padding: 4px 8px; font-size: 12px;" title="Verifikasi integritas berkas">
+                                                {{ call $.T "backup.verify_btn" }}
+                                            </button>
+                                        </form>
+
+                                        <!-- UNDUH (STEP-UP) -->
+                                        <a href="/admin/backups/{{.ID}}/download" class="btn btn-secondary" style="padding: 4px 8px; font-size: 12px;" title="Unduh berkas terenkripsi (Step-Up)">
+                                            {{ call $.T "backup.download_btn" }}
+                                        </a>
+
+                                        <!-- HAPUS (STEP-UP) -->
+                                        <form method="POST" action="/admin/backups/{{.ID}}/delete" style="margin: 0;">
+                                            <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                                            <button type="submit" class="btn btn-secondary" style="padding: 4px 8px; font-size: 12px; color: var(--color-danger);" title="Hapus berkas cadangan">
+                                                {{ call $.T "backup.delete_btn" }}
+                                            </button>
+                                        </form>
+                                    </div>
+                                </td>
+                            </tr>
+                            {{end}}
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- MOBILE CARDS -->
+                <div class="mobile-only" style="display: flex; flex-direction: column; gap: 12px;">
+                    {{range .Backups}}
+                    <div style="background-color: var(--color-surface-muted); border: 1px solid var(--color-border); border-radius: 8px; padding: 14px;">
+                        <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px;">
+                            <span class="badge {{if eq .Kind "otomatis"}}badge-info{{else if eq .Kind "sebelum_restore"}}badge-warning{{else}}badge-muted{{end}}" style="font-size: 11px;">
+                                {{.Kind}}
+                            </span>
+                            <span style="font-weight: 700; font-size: 13px; color: var(--color-accent);">{{.PrettySize}}</span>
+                        </div>
+
+                        <div style="margin-bottom: 6px;">
+                            <code style="font-size: 12px; color: var(--color-text); word-break: break-all;">{{.Filename}}</code>
+                        </div>
+
+                        <div style="font-size: 12px; color: var(--color-muted); margin-bottom: 8px;">
+                            {{.CreatedAt.Format "02/01/2006 15:04"}} &bull; {{.AgePretty}}
+                        </div>
+
+                        <div style="margin-bottom: 12px; font-size: 12px;">
+                            Status:
+                            {{if .IsVerified}}
+                                <span class="badge badge-success" style="font-size: 10px;">Terverifikasi</span>
+                            {{else if .IsFailed}}
+                                <span class="badge badge-danger" style="font-size: 10px;">Gagal</span>
+                            {{else}}
+                                <span class="badge badge-muted" style="font-size: 10px;">Belum Diuji</span>
+                            {{end}}
+                        </div>
+
+                        <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                            <form method="POST" action="/admin/backups/{{.ID}}/verify" style="margin: 0; flex: 1;">
+                                <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                                <button type="submit" class="btn btn-secondary" style="width: 100%; font-size: 12px; padding: 6px;">
+                                    {{ call $.T "backup.verify_btn" }}
+                                </button>
+                            </form>
+
+                            <a href="/admin/backups/{{.ID}}/download" class="btn btn-secondary" style="flex: 1; text-align: center; font-size: 12px; padding: 6px;">
+                                {{ call $.T "backup.download_btn" }}
+                            </a>
+
+                            <form method="POST" action="/admin/backups/{{.ID}}/delete" style="margin: 0; flex: 1;">
+                                <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                                <button type="submit" class="btn btn-secondary" style="width: 100%; font-size: 12px; padding: 6px; color: var(--color-danger);">
+                                    {{ call $.T "backup.delete_btn" }}
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                    {{end}}
+                </div>
+                {{else}}
+                <div style="text-align: center; padding: 40px 20px; color: var(--color-muted); font-size: 14px;">
+                    Belum ada berkas cadangan. Klik "Buat Cadangan Sekarang" untuk membuat cadangan pertama.
+                </div>
+                {{end}}
+
+            </div>
+
+        </div>
+    </main>
+</div>
+{{end}}

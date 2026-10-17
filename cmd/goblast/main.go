@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"goblast/internal/backup"
 	"goblast/internal/campaign"
 	"goblast/internal/config"
 	"goblast/internal/db"
@@ -44,6 +45,9 @@ func main() {
 			return
 		case "reset-totp":
 			runResetTOTP(cfg)
+			return
+		case "restore":
+			runRestore(cfg)
 			return
 		}
 	}
@@ -98,6 +102,18 @@ func main() {
 	srv.Engine = eng
 	srv.EncryptionKey = cfg.EncryptionKey
 	srv.EncryptionKeyPrev = cfg.EncryptionKeyPrev
+
+	// H9: Cadangan database otomatis & manajer backup
+	var backupMgr *backup.Manager
+	if len(cfg.BackupKey) == 32 {
+		backupMgr = backup.NewManager(database.Pool, backup.DefaultBackupDir, cfg.BackupKey, cfg.BackupKeyPrev)
+		backup.StartScheduler(context.Background(), backupMgr)
+	} else {
+		slog.Warn("BACKUP_KEY belum dikonfigurasi atau tidak valid. Fitur cadangan database dan penjadwal harian dinonaktifkan.")
+	}
+	srv.BackupMgr = backupMgr
+	srv.AllowWebRestore = cfg.AllowWebRestore
+
 	srv.CSWhatsAppURL = cfg.CSWhatsAppURL
 	srv.CSTelegramURL = cfg.CSTelegramURL
 	srv.ChannelTelegramURL = cfg.ChannelTelegramURL

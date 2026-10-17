@@ -1,9 +1,11 @@
 package config
 
 import (
+	"bytes"
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/url"
 	"os"
@@ -30,6 +32,9 @@ type Config struct {
 	TurnstileSiteKey   string
 	TurnstileSecretKey string
 	AppPublicHost      string
+	BackupKey          []byte
+	BackupKeyPrev      []byte
+	AllowWebRestore    bool
 }
 
 func Load() (*Config, error) {
@@ -134,6 +139,43 @@ func Load() (*Config, error) {
 		cfg.EncryptionKeyPrev = keyPrev
 	}
 
+	// BACKUP_KEY (32 byte base64; jika kosong matikan fitur dengan peringatan)
+	backupKeyStr := os.Getenv("BACKUP_KEY")
+	if backupKeyStr != "" {
+		bkey, err := base64.StdEncoding.DecodeString(backupKeyStr)
+		if err != nil {
+			return nil, errors.New("BACKUP_KEY is not a valid base64 string")
+		}
+		if len(bkey) != 32 {
+			return nil, errors.New("BACKUP_KEY must be exactly 32 bytes when decoded")
+		}
+		if bytes.Equal(bkey, cfg.EncryptionKey) {
+			return nil, errors.New("BACKUP_KEY cannot be the same as ENCRYPTION_KEY")
+		}
+		cfg.BackupKey = bkey
+	} else {
+		slog.Warn("BACKUP_KEY tidak dikonfigurasi; fitur cadangan database terenkripsi dinonaktifkan")
+	}
+
+	backupKeyPrevStr := os.Getenv("BACKUP_KEY_PREV")
+	if backupKeyPrevStr != "" {
+		bkeyPrev, err := base64.StdEncoding.DecodeString(backupKeyPrevStr)
+		if err != nil {
+			return nil, errors.New("BACKUP_KEY_PREV is not a valid base64 string")
+		}
+		if len(bkeyPrev) != 32 {
+			return nil, errors.New("BACKUP_KEY_PREV must be exactly 32 bytes when decoded")
+		}
+		if bytes.Equal(bkeyPrev, cfg.EncryptionKey) {
+			return nil, errors.New("BACKUP_KEY_PREV cannot be the same as ENCRYPTION_KEY")
+		}
+		cfg.BackupKeyPrev = bkeyPrev
+	}
+
+	if os.Getenv("ALLOW_WEB_RESTORE") == "true" {
+		cfg.AllowWebRestore = true
+	}
+
 	if cfg.AppEnv == "prod" || cfg.AppEnv == "production" {
 		// Validasi APP_ADDR tidak boleh bind public tanpa izin eksplisit
 		host, _, err := net.SplitHostPort(cfg.AppAddr)
@@ -166,6 +208,10 @@ func Load() (*Config, error) {
 
 		if isWeakOrSequentialKey(cfg.EncryptionKey) {
 			return nil, errors.New("ENCRYPTION_KEY semua byte-nya sama atau berpola berurutan di produksi")
+		}
+
+		if cfg.BackupKey != nil && isWeakOrSequentialKey(cfg.BackupKey) {
+			return nil, errors.New("BACKUP_KEY semua byte-nya sama atau berpola berurutan di produksi")
 		}
 
 		if IsTurnstileTestKey(cfg.TurnstileSiteKey) || IsTurnstileTestKey(cfg.TurnstileSecretKey) {

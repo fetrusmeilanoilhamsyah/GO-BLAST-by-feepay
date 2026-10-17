@@ -356,6 +356,20 @@
   "campaign.export_remaining_numbers": "Ekspor Sisa Nomor",
   "campaign.variable_warnings_title": "Peringatan Variabel Pesan",
   "campaign.variable_warnings_hint": "Nomor tanpa data variabel akan dikirim menggunakan teks fallback (jika ada) atau dikosongkan.",
-  "numbers.variable_warnings_title": "Peringatan Variabel Template"
+  "numbers.variable_warnings_title": "Peringatan Variabel Template",
+  "admin.backups": "Cadangan Database",
+  "backup.title": "Cadangan Database & Pemulihan",
+  "backup.desc": "Pencadangan terenkripsi seluruh data sensitif dan file uploads ke berkas .gbak menggunakan AES-256-GCM.",
+  "backup.create_now_btn": "Buat Cadangan Sekarang",
+  "backup.verify_btn": "Verifikasi",
+  "backup.download_btn": "Unduh",
+  "backup.delete_btn": "Hapus",
+  "backup.restore_btn": "Pulihkan",
+  "backup.key_warning": "PERINGATAN: Kunci BACKUP_KEY dan ENCRYPTION_KEY wajib memiliki salinan di luar server. Tanpa kunci tersebut, berkas cadangan tidak dapat dibuka atau dipulihkan.",
+  "backup.web_restore_disabled": "Pemulihan melalui web dinonaktifkan demi keselamatan data. Gunakan perintah CLI 'goblast restore'.",
+  "backup.success_create": "Cadangan database berhasil dibuat dan diverifikasi.",
+  "backup.success_verify": "Verifikasi berkas cadangan berhasil: seluruh potongan, trailer, SHA-256, dan tabel cocok.",
+  "backup.err_verify": "Verifikasi berkas cadangan gagal.",
+  "backup.err_delete_last": "Tidak dapat menghapus cadangan terverifikasi terakhir."
 }
 

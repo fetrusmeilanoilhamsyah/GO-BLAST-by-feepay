@@ -357,6 +357,20 @@
   "campaign.export_remaining_numbers": "Export Remaining Numbers (perlu review penutur asli)",
   "campaign.variable_warnings_title": "Message Variable Warnings (perlu review penutur asli)",
   "campaign.variable_warnings_hint": "Numbers without variable data will be sent using fallback text (if any) or left blank (perlu review penutur asli).",
-  "numbers.variable_warnings_title": "Template Variable Warnings (perlu review penutur asli)"
+  "numbers.variable_warnings_title": "Template Variable Warnings (perlu review penutur asli)",
+  "admin.backups": "Database Backups (perlu review penutur asli)",
+  "backup.title": "Database Backups & Restore (perlu review penutur asli)",
+  "backup.desc": "Encrypted backup of all sensitive data tables and uploads folder into .gbak file using AES-256-GCM (perlu review penutur asli).",
+  "backup.create_now_btn": "Create Backup Now (perlu review penutur asli)",
+  "backup.verify_btn": "Verify (perlu review penutur asli)",
+  "backup.download_btn": "Download (perlu review penutur asli)",
+  "backup.delete_btn": "Delete (perlu review penutur asli)",
+  "backup.restore_btn": "Restore (perlu review penutur asli)",
+  "backup.key_warning": "WARNING: BACKUP_KEY and ENCRYPTION_KEY must have an off-site copy. Without them, backup files cannot be decrypted or restored (perlu review penutur asli).",
+  "backup.web_restore_disabled": "Web restore is disabled for safety. Please use the CLI command 'goblast restore' (perlu review penutur asli).",
+  "backup.success_create": "Database backup created and verified successfully (perlu review penutur asli).",
+  "backup.success_verify": "Backup verification succeeded: all chunks, trailer, SHA-256, and tables match (perlu review penutur asli).",
+  "backup.err_verify": "Backup verification failed (perlu review penutur asli).",
+  "backup.err_delete_last": "Cannot delete the last verified backup (perlu review penutur asli)."
 }
 

@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"goblast/internal/auth"
+	"goblast/internal/backup"
 	"goblast/internal/campaign"
 	"goblast/internal/config"
 	"goblast/internal/db"
@@ -114,6 +115,10 @@ type Server struct {
 	AdminCampaignExportNumbersLimiter *ratelimit.Limiter
 	AdminStoragePurgeLimiter          *ratelimit.Limiter
 	AdminStorageCleanLimiter          *ratelimit.Limiter
+
+	// H9 Cadangan Database & Pemulihan
+	BackupMgr       *backup.Manager
+	AllowWebRestore bool
 }
 
 func (s *Server) isProd() bool {
@@ -341,6 +346,7 @@ func NewServer(database *db.DB, env string, waMgr *wa.Manager, workCtrl WorkCont
 		"admin_totp_setup.html":               true,
 		"admin_stepup.html":                   true,
 		"admin_storage.html":                  true,
+		"admin_backups.html":                  true,
 	}
 
 	pages := []string{
@@ -350,7 +356,7 @@ func NewServer(database *db.DB, env string, waMgr *wa.Manager, workCtrl WorkCont
 		"admin_campaigns.html", "admin_campaign_form.html", "admin_campaign_detail.html",
 		"admin_campaign_numbers.html", "admin_campaign_numbers_preview.html",
 		"admin_tickets.html", "admin_broadcasts.html",
-		"admin_totp_setup.html", "admin_stepup.html", "admin_storage.html",
+		"admin_totp_setup.html", "admin_stepup.html", "admin_storage.html", "admin_backups.html",
 		"worker_accounts.html", "worker_account_new.html",
 		"worker_home.html", "worker_withdrawals.html", "worker_referral.html",
 		"worker_history.html",
@@ -789,6 +795,14 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	handle("POST /admin/storage/clean-orphans", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.RequireStepUp(s.HandleAdminStorageCleanOrphansPOST), "admin"))))
 	handle("POST /admin/storage/clean-retention", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.RequireStepUp(s.HandleAdminStorageCleanRetentionPOST), "admin"))))
 	handle("POST /admin/storage/vacuum", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.RequireStepUp(s.HandleAdminStorageVacuumPOST), "admin"))))
+
+	// Tahap H9: Backup Aman dan Pemulihan
+	handle("GET /admin/backups", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.HandleAdminBackupsGET, "admin"))))
+	handle("POST /admin/backups/create", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.HandleAdminBackupCreatePOST, "admin"))))
+	handle("POST /admin/backups/{id}/verify", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.HandleAdminBackupVerifyPOST, "admin"))))
+	handle("GET /admin/backups/{id}/download", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.RequireStepUp(s.HandleAdminBackupDownloadGET), "admin"))))
+	handle("POST /admin/backups/{id}/delete", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.RequireStepUp(s.HandleAdminBackupDeletePOST), "admin"))))
+	handle("POST /admin/backups/{id}/restore", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.RequireStepUp(s.HandleAdminBackupRestorePOST), "admin"))))
 
 	handle("/admin/", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(func(w http.ResponseWriter, r *http.Request) { http.NotFound(w, r) }, "admin"))))
 

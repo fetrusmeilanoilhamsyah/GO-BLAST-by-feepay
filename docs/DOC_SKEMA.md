@@ -417,3 +417,70 @@ Halaman admin `/admin/storage` menyediakan metrik visual ukuran database, tabel 
    Menjalankan `VACUUM ANALYZE` secara mandiri pada koneksi khusus dengan batas waktu kunci aman (`SET lock_timeout = '5s'`) untuk 4 tabel dengan churn tinggi: `campaign_numbers`, `ledger_entries`, `audit_logs`, dan `web_sessions`.
 5. **Pengingat Retensi Kampanye Terarsip**:
    Fitur pemeriksaan kesehatan di `/admin/maintenance` mendeteksi kampanye terarsip yang berumur lebih dari 90 hari dan belum dibersihkan, menampilkan peringatan agar admin mempertimbangkan pembersihan data demi efisiensi storage VPS.
+
+---
+
+## 8. Cadangan Database Aman dan Pemulihan (Tahap H9)
+
+Sesuai Keputusan M dan N pemilik, arsitektur pencadangan dan pemulihan dirancang untuk menjamin kerahasiaan penuh, integritas data finansial, serta kemudahan audit tanpa menempatkan kunci dekripsi bersama berkas cadangan:
+
+### 8.1 Format Berkas Cadangan (.gbak)
+Berkas cadangan biner berekstensi `.gbak` menggunakan format chunk streaming AES-256-GCM + kompresi gzip:
+1. **Header JSON Tidak Terenkripsi (64 KB Pertama)**:
+   - Magic: `GOBLAST1` (8 byte).
+   - Format metadata JSON: `version` (skema DB), `created_at`, `kind` (`otomatis`, `manual`, `sebelum_restore`), `key_id` (SHA-256 8 byte pertama dari `BACKUP_KEY`), `total_rows`, `table_meta` (nama tabel, baris, bytes), dan `has_uploads`.
+   - Kegunaan: Admin dapat menginspeksi versi skema, umur berkas, dan ringkasan data tanpa perlu membuka kunci enkripsi.
+2. **Stream Potongan Data Terenkripsi (Chunk Streaming)**:
+   - Setiap potongan berukuran 64 KB dikompresi gzip lalu dienkripsi menggunakan AES-256-GCM.
+   - Nonce 12-byte unik untuk setiap potongan: 4 byte prefiks acak + 8 byte *big-endian chunk counter* (mencegah *nonce reuse*).
+   - *Additional Authenticated Data* (AAD) 41 byte: Hash SHA-256 dari header + indeks chunk + flag isLast (mencegah manipulasi urutan chunk atau pemotongan berkas di tengah stream).
+3. **Trailer Integritas (Trailer EOF)**:
+   - Magic: `GBAKEND1` (8 byte).
+   - Hash SHA-256 dari seluruh payload terenkripsi + total potongan yang ditulis.
+
+### 8.2 Eksklusi Tabel Sensitif
+Demi keamanan dan keselarasan arsitektur sistem:
+1. **`whatsmeow_*`**:
+   - Seluruh tabel sesi dan kunci perangkat WhatsApp (`whatsmeow_device`, `whatsmeow_identity_keys`, `whatsmeow_pre_keys`, `whatsmeow_sessions`, `whatsmeow_sender_keys`, `whatsmeow_app_state_sync_keys`, `whatsmeow_app_state_version`) **dikecualikan dari cadangan**.
+   - Alasan: Sesuai Keputusan B1 dan Dokumen Konsep Bagian 11, kunci sesi perangkat WhatsApp tidak boleh bertahan atau disalin ke lingkungan lain; sesi lama harus dibersihkan dan pekerja wajib melakukan scan ulang.
+2. **`web_sessions`**:
+   - Sesi login berbasis cookie diabaikan demi keamanan (memaksa login ulang pasca-pemulihan).
+3. **`goose_db_version`**:
+   - Dikelola langsung oleh alur migrasi Goose dan CLI restore.
+
+### 8.3 Kunci Enkripsi dan Kebijakan Cadangan
+- **`BACKUP_KEY`**: 32 byte base64, terpisah dari `ENCRYPTION_KEY`. Ditolak saat startup jika bernilai sama dengan `ENCRYPTION_KEY` untuk menegakkan pemisahan domain keamanan (*security domain separation*).
+- **`BACKUP_KEY_PREV`**: Kunci cadangan generasi sebelumnya untuk mendukung rotasi kunci tanpa merusak kemampuan memverifikasi atau memulihkan cadangan lama.
+- Salinan kunci wajib disimpan pemilik di luar server (misal di password manager terisolasi).
+
+### 8.4 Penjadwalan & Aturan Retensi (GFS)
+- **Otomatis Harian**: Berjalan setiap pukul 03:00 WIB via background goroutine terproteksi panic (`safe.Go`).
+- **Pengecekan Ruang Disk**: Sebelum cadangan dimulai, sistem memastikan sisa ruang disk bebas minimal 2x ukuran cadangan terakhir atau 100 MB.
+- **Retensi Kakek-Ayah-Anak (GFS)**:
+  - Menyimpan 7 cadangan harian terbaru.
+  - Menyimpan 4 cadangan mingguan (cadangan hari Minggu).
+  - **Garansi Keras**: Cadangan terverifikasi terakhir **DILARANG DIHAPUS** dalam kondisi apa pun oleh scheduler maupun penghapusan manual di panel admin.
+
+### 8.5 Pemulihan Database (Restore)
+1. **Perintah CLI Atomik**:
+   `goblast restore --file <path_ke_file.gbak> [--force-nonempty] [--i-stopped-the-app]`
+2. **Tahapan Pemulihan**:
+   - Seluruh proses berjalan dalam **1 transaksi PostgreSQL tunggal** (`tx`).
+   - Trigger proteksi append-only (`trg_prevent_ledger_update_delete`) dan trigger saldo (`trg_check_withdrawal_balance`) dinonaktifkan sementara di dalam transaksi.
+   - Tabel dikosongkan berurutan terbalik dari dependensi foreign key.
+   - Data dialirkan via `COPY FROM STDIN` streaming langsung dari pembaca AES-256-GCM.
+   - Seluruh akun WhatsApp di tabel `wa_accounts` diatur ulang statusnya menjadi `'terputus'`.
+   - Seluruh *sequence* ID diatur ulang ke `COALESCE(MAX(id), 0) + 1`.
+   - Trigger proteksi diaktifkan kembali.
+   - **5 Pemeriksaan Invarian Ketat**:
+     1. Tidak ada akun pengguna bersaldo negatif.
+     2. Tidak ada duplikasi upah untuk `campaign_number_id` yang sama.
+     3. Tidak ada duplikasi referral untuk `campaign_number_id` yang sama.
+     4. Tidak ada baris yatim (*foreign key orphan rows*).
+     5. Jumlah baris yang dipulihkan cocok dengan metadata header cadangan.
+   - **Pengujian Kunci Enkripsi Data Rekening**:
+     Sistem memverifikasi dekripsi sampel tujuan penarikan dengan `ENCRYPTION_KEY` aktif untuk memastikan kunci yang terpasang cocok dengan data yang dipulihkan.
+3. **Pemulihan via Web**:
+   - Mati secara bawaan (`ALLOW_WEB_RESTORE=false`).
+   - Jika diaktifkan admin, wajib dalam mode pemeliharaan (`maintenance_mode = true`), melakukan drain engine (maks 10 detik), konfirmasi ketik kata `RESTORE`, dan membuat cadangan darurat otomatis `sebelum_restore` sebelum mutasi data.
+

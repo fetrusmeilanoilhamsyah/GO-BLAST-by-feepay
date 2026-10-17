@@ -17,6 +17,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"goblast/internal/auth"
+	"goblast/internal/backup"
 	"goblast/internal/campaign"
 	"goblast/internal/config"
 	"goblast/internal/engine"
@@ -165,9 +166,38 @@ func (s *Server) HandleAdminAPIMetrics(w http.ResponseWriter, r *http.Request) {
 	var m runtime.MemStats
 	runtime.ReadMemStats(&m)
 
+	var backupJSON any
+	if s.BackupMgr != nil {
+		ctx := r.Context()
+		totalCount, totalBytes, lastBackupTime, lastVerifiedTime, lastVerifyOK, err := s.BackupMgr.GetStats(ctx)
+		freeDisk, _ := backup.GetFreeDiskSpace(s.BackupMgr.Dir())
+		var lastBackupStr, lastVerifiedStr any
+		if lastBackupTime != nil {
+			lastBackupStr = lastBackupTime.Format(time.RFC3339)
+		}
+		if lastVerifiedTime != nil {
+			lastVerifiedStr = lastVerifiedTime.Format(time.RFC3339)
+		}
+		backupJSON = map[string]any{
+			"enabled":          true,
+			"total_count":      totalCount,
+			"total_bytes":      totalBytes,
+			"free_disk_bytes":  freeDisk,
+			"last_backup_at":   lastBackupStr,
+			"last_verified_at": lastVerifiedStr,
+			"last_verify_ok":   lastVerifyOK,
+			"stats_error":      err != nil,
+		}
+	} else {
+		backupJSON = map[string]any{
+			"enabled": false,
+		}
+	}
+
 	resp := map[string]any{
 		"engine": engStats,
 		"db":     dbJSON,
+		"backup": backupJSON,
 		"memory": map[string]any{
 			"alloc_bytes":       m.Alloc,
 			"total_alloc_bytes": m.TotalAlloc,
@@ -2143,6 +2173,61 @@ func (s *Server) RunHealthChecks(ctx context.Context) []HealthCheckItem {
 			Status:  "ok",
 			Message: "Semua kampanye terarsip dalam batas retensi wajar atau sudah dibersihkan",
 		})
+	}
+
+	// 11. Status Cadangan Database & Verifikasi (Tahap H9)
+	if s.BackupMgr == nil {
+		results = append(results, HealthCheckItem{
+			Key:     "backup_status",
+			Name:    "Status Cadangan Database (Backup)",
+			Status:  "peringatan",
+			Message: "Cadangan database belum diaktifkan (BACKUP_KEY belum dikonfigurasi)",
+		})
+	} else {
+		totalCount, totalBytes, lastBackupTime, lastVerifiedTime, lastVerifyOK, errStats := s.BackupMgr.GetStats(ctx)
+		freeDisk, _ := backup.GetFreeDiskSpace(s.BackupMgr.Dir())
+		freeDiskPretty := FormatBytes(int64(freeDisk))
+		totalSizePretty := FormatBytes(totalBytes)
+
+		if errStats != nil {
+			results = append(results, HealthCheckItem{
+				Key:     "backup_status",
+				Name:    "Status Cadangan Database (Backup)",
+				Status:  "gagal",
+				Message: fmt.Sprintf("Gagal membaca status cadangan: %v", errStats),
+			})
+		} else if totalCount == 0 || lastBackupTime == nil {
+			results = append(results, HealthCheckItem{
+				Key:     "backup_status",
+				Name:    "Status Cadangan Database (Backup)",
+				Status:  "gagal",
+				Message: fmt.Sprintf("Belum ada cadangan terbuat! (Sisa disk: %s)", freeDiskPretty),
+			})
+		} else {
+			hoursSinceLast := time.Since(*lastBackupTime).Hours()
+			if hoursSinceLast > 36 {
+				results = append(results, HealthCheckItem{
+					Key:     "backup_status",
+					Name:    "Status Cadangan Database (Backup)",
+					Status:  "gagal",
+					Message: fmt.Sprintf("Cadangan terakhir dibuat %.1f jam lalu (> 36 jam)! Total: %d berkas (%s), Sisa disk: %s", hoursSinceLast, totalCount, totalSizePretty, freeDiskPretty),
+				})
+			} else if lastVerifiedTime == nil || !lastVerifyOK {
+				results = append(results, HealthCheckItem{
+					Key:     "backup_status",
+					Name:    "Status Cadangan Database (Backup)",
+					Status:  "peringatan",
+					Message: fmt.Sprintf("Cadangan terakhir %.1f jam lalu tetapi belum ada cadangan terverifikasi valid! Total: %d berkas (%s), Sisa disk: %s", hoursSinceLast, totalCount, totalSizePretty, freeDiskPretty),
+				})
+			} else {
+				results = append(results, HealthCheckItem{
+					Key:     "backup_status",
+					Name:    "Status Cadangan Database (Backup)",
+					Status:  "ok",
+					Message: fmt.Sprintf("Cadangan sehat (terakhir %.1f jam lalu, diverifikasi: %s). Total: %d berkas (%s), Sisa disk: %s", hoursSinceLast, lastVerifiedTime.Format("02/01 15:04"), totalCount, totalSizePretty, freeDiskPretty),
+				})
+			}
+		}
 	}
 
 	return results

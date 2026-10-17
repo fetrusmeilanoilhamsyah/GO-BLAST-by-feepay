@@ -357,6 +357,20 @@
   "campaign.export_remaining_numbers": "导出剩余号码 (perlu review penutur asli)",
   "campaign.variable_warnings_title": "消息变量警告 (perlu review penutur asli)",
   "campaign.variable_warnings_hint": "没有变量数据的号码将使用备用文本（如有）发送或留空 (perlu review penutur asli)。",
-  "numbers.variable_warnings_title": "模板变量警告 (perlu review penutur asli)"
+  "numbers.variable_warnings_title": "模板变量警告 (perlu review penutur asli)",
+  "admin.backups": "数据库备份 (perlu review penutur asli)",
+  "backup.title": "数据库备份与恢复 (perlu review penutur asli)",
+  "backup.desc": "使用 AES-256-GCM 对所有敏感数据表及 uploads 文件夹进行加密备份至 .gbak 文件 (perlu review penutur asli)。",
+  "backup.create_now_btn": "立即创建备份 (perlu review penutur asli)",
+  "backup.verify_btn": "验证 (perlu review penutur asli)",
+  "backup.download_btn": "下载 (perlu review penutur asli)",
+  "backup.delete_btn": "删除 (perlu review penutur asli)",
+  "backup.restore_btn": "恢复 (perlu review penutur asli)",
+  "backup.key_warning": "警告：BACKUP_KEY 和 ENCRYPTION_KEY 必须在服务器外部保留副本。没有这些密钥，将无法解密或恢复备份文件 (perlu review penutur asli)。",
+  "backup.web_restore_disabled": "为了数据安全，已禁用网页恢复。请使用 CLI 命令 'goblast restore' (perlu review penutur asli)。",
+  "backup.success_create": "数据库备份已成功创建并验证 (perlu review penutur asli)。",
+  "backup.success_verify": "备份文件验证成功：所有数据块、结尾标识、SHA-256 和表结构完全匹配 (perlu review penutur asli)。",
+  "backup.err_verify": "备份文件验证失败 (perlu review penutur asli)。",
+  "backup.err_delete_last": "无法删除最后一个已验证的备份 (perlu review penutur asli)。"
 }
 
