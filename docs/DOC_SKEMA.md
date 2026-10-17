@@ -122,7 +122,7 @@ Daftar nomor penerima pesan yang diklaim dan dikirim oleh worker.
 - `last_error` TEXT NULL.
 - Constraint integritas status klaim (migrasi 0019):
   - `check_campaign_numbers_dikirim_has_claim`: `status <> 'dikirim' OR (claimed_account_id IS NOT NULL AND claimed_at IS NOT NULL)`.
-  - `check_campaign_numbers_tersedia_no_account`: `status <> 'tersedia' OR claimed_account_id IS NULL`.
+  - `check_campaign_numbers_tersedia_unclaimed`: `status <> 'tersedia' OR claimed_account_id IS NULL`.
 - Unique constraint: `unique_campaign_phone` UNIQUE (`campaign_id`, `phone_e164`).
 
 ### 2.8 `wa_accounts`
@@ -148,7 +148,7 @@ Buku besar keuangan pekerja (append-only via trigger `trg_prevent_ledger_update_
 - `currency` VARCHAR(10) NOT NULL CHECK (`currency IN ('IDR', 'USDT')`).
 - `amount` BIGINT NOT NULL: Nilai mutasi (positif = kredit, negatif = debit).
 - `rate_snapshot` BIGINT NULL: Salinan tarif saat transaksi terjadi.
-- `campaign_number_id` BIGINT NULL REFERENCES `campaign_numbers(id)` ON DELETE RESTRICT.
+- `campaign_number_id` BIGINT NULL REFERENCES `campaign_numbers(id)` ON DELETE RESTRICT. Indeks FK `idx_ledger_entries_campaign_number_id` (migrasi 0024).
 - `source_user_id` BIGINT NULL REFERENCES `users(id)`.
 - `reverses_entry_id` BIGINT NULL REFERENCES `ledger_entries(id)`.
 - `conversion_id` BIGINT NULL REFERENCES `currency_conversions(id)` ON DELETE RESTRICT.
@@ -156,7 +156,7 @@ Buku besar keuangan pekerja (append-only via trigger `trg_prevent_ledger_update_
 - `created_at` TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP.
 - Constraint integritas referral (migrasi 0022):
   - `check_ledger_entries_referral_source`: `kind <> 'referral' OR (source_user_id IS NOT NULL AND campaign_number_id IS NOT NULL)`.
-  - `idx_ledger_entries_referral_number_unique`: UNIQUE (`campaign_number_id`) WHERE `kind = 'referral'`.
+  - `idx_ledger_entries_referral_unique`: UNIQUE (`campaign_number_id`) WHERE `kind = 'referral'`.
   - `idx_ledger_entries_upah_unique`: UNIQUE (`campaign_number_id`) WHERE `kind = 'upah'`.
 
 ### 2.10 `wallet_entries`
@@ -177,7 +177,7 @@ Catatan permintaan penarikan saldo oleh worker.
 - `method` VARCHAR(50) NOT NULL CHECK (`method IN ('dana', 'seabank', 'bank', 'usdt_bep20')`).
 - `destination_encrypted` TEXT NOT NULL: Tujuan transfer terenkripsi AES-256-GCM.
 - `status` VARCHAR(50) NOT NULL DEFAULT 'menunggu' CHECK (`status IN ('menunggu', 'selesai', 'ditolak')`).
-- `request_token` TEXT NOT NULL: Token idempotensi permintaan penarikan.
+- `request_token` TEXT NOT NULL: Token idempotensi permintaan penarikan. Indeks unik `idx_withdrawals_user_request_token` (`UNIQUE (user_id, request_token)`).
 - `payout_reference` TEXT NULL: Nomor referensi bank / hash transaksi blockchain.
 - `reject_reason` TEXT NULL: Alasan penolakan penarikan oleh admin.
 - `proof_path` TEXT NULL (kolom historis).
@@ -191,7 +191,7 @@ Pencatatan penukaran saldo worker dari IDR ke USDT secara idempoten.
 - `idr_amount` BIGINT NOT NULL CHECK (`idr_amount > 0`).
 - `usdt_micro` BIGINT NOT NULL CHECK (`usdt_micro > 0`).
 - `kurs` BIGINT NOT NULL CHECK (`kurs > 0`).
-- `request_token` VARCHAR(255) NOT NULL.
+- `request_token` VARCHAR(255) NOT NULL. Indeks unik `uq_currency_conversions_user_token` (`UNIQUE (user_id, request_token)`).
 - `created_at` TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP.
 
 ### 2.13 `audit_logs`
@@ -292,15 +292,16 @@ Berikut adalah katalog lengkap 25 Foreign Key di GO BLAST beserta perilaku `ON D
 
 ## 4. Constraint Integritas dan Bisnis
 
-1. `check_campaign_numbers_attempts_nonneg`: `attempts >= 0` (migrasi 0019).
+1. `check_campaign_numbers_attempts_non_negative`: `attempts >= 0` (migrasi 0019).
 2. `check_campaign_numbers_dikirim_has_claim`: `status <> 'dikirim' OR (claimed_account_id IS NOT NULL AND claimed_at IS NOT NULL)` (migrasi 0019).
-3. `check_campaign_numbers_tersedia_no_account`: `status <> 'tersedia' OR claimed_account_id IS NULL` (migrasi 0019).
+3. `check_campaign_numbers_tersedia_unclaimed`: `status <> 'tersedia' OR claimed_account_id IS NULL` (migrasi 0019).
 4. `check_ledger_entries_referral_source`: `kind <> 'referral' OR (source_user_id IS NOT NULL AND campaign_number_id IS NOT NULL)` (migrasi 0022).
-5. `check_backups_kind`: `kind IN ('otomatis', 'manual', 'sebelum_restore')` (migrasi 0023).
-6. `check_backups_size_bytes`: `size_bytes >= 0` (migrasi 0023).
-7. `unique_campaign_phone`: UNIQUE (`campaign_id`, `phone_e164`).
-8. `trg_prevent_ledger_update_delete`: Menolak keras operasi UPDATE dan DELETE pada tabel `ledger_entries`.
-9. `trg_check_withdrawal_balance`: Mengunci baris `users` (FOR UPDATE) pada INSERT `ledger_entries` bertanda negatif (`penarikan` dan `konversi`) untuk memastikan saldo pekerja tidak pernah minus.
+5. `backups_kind_check`: `kind IN ('otomatis', 'manual', 'sebelum_restore')` (migrasi 0023).
+6. `check_referred_by_not_self`: `referred_by <> id` (migrasi 0001).
+7. `unique_campaign_phone`: UNIQUE (`campaign_id`, `phone_e164`) (migrasi 0002).
+8. `uq_currency_conversions_user_token`: UNIQUE (`user_id`, `request_token`) (migrasi 0016).
+9. `trg_prevent_ledger_update_delete`: Menolak keras operasi UPDATE dan DELETE pada tabel `ledger_entries` (migrasi 0014).
+10. `trg_check_withdrawal_balance`: Mengunci baris `users` (FOR UPDATE) pada INSERT `ledger_entries` bertanda negatif (`penarikan` dan `konversi`) untuk memastikan saldo pekerja tidak pernah minus (migrasi 0014/0016).
 
 ---
 
@@ -315,28 +316,38 @@ Berikut daftar seluruh indeks aktif, alasan teknis pembuatan, dan query spesifik
 | `idx_campaign_numbers_claimed_account_release` *(0019)* | `(claimed_account_id) WHERE status = 'dikirim'` | **Query Pelepasan Akun:** Mempercepat pelepasan nomor saat worker terputus/berhenti via `UPDATE campaign_numbers SET status = 'tersedia', claimed_account_id = NULL, claimed_at = NULL WHERE status = 'dikirim' AND claimed_account_id = $1`. |
 | `idx_campaign_numbers_campaign_status` *(0019)* | `(campaign_id, status)` | **Query Agregasi Kampanye:** Mempercepat penghitungan metrik kampanye di panel admin: `SELECT COUNT(*) FROM campaign_numbers WHERE campaign_id = $1 AND status = 'terkirim'/'dikirim'/'tersedia'`. |
 | `idx_campaign_numbers_sent_at` *(0011)* | `(sent_at)` | **Query Tren Laporan Admin:** Mempercepat grafik tren pengiriman 14 hari terakhir di dashboard admin (`sent_at >= $1`). |
+| `unique_campaign_phone` *(0002)* | `UNIQUE (campaign_id, phone_e164)` | **Integritas Nomor Kampanye:** Menjamin nomor tujuan tidak terduplikasi dalam satu kampanye yang sama. |
 | `idx_users_email_lower` *(0020)* | `UNIQUE (LOWER(email)) WHERE email IS NOT NULL` | **Query Autentikasi Email:** Mencegah duplikasi email beda kapitalisasi dan mempercepat lookup login admin/worker via email. |
 | `idx_users_username_lower` *(0008)* | `UNIQUE (LOWER(username))` | **Query Autentikasi Username:** Menjamin keunikan case-insensitive nama pengguna worker saat register dan login. |
 | `idx_users_referred_by` *(0022)* | `(referred_by) WHERE referred_by IS NOT NULL` | **Query Daftar Referral:** Mempercepat lookup daftar bawahan referral di panel worker dan kalkulasi komisi. |
-| `idx_users_payout_dest_hash` *(0017)* | `(payout_dest_hash) WHERE payout_dest_hash IS NOT NULL` | **Query Deteksi Multi-Akun:** Mempercepat pencarian pekerja yang menggunakan rekening bank / wallet yang sama. |
+| `idx_users_payout_dest_hash` *(0017)* | `(payout_dest_hash)` | **Query Deteksi Multi-Akun:** Mempercepat pencarian pekerja yang menggunakan rekening bank / wallet yang sama. |
+| `users_email_key` *(0001)* | `UNIQUE (email)` | **Integritas Email Pengguna:** Penegakan keunikan alamat email pada level katalog database. |
+| `users_referral_code_key` *(0001)* | `UNIQUE (referral_code)` | **Integritas Kode Referral:** Menjamin setiap pengguna memiliki kode referral unik global. |
 | `idx_wa_accounts_wa_jid_hash_active` *(0021)* | `UNIQUE (wa_jid_hash) WHERE status <> 'berhenti' AND wa_jid_hash IS NOT NULL` | **Query Unik Sesi WA Aktif:** Mencegah satu nomor WhatsApp dihubungkan oleh lebih dari satu sesi pekerja aktif sekaligus. |
 | `idx_wa_accounts_worker_status` *(0006)* | `(worker_id, status)` | **Query Kuota Akun Worker:** Mempercepat validasi batas maksimal akun terhubung per pekerja (`worker_id = $1 AND status = 'terhubung'`). |
 | `idx_wa_accounts_status` *(0006)* | `(status)` | **Query Status Sistem:** Mempercepat pemantauan seluruh akun aktif di engine. |
 | `idx_ledger_entries_upah_unique` | `UNIQUE (campaign_number_id) WHERE kind = 'upah'` | **Idempotensi Upah:** Menjamin satu nomor target pesan hanya dapat menghasilkan upah satu kali saja. |
-| `idx_ledger_entries_referral_number_unique` *(0022)* | `UNIQUE (campaign_number_id) WHERE kind = 'referral'` | **Idempotensi Komisi Referral:** Menjamin satu nomor target pesan hanya menghasilkan bonus referral satu kali. |
+| `idx_ledger_entries_referral_unique` *(0022)* | `UNIQUE (campaign_number_id) WHERE kind = 'referral'` | **Idempotensi Komisi Referral:** Menjamin satu nomor target pesan hanya menghasilkan bonus referral satu kali. |
 | `idx_ledger_entries_user_curr_time` | `(user_id, currency, created_at)` | **Query Saldo & Mutasi:** Mempercepat kalkulasi saldo pekerja (`SUM(amount)`) dan pagination riwayat transaksi mutasi. |
+| `idx_ledger_entries_campaign_number_id` *(0024)* | `(campaign_number_id)` | **Optimasi FK Purge:** Mempercepat penegakan foreign key ON DELETE RESTRICT saat penghapusan nomor kampanye massal. |
 | `idx_number_batches_campaign_id` *(0022)* | `(campaign_id)` | **Query Batch Kampanye:** Mempercepat lookup daftar batch yang diunggah ke suatu kampanye di detail kampanye admin. |
 | `idx_web_sessions_user_id` | `(user_id)` | **Query Sesi Pengguna:** Mempercepat pencabutan semua sesi milik satu pengguna saat logout atau reset kata sandi. |
 | `idx_web_sessions_expires_at` *(0022)* | `(expires_at)` | **Query Pembersih Sesi Kadaluwarsa:** Mempercepat garbage collection sesi web yang sudah melewati masa berlaku. |
+| `web_sessions_token_hash_key` *(0001)* | `UNIQUE (token_hash)` | **Integritas Token Sesi:** Menjamin keunikan hash token sesi web login. |
 | `idx_audit_logs_action_created_at` *(0022)* | `(action, created_at)` | **Query Retensi & Filter Audit:** Mempercepat filter log audit berdasarkan aksi dan rotasi/retensi berkala. |
-| `idx_notifications_created_at` *(0022)* | `(created_at)` | **Query Retensi Notifikasi:** Mempercepat pembersihan notifikasi usang di atas 30 hari. |
+| `idx_audit_logs_created_at` *(0022)* | `(created_at)` | **Query Retensi Audit:** Mempercepat pembersihan log audit lama di atas 30 hari. |
+| `idx_notifications_created_at` *(0022)* | `(created_at)` | **Query Retensi Notifikasi:** Mempercepat pembersihan notifikasi usang di atas 90 hari. |
 | `idx_notifications_user_unread` *(0015)* | `(user_id, created_at DESC) WHERE read_at IS NULL` | **Query Lonceng Dashboard:** Mempercepat indikator notifikasi belum dibaca di header worker. |
 | `idx_notifications_user_id` *(0015)* | `(user_id)` | **Query Daftar Notifikasi:** Mempercepat pemuatan seluruh riwayat notifikasi worker. |
-| `idx_withdrawals_user_pending` *(0017)* | `(user_id) WHERE status = 'menunggu'` | **Validasi Kuota Pending:** Menolak pengajuan penarikan baru jika worker masih memiliki penarikan yang berstatus 'menunggu'. |
-| `idx_withdrawals_user_token` *(0017)* | `UNIQUE (user_id, request_token)` | **Idempotensi Penarikan:** Mencegah double-submit form penarikan dana. |
-| `idx_currency_conversions_user_token` *(0016)* | `UNIQUE (user_id, request_token)` | **Idempotensi Konversi:** Mencegah penukaran IDR ke USDT berulang akibat jaringan terputus / klik ganda. |
+| `idx_withdrawals_user_request_token` *(0017)* | `UNIQUE (user_id, request_token)` | **Idempotensi Penarikan:** Mencegah pengajuan penarikan ganda dengan request token yang sama. |
+| `uq_currency_conversions_user_token` *(0016)* | `UNIQUE (user_id, request_token)` | **Idempotensi Konversi:** Mencegah penukaran IDR ke USDT berulang akibat jaringan terputus / klik ganda. |
 | `idx_admin_recovery_codes_user_id` *(0023)* | `(user_id)` | **Lookup Kode Darurat TOTP:** Mempercepat verifikasi kode pemulihan admin yang bersangkutan. |
-| `idx_backups_filename` *(0023)* | `UNIQUE (filename)` | **Keunikan Berkas Backup:** Menjamin berkas dump backup memiliki identitas unik. |
+| `backups_filename_key` *(0023)* | `UNIQUE (filename)` | **Keunikan Berkas Backup:** Menjamin berkas dump backup memiliki identitas unik di database. |
+| `idx_backups_created_at` *(0023)* | `(created_at DESC)` | **Riwayat Backup Admin:** Mempercepat pengurutan daftar cadangan terbaru di panel admin `/admin/backups`. |
+| `idx_support_tickets_status` *(0012)* | `(status)` | **Filter Tiket CS:** Mempercepat pemfilteran tiket berdasarkan status terbuka atau terselesaikan. |
+| `idx_support_tickets_user_id` *(0012)* | `(user_id)` | **Riwayat Tiket Worker:** Mempercepat pemuatan tiket laporan milik pekerja tertentu. |
+| `idx_wallet_entries_currency` *(0011)* | `(currency, created_at)` | **Laporan Dompet Admin:** Mempercepat agregasi saldo modal kas per mata uang di panel admin. |
+
 
 ---
 

@@ -2,125 +2,142 @@
 
 Panduan dan aturan mengenai keamanan aplikasi dan prosedur deploy sistem GO BLAST.
 
+---
+
 ## Bagian A. Keamanan
 
 ### A1. Injeksi SQL
-- Gunakan argumen berparameter pada seluruh query PostgreSQL.
-- Dilarang menyusun atau menggabungkan string secara manual untuk membuat query SQL.
+- Gunakan argumen berparameter pada seluruh query PostgreSQL melalui library `pgx/v5`.
+- Dilarang menyusun atau menggabungkan string secara manual (`fmt.Sprintf`, string concatenation) untuk membuat query SQL.
+- Seluruh query antrean menggunakan klausa `FOR UPDATE SKIP LOCKED` pada transaksi atomik untuk mencegah *race condition* antar worker.
 
-### A2. Kata sandi dan sesi
-- Gunakan algoritma argon2id untuk hashing kata sandi (parameter: memory=64MB, time=1, threads=4, salt=16 byte, key=32 byte).
-- Panjang kata sandi dibatasi minimal 10 karakter dan maksimal 128 byte untuk mencegah serangan Denial of Service (DoS) memory exhaustion.
-- Seluruh verifikasi dan pembuatan hash argon2id dikawal oleh `ArgonGate` (`ArgonConcurrencyLimit = 2`, `ArgonQueueLimit = 8`, `ArgonMaxWait = 2s`). Jika server sibuk/antrean penuh, permintaan verifikasi langsung ditolak dengan HTTP 503 (`Retry-After: 2`) tanpa menghabiskan RAM server.
-- Mitigasi timing attack pada login: jika akun tidak ditemukan di database, sistem tetap mengeksekusi komputasi argon2id menggunakan `ShadowHash` konstan.
-- Status pembekuan akun (`frozen`) hanya dicek SETELAH verifikasi kata sandi cocok, untuk mencegah kebocoran status eksistensi/pembekuan akun ke penyerang.
-- Atribut cookie sesi:
-  - Produksi: `__Host-gb_session` dengan flag `Secure`, `HttpOnly`, `SameSite=Lax`, `Path=/`.
-  - Pengembangan: `gb_session` dengan flag `HttpOnly`, `SameSite=Lax`, `Path=/`.
-- Batas akumulasi sesi: Setiap kali pengguna login, sesi kedaluwarsa dibersihkan, dan sesi aktif dibatasi maksimal 5 sesi simultan per akun (sesi paling tua otomatis dicabut). Pembersih latar belakang (`startSessionCleaner`) berjalan berkala tiap jam untuk membersihkan sesi basi.
-- Masa berlaku sesi: Admin 24 jam, Pekerja 7 hari. Pembaruan `last_seen_at` di database dibatasi maksimal 1 kali per menit per sesi untuk mencegah *write thrashing*.
-- Prosedur pencabutan sesi: Pengguna dapat mencabut seluruh sesi lain saat mengganti kata sandi di menu keamanan pekerja (`POST /worker/security`). Admin dapat mencabut sesi dari tabel maintenance/worker detail.
+### A2. Kata Sandi dan Sesi
+- **Algoritma Hashing**: Gunakan algoritma argon2id untuk hashing kata sandi (parameter: memory=64MB, time=1, threads=4, salt=16 byte, key=32 byte).
+- **Batas Panjang Input**: Panjang kata sandi dibatasi minimal 10 karakter dan maksimal 128 byte (`MaxPasswordBytes`) untuk mencegah serangan Denial of Service (DoS) memory exhaustion.
+- **ArgonGate Concurrency Throttle**: Seluruh verifikasi dan pembuatan hash argon2id dikawal oleh `ArgonGate` (`ArgonConcurrencyLimit = 2`, `ArgonQueueLimit = 8`, `ArgonMaxWait = 2s`). Jika server sibuk atau antrean penuh, permintaan verifikasi langsung ditolak dengan HTTP 503 (`Retry-After: 2`) tanpa membebani RAM server.
+- **Mitigasi Timing Attack**: Jika akun tidak ditemukan di database pada saat login, sistem tetap mengeksekusi komputasi argon2id menggunakan `ShadowHash` konstan untuk mencegah deteksi keberadaan akun melalui perbedaan durasi respons.
+- **Pemeriksaan Akun Beku**: Status pembekuan akun (`frozen`) hanya dicek SETELAH verifikasi kata sandi cocok, untuk mencegah kebocoran status eksistensi/pembekuan akun ke penyerang.
+- **Atribut Cookie Sesi**:
+  - Lingkungan Produksi: Nama cookie `__Host-gb_session` dengan flag `Secure`, `HttpOnly`, `SameSite=Lax`, `Path=/`.
+  - Lingkungan Pengembangan: Nama cookie `gb_session` dengan flag `HttpOnly`, `SameSite=Lax`, `Path=/`.
+- **Batas Akumulasi & Kuota Sesi**: Maksimal 5 sesi web aktif simultan per akun (`MaxUserWebSessions = 5`). Sesi paling tua otomatis dicabut saat login ke-6 berhasil.
+- **Pembersih Sesi Latar Belakang**: `startSessionCleaner` berjalan otomatis tiap jam untuk membersihkan sesi yang telah kedaluwarsa dari tabel `web_sessions`.
+- **Masa Berlaku Sesi**: Admin 24 jam, Pekerja 7 hari.
+- **Throttling Pembaruan `last_seen_at`**: Pembaruan kolom `last_seen_at` di database dibatasi maksimal 1 kali per menit per sesi untuk mencegah *write thrashing* pada koneksi database.
+- **Prosedur Pencabutan Sesi**:
+  - Pengguna dapat mencabut seluruh sesi lain saat mengganti kata sandi di menu keamanan pekerja (`POST /worker/security`).
+  - Admin dapat mencabut sesi pengguna tertentu dari panel `/admin/maintenance` atau detail pekerja.
+  - Skenario darurat: seluruh sesi dapat dicabut seketika via perintah SQL `DELETE FROM web_sessions;`.
 
-### A3. CSRF
-- Wajibkan token CSRF pada semua permintaan state-changing (POST).
-- Cookie CSRF: `__Host-gb_csrf` di produksi (`Secure`, `SameSite=Lax`), `gb_csrf` di pengembangan.
+### A3. CSRF (Cross-Site Request Forgery)
+- Wajibkan token CSRF pada semua permintaan perubahan data (POST/PUT/DELETE).
+- Cookie CSRF: `__Host-gb_csrf` di produksi (`Secure`, `SameSite=Lax`, `Path=/`), `gb_csrf` di pengembangan.
 - Token CSRF ditandatangani menggunakan HMAC-SHA256 (`SESSION_SECRET`) dan divalidasi dengan `subtle.ConstantTimeCompare`.
-- Pengamanan lapis ganda CSRF: Pemeriksaan header browser `Sec-Fetch-Site` (menolak `cross-site`) dan verifikasi kecocokan header `Origin` dengan host publik server.
+- **Pengamanan Lapis Ganda CSRF**:
+  - Pemeriksaan header browser `Sec-Fetch-Site` (menolak `cross-site`).
+  - Verifikasi kecocokan header `Origin` dengan host publik server (`APP_PUBLIC_HOST` atau `Host`).
 
-### A4. Pembatasan laju (Rate Limiting) & Proteksi Bot
-- Menggunakan rate limiter token bucket berbasis `golang.org/x/time/rate` di memori (`internal/ratelimit`) dengan pengusiran LRU (`maxKeys = 10000`) dan pembersihan berkala tiap 10 menit dengan panic recovery.
-- Arsitektur rate limiting login multi-lapis (Temuan K1):
-  - Lapis 1 (Global): 100 request/menit untuk seluruh sistem.
-  - Lapis 2 (IP Klien): 20 kegagalan per 15 menit per IP klien.
-  - Lapis 3 (Identifier Akun): 10 kegagalan per 15 menit per username/email.
-  - Lapis 4 (Pasangan IP + Identifier): 5 kegagalan per 15 menit. Berhasil login me-reset pembatasan pasangan.
-- Pembatasan laju pendaftaran: 10 pendaftaran per jam per IP, dan batas harian 100 per hari per IP.
-- Pembatasan laju per endpoint (Temuan K6 & Keputusan tambahan pemilik):
-  - Setiap tombol aksi (POST) dan endpoint data dinamis (GET JSON) dipetakan ke limiter spesifik:
-    - Worker Ticket: `WorkerTicket10MinLimiter` (3/10m per user) dan `WorkerTicketDailyLimiter` (10/hari per user) untuk `POST /worker/tickets/new`.
-    - Worker Security: `WorkerSecurityLimiter` (5/15m per user) untuk `POST /worker/security` (ganti kata sandi).
-    - Worker Financial: `WorkerFinancialLimiter` (10/jam per user) untuk penarikan (`POST /worker/withdrawals`) dan konversi saldo (`POST /worker/convert`).
-    - Worker Account: `WorkerAccountUserLimiter` (20/jam per user) dan `WorkerAccountIPLimiter` (60/jam per IP) untuk manajemen akun WhatsApp (tambah, init, pair, hapus).
-    - Worker Work Controller: `WorkerWorkCtrlLimiter` (30/menit per user) untuk aksi start/stop kerja WhatsApp.
-    - Worker API Polling: `WorkerAPIPollingLimiter` (120/menit per IP) untuk polling statistik, lonceng notifikasi, dan tiket pekerja.
-    - Public & Auth: `PublicRouteLimiter` (60/menit per IP) dan `POST /logout`.
-    - Static Assets: `StaticRouteLimiter` (300/menit per IP).
-    - Admin Global: `AdminGlobalLimiter` (300/menit per user/IP) membungkus seluruh panel admin.
-    - Admin TOTP: `AdminTOTPVerifyLimiter` (5 kegagalan per 15 menit) untuk verifikasi kode 2FA.
-  - Sifat pembatasan: Tidak ada pemblokiran IP permanen. Pembatasan pulih secara otomatis setelah jeda waktu berakhir atau token terisi kembali.
-- Perlindungan bot tanpa JavaScript berat:
+### A4. Pembatasan Laju (Rate Limiting) & Proteksi Bot
+- Menggunakan rate limiter token bucket berbasis `golang.org/x/time/rate` di memori (`internal/ratelimit`) dengan pengusiran LRU (`MaxLimiterKeys = 10000`) dan pembersihan berkala tiap 10 menit dengan proteksi panic recovery.
+- **Arsitektur Rate Limiting Login Multi-Lapis**:
+  - Lapis 1 (Global): 300 request/menit untuk seluruh sistem (`LoginRateLimitGlobalAttempts = 300`).
+  - Lapis 2 (IP Klien): 20 kegagalan per 15 menit per IP klien (`LoginRateLimitIPAttempts = 20`).
+  - Lapis 3 (Identifier Akun): 10 kegagalan per 15 menit per username/email (`LoginRateLimitIdentifierAttempts = 10`).
+  - Lapis 4 (Pasangan IP + Identifier): 5 kegagalan per 15 menit (`LoginRateLimitPairAttempts = 5`). Berhasil login me-reset pembatasan pasangan.
+- **Pembatasan Laju Pendaftaran Akun**:
+  - Per jam: 10 pendaftaran per jam per IP (`RegisterRateLimitHourlyAttempts = 10`).
+  - Per hari: 100 pendaftaran per hari per IP (`RegisterRateLimitDailyAttempts = 100`).
+- **Pembatasan Laju Log Audit Gagal**:
+  - Maksimal pencatatan audit log `login_failed` adalah 20 entri per IP per menit (`AuditLoginFailedRateLimitAttempts = 20`) guna mencegah serangan flooding disk log audit.
+- **Pembatasan Laju per Endpoint Spesifik (`internal/config/limits.go`)**:
+  - `WorkerTicket10MinAttempts` (3/10m per user) dan `WorkerTicketDailyAttempts` (10/hari per user) untuk `POST /worker/tickets/new`.
+  - `WorkerSecurityAttempts` (5/15m per user) untuk `POST /worker/security` (ganti kata sandi).
+  - `WorkerFinancialAttempts` (10/10m per user) untuk penarikan (`POST /worker/withdrawals`), konversi saldo (`POST /worker/convert`), dan ubah rekening.
+  - `WorkerAccountUserAttempts` (6/10m per user) dan `WorkerAccountIPAttempts` (20/10m per IP) untuk manajemen akun WhatsApp (tambah, init, pair, hapus).
+  - `WorkerWorkCtrlAttempts` (30/menit per user) untuk aksi start/stop kerja WhatsApp.
+  - `WorkerAPIPollingAttempts` (120/menit per IP/user, burst 30) untuk polling statistik, lonceng notifikasi, dan status akun WhatsApp.
+  - `PublicRouteAttempts` (100/menit per IP) untuk rute publik umum dan `POST /logout`.
+  - `StaticRouteAttempts` (300/menit per IP) untuk aset statis frontend.
+  - `AdminGlobalAttempts` (300/menit per user/IP) membungkus seluruh panel admin.
+  - `AdminTOTPVerifyAttempts` (5 kegagalan per 15 menit) untuk verifikasi kode 2FA.
+  - `AdminCampaignExportNumbersAttempts` (5 per jam per admin) untuk ekspor sisa nomor kampanye.
+  - `AdminStoragePurgeAttempts` (5 per jam per admin) untuk pembersihan penyimpanan arsip kampanye.
+- **Sifat Pembatasan**: Tidak ada pemblokiran IP permanen. Pembatasan pulih secara otomatis setelah jendela waktu kedaluwarsa atau token bucket terisi kembali. Admin dapat mencabut pembatasan aktif (`ActiveRestrictions`) secara manual di `/admin/maintenance`.
+- **Perlindungan Bot Tanpa JavaScript Berat**:
   - Form Timing Token (HMAC timestamp): Formulir login dan registrasi menolak pengiriman yang terlalu cepat (< 2 detik) atau kedaluwarsa (> 2 jam).
-  - Honeypot Field (`website_hp`): Field tersembunyi via CSS yang jika diisi bot akan langsung ditolak tanpa eksekusi database atau argon2.
-- Integrasi Cloudflare Turnstile (Keputusan F1):
+  - Honeypot Field (`website_hp`): Field tersembunyi via CSS yang jika diisi bot akan langsung ditolak tanpa eksekusi database atau argon2id.
+- **Integrasi Cloudflare Turnstile**:
   - Verifikasi CAPTCHA modern di form login dan registrasi via Cloudflare siteverify endpoint (timeout 3 detik).
-  - Mode fail-closed untuk form registrasi (menolak jika Cloudflare outage) dan fail-open terkontrol untuk login hanya jika Cloudflare API benar-benar mengalami gangguan jaringan/5xx.
-- Pembebasan pembatasan oleh Admin: Halaman `/admin/maintenance` menyediakan daftar pembatasan aktif (`ActiveRestrictions`) dengan penyamaran kunci IP/identitas, tombol cabut pembatasan per kunci, dan tombol cabut semua (`release-all`). Tidak ada blokir permanen.
+  - Mode fail-closed untuk formulir registrasi (menolak jika Cloudflare outage) dan mode fail-open terkontrol untuk formulir login hanya jika Cloudflare API mengalami gangguan jaringan/5xx.
+  - Di lingkungan produksi, penggunaan dummy test keys Cloudflare ditolak saat booting.
 
-### A5. Enkripsi data dan rotasi kunci
-- Enkripsi alamat tujuan penarikan pekerja dan data sensitif menggunakan algoritma AES-256-GCM.
-- Format ciphertext terenkripsi menyertakan penanda versi:
+### A5. Enkripsi Data dan Rotasi Kunci
+- Enkripsi alamat tujuan penarikan pekerja dan data sensitif menggunakan algoritma AES-256-GCM authenticated encryption.
+- **Format Ciphertext Bervolume Multi-Generasi**:
   - `v1:k1:<base64>`: Terenkripsi dengan kunci aktif saat ini (`ENCRYPTION_KEY`).
   - `v1:k0:<base64>`: Terenkripsi dengan kunci rotasi sebelumnya (`ENCRYPTION_KEY_PREV`).
   - Fallback aman: Mendukung ciphertext legacy tanpa prefiks atau format sejenis.
 - Ambil kunci enkripsi dari variabel lingkungan `ENCRYPTION_KEY` (wajib, 32 byte base64).
-- Dukungan rotasi kunci dua generasi (`ENCRYPTION_KEY` dan `ENCRYPTION_KEY_PREV`):
+- **Dukungan Rotasi Kunci Dua Generasi (`ENCRYPTION_KEY` dan `ENCRYPTION_KEY_PREV`)**:
   1. Pasang kunci lama ke variabel `ENCRYPTION_KEY_PREV`.
   2. Generate 32 byte acak baru dan pasang ke `ENCRYPTION_KEY`.
-  3. Aplikasi otomatis membaca/mendekripsi data lama dengan k1, fallback ke k0 jika gagal, dan selalu menulis/mengenkripsi data baru menggunakan k1.
+  3. Aplikasi membaca/mendekripsi data lama dengan k1, fallback ke k0 jika gagal, dan selalu menulis/mengenkripsi data baru menggunakan k1.
   4. Seluruh log aplikasi dilarang keras mencetak plaintext, ciphertext utuh, maupun kunci enkripsi.
-- Pemisahan cadangan kunci dari database:
-  - Kunci enkripsi pada berkas `.env` TIDAK BOLEH disimpan bersama cadangan database (`pg_dump`).
-  - Jika cadangan database dicuri atau bocor, data rekening dan tujuan penarikan pekerja tetap tidak dapat didekripsi tanpa berkas kunci terpisah. Simpan salinan darurat berkas `.env` di brankas password / secret manager terisolasi.
+- **Pemisahan Cadangan Kunci dari Database**:
+  - Kunci enkripsi pada berkas `.env` TIDAK BOLEH disimpan bersama cadangan database (`pg_dump` atau `.gbak`).
+  - Jika cadangan database bocor, data rekening pekerja tetap tidak dapat didekripsi tanpa berkas kunci terpisah. Simpan salinan darurat berkas `.env` di brankas password / secret manager terisolasi.
 
-### A6. Kontrol akses & TOTP Admin (Keputusan E2)
-- Periksa tabel peran (admin, pekerja, publik) terhadap tiap kelompok rute di level server.
+### A6. Kontrol Akses & TOTP Admin (Keputusan E2)
+- Periksa peran (admin, pekerja, publik) terhadap tiap kelompok rute di level middleware HTTP server.
 - Cegah pekerja mengakses data milik pekerja lain (IDOR) pada akun WhatsApp, tiket laporan, riwayat penarikan, maupun buku besar saldo.
-- Penegakan Logout POST-Only: Rute `GET /logout` mengembalikan HTTP `405 Method Not Allowed`. Logout hanya diproses via `POST /logout` dengan verifikasi token CSRF dan rate limiting publik.
-- Validasi Tautan CS & Channel Resmi: Tautan CS WhatsApp (`CS_WHATSAPP_URL`), CS Telegram (`CS_TELEGRAM_URL`), dan Channel Telegram (`CHANNEL_TELEGRAM_URL`) wajib diawali dengan skema `https://`. Skema berbahaya seperti `javascript:`, `data:`, `http:`, atau format non-HTTPS ditolak saat konfigurasi dimuat.
-- Autentikasi Dua Faktor (2FA) TOTP Admin (Keputusan E2):
-  - Standar RFC 6238: algoritma HMAC-SHA1, periode 30 detik, 6 digit angka, toleransi window $\pm 1$ langkah waktu (90 detik total) untuk mencegah desinkronisasi jam perangkat.
-  - Anti-Replay Attack: kolom `users.totp_last_step` menyimpan langkah waktu terakhir yang berhasil diverifikasi sehingga kode TOTP yang sama tidak dapat digunakan kembali dalam jendela waktu yang sama.
-  - Kode Pemulihan Darurat: Saat setup, sistem menerbitkan 10 kode pemulihan sekali pakai (format `XXXXX-XXXXX`). Kode di-hash menggunakan SHA-256 dan disimpan pada tabel `admin_recovery_codes`. Kode pemulihan langsung dihapus dari database begitu berhasil digunakan.
-  - Alur Setup Wajib: Admin yang baru pertama kali login atau belum mengonfigurasi TOTP otomatis dialihkan ke `/admin/totp/setup` dan dilarang mengakses panel admin lainnya sebelum setup selesai.
-  - Step-Up Verification (Masa Berlaku 5 Menit): Middleware `RequireStepUp` mewajibkan verifikasi ulang TOTP untuk aksi-aksi sensitif admin:
-    - Perubahan pengaturan sistem (`POST /admin/settings`)
-    - Pengisian dompet modal kas (`POST /admin/wallet/topup`)
-    - Persetujuan penarikan (`POST /admin/withdrawals/{id}/approve`)
-    - Penolakan penarikan (`POST /admin/withdrawals/{id}/reject`)
-    - Reset kata sandi pekerja (`POST /admin/workers/{id}/reset-password`)
-    - Pembekuan pekerja (`POST /admin/workers/{id}/freeze`)
-    - Pembukaan pembekuan pekerja (`POST /admin/workers/{id}/unfreeze`)
-    - Penonaktifan pekerja (`POST /admin/workers/{id}/disable`)
-    - Pengaktifan pekerja (`POST /admin/workers/{id}/enable`)
-    - Pengantrean ulang nomor hasil tidak pasti (`POST /admin/campaigns/{id}/requeue-uncertain`)
-  - Pemulihan Darurat CLI: Jika admin kehilangan perangkat authenticator dan kehabisan kode pemulihan, reset TOTP dapat dilakukan langsung dari terminal server menggunakan perintah `goblast reset-totp --email <email_admin>`. Perintah ini menghapus rahasia TOTP, membersihkan kode pemulihan tersisa, dan mencatat audit log `admin_totp_reset_cli`.
+- **Penegakan Logout POST-Only**: Rute `GET /logout` mengembalikan HTTP `405 Method Not Allowed`. Logout hanya diproses via `POST /logout` dengan verifikasi token CSRF dan rate limiting publik.
+- **Validasi Tautan CS & Channel Resmi**: Tautan CS WhatsApp (`CS_WHATSAPP_URL`), CS Telegram (`CS_TELEGRAM_URL`), dan Channel Telegram (`CHANNEL_TELEGRAM_URL`) wajib diawali dengan skema `https://`. Skema berbahaya seperti `javascript:`, `data:`, `http:`, atau format non-HTTPS ditolak saat konfigurasi dimuat.
+- **Autentikasi Dua Faktor (2FA) TOTP Admin (RFC 6238)**:
+  - Algoritma HMAC-SHA1, periode 30 detik, 6 digit angka, toleransi window $\pm 1$ langkah waktu (90 detik total) untuk mencegah kegagalan akibat desinkronisasi jam perangkat.
+  - **Anti-Replay Attack**: kolom `users.totp_last_step` menyimpan langkah waktu terakhir yang berhasil diverifikasi sehingga kode TOTP yang sama tidak dapat digunakan kembali dalam jendela waktu yang sama.
+  - **Kode Pemulihan Darurat**: Saat setup, sistem menerbitkan 10 kode pemulihan sekali pakai (format `XXXXX-XXXXX`). Kode di-hash menggunakan SHA-256 dan disimpan pada tabel `admin_recovery_codes`. Kode pemulihan langsung dihapus dari database begitu berhasil digunakan.
+  - **Alur Setup Wajib**: Admin yang belum mengonfigurasi TOTP otomatis dialihkan ke `/admin/totp/setup` dan diblokir dari seluruh rute panel admin lainnya.
+  - **Step-Up Verification (Masa Berlaku 5 Menit / `AdminStepUpDuration`)**: Middleware `RequireStepUp` mewajibkan verifikasi ulang TOTP untuk 10 aksi sensitif admin:
+    1. Perubahan pengaturan sistem (`POST /admin/settings`)
+    2. Pengisian dompet modal kas (`POST /admin/wallet/topup`)
+    3. Persetujuan penarikan (`POST /admin/withdrawals/{id}/approve`)
+    4. Penolakan penarikan (`POST /admin/withdrawals/{id}/reject`)
+    5. Reset kata sandi pekerja (`POST /admin/workers/{id}/reset-password`)
+    6. Pembekuan pekerja (`POST /admin/workers/{id}/freeze`)
+    7. Pembukaan pembekuan pekerja (`POST /admin/workers/{id}/unfreeze`)
+    8. Penonaktifan pekerja (`POST /admin/workers/{id}/disable`)
+    9. Pengaktifan pekerja (`POST /admin/workers/{id}/enable`)
+    10. Pengantrean ulang nomor tidak pasti (`POST /admin/campaigns/{id}/requeue-uncertain`)
+  - **Pemulihan Darurat CLI**: Jika admin kehilangan authenticator dan kehabisan kode pemulihan, reset TOTP dapat dilakukan dari terminal server:
+    ```bash
+    ./goblast reset-totp --email admin@domain.com
+    ```
+    Perintah ini menghapus rahasia TOTP, membersihkan kode pemulihan tersisa, dan mencatat audit log `admin_totp_reset_cli`.
 
-### A7. Privasi nomor customer
-- Cegah nomor customer masuk atau dirender ke browser pekerja.
-- Samarkan nomor telepon secara default di log aplikasi (contoh `6281****678`).
-- Dilarang memasukkan berkas nomor (CSV/TXT/XLSX) ke git.
-- Cegah berkas cadangan dikirim keluar server tanpa dienkripsi terlebih dahulu.
+### A7. Privasi Nomor Customer
+- Nomor customer tidak pernah dirender atau dikirimkan ke antarmuka browser pekerja.
+- Penyamaran otomatis di seluruh log aplikasi (contoh: `6281****678`).
+- Dilarang memasukkan berkas nomor (CSV/TXT/XLSX) ke repositori git.
+- Cadangan database wajib dienkripsi penuh menggunakan AES-256-GCM (`.gbak`) sebelum diunduh atau dipindahkan ke penyimpanan luar.
 
-### A8. Log audit & Sanitasi Error Internal
-- Catat pembuatan atau perubahan campaign beserta ratenya.
-- Catat penarikan manual, transfer, atau perubahan uang di buku besar.
-- Catat aktivitas masuk dan keluarnya sesi admin.
-- Catat perubahan pengaturan sistem, pembekuan/pembukaan akun pekerja, dan aksi darurat CLI (`admin_totp_reset_cli`).
-- Sanitasi Error Internal & Pencegahan Kebocoran (Error Leakage Elimination):
+### A8. Log Audit & Sanitasi Error Internal
+- Mencatat seluruh peristiwa krusial: pembuatan campaign, rate upah, penarikan dana, perubahan buku besar saldo, aktivitas login/logout admin, perubahan pengaturan sistem, aksi pembekuan akun, dan reset TOTP CLI.
+- **Sanitasi Error Internal (Zero Error Leakage)**:
   - Dilarang keras menampilkan pesan galat internal (`err.Error()`, nama database, nama tabel, kolom, sintaks SQL, atau stack trace) pada HTTP response body maupun URL query string (`?err=...`).
-  - Seluruh kegagalan database atau sistem internal disajikan sebagai pesan ramah pengguna (pesan i18n atau deskripsi generik aman).
-  - Rincian teknis galat internal dicatat secara aman ke log aplikasi server melalui `slog.Error` dengan konteks relevan tanpa mengekspos data rahasia/kredensial.
+  - Seluruh kegagalan internal disajikan sebagai pesan ramah pengguna (pesan i18n atau deskripsi generik yang aman).
+  - Rincian teknis galat dicatat secara aman ke log aplikasi server melalui `slog.Error` dengan konteks relevan tanpa mengekspos kredensial atau nomor telepon customer.
 
-### A9. Unggahan
-- Batasi tipe file yang diizinkan (CSV, TXT, XLSX, JPG, PNG).
-- Verifikasi *Magic Bytes* (File Signature) asli:
+### A9. Unggahan Berkas
+- Batasi tipe berkas yang diizinkan: CSV, TXT, XLSX (daftar nomor), serta JPG, PNG (gambar kampanye).
+- **Verifikasi Magic Bytes (File Signature)**:
   - Berkas XLSX diverifikasi memiliki header arsip ZIP (`PK\x03\x04`).
   - Berkas gambar kampanye diverifikasi menggunakan `http.DetectContentType` (hanya `image/jpeg` dan `image/png`).
-- Tetapkan ukuran maksimum file unggahan (1 MB untuk gambar kampanye, 6 MB untuk berkas nomor CSV/TXT/XLSX).
-- Buat nama file acak menggunakan UUID di server untuk setiap unggahan.
-- Simpan file unggahan di luar folder yang dilayani langsung oleh server web (`neuteredFileSystem` dan isolasi direktori data).
+- Batas ukuran unggahan: 1 MB untuk gambar kampanye, 6 MB untuk berkas nomor CSV/TXT/XLSX.
+- Penamaan acak: Setiap berkas yang disimpan di server diberi nama UUID unik.
+- Isolasi berkas: Berkas unggahan disimpan di luar folder web root publik (`neuteredFileSystem` dan direktori data terisolasi).
 
-### A10. Header keamanan
+### A10. Header Keamanan HTTP
+Aplikasi secara ketat mengirimkan header keamanan pada seluruh respons HTTP:
 - `Content-Security-Policy`:
   - `default-src 'self'`
   - `script-src 'self' 'nonce-{nonce}' https://challenges.cloudflare.com`
@@ -133,56 +150,197 @@ Panduan dan aturan mengenai keamanan aplikasi dan prosedur deploy sistem GO BLAS
   - `base-uri 'self'`
   - `form-action 'self'`
   - `frame-ancestors 'none'`
-  - Seluruh script di halaman HTML wajib memuat `nonce="{{ .Nonce }}"`.
-  - Seluruh inline event handler (`onclick=`, `onsubmit=`, `onchange=`, dll) dilarang dan dieliminasi total dari seluruh berkas template (diverifikasi oleh `TestGuard_CSP_TemplatesStaticCheck`).
+  - Seluruh elemen `<script>` di template HTML wajib menyertakan atribut `nonce="{{ .Nonce }}"`.
+  - Seluruh inline JavaScript event handler (`onclick=`, `onsubmit=`, `onchange=`, dll) dilarang dan telah dieliminasi total dari berkas template (diverifikasi oleh tes guard `TestGuard_CSP_TemplatesStaticCheck`).
 - `X-Content-Type-Options: nosniff`.
 - `X-Frame-Options: DENY`.
 - `Referrer-Policy: strict-origin-when-cross-origin`.
 - `Permissions-Policy: camera=(), microphone=(), geolocation=()`.
-- `Strict-Transport-Security: max-age=31536000; includeSubDomains` (dikirim saat request HTTPS di produksi).
-- `Cache-Control: no-store, no-cache, must-revalidate` pada seluruh endpoint terautentikasi dan form login/register untuk mencegah riwayat formulir dan token tersimpan di cache perantara atau browser publik.
+- `Strict-Transport-Security: max-age=31536000; includeSubDomains` (dikirim otomatis saat request berstatus HTTPS di produksi).
+- `Cache-Control: no-store, no-cache, must-revalidate` pada seluruh endpoint terautentikasi dan formulir login/register untuk mencegah caching browser pada data sensitif.
 
-### A11. Insiden
-- Cabut seluruh sesi pekerja dan admin segera jika server terindikasi bocor.
-- Ganti `ENCRYPTION_KEY`, `SESSION_SECRET`, dan kata sandi terkait.
-- Beri tahu pekerja mengenai insiden secara transparan.
+### A11. Penanganan IP Klien Tepercaya
+- IP klien asli dibaca dari header yang ditentukan di `CLIENT_IP_HEADER` (default: `CF-Connecting-IP`).
+- Validasi IP hanya mempercayai header jika koneksi TCP perantara (`RemoteAddr`) berasal dari daftar subnet tepercaya pada `TRUSTED_PROXY_CIDRS` (subnet IP resmi Cloudflare dan alamat loopback lokal).
+- Nilai header IP divalidasi keabsahan formatnya menggunakan `net.ParseIP`. Jika tidak valid atau proxy perantara bukan anggota subnet tepercaya, header diabaikan dan sistem menggunakan remote address TCP murni guna mencegah spoofing IP pada mekanisme rate limiting.
+
+---
 
 ## Bagian B. Deploy
 
-### B1. Isolasi di VPS bersama
-- Gunakan pengguna sistem `goblast` tanpa akses root untuk menjalankan aplikasi.
-- Sediakan pengguna database terpisah di PostgreSQL (bukan `postgres`).
-- Batasi alokasi memori melalui `MemoryMax` di pengaturan systemd, nilainya ditentukan setelah pengukuran memori (keputusan terbuka nomor 6).
-- Buka port internal (misal 8080) hanya untuk `127.0.0.1` (loopback). Pada lingkungan `production`, aplikasi menolak bind publik (`0.0.0.0` atau tanpa IP) secara default; bind publik hanya diizinkan jika `ALLOW_PUBLIC_BIND=true` disetel eksplisit.
+### B1. Isolasi di VPS Linux & Unit Systemd
+- Gunakan pengguna sistem tanpa privilese root (`goblast:goblast`) untuk mengoperasikan aplikasi.
+- Aplikasi wajib di-bind ke loopback lokal `127.0.0.1:8080`. Bind publik `0.0.0.0` di produksi ditolak oleh server kecuali jika `ALLOW_PUBLIC_BIND=true` disetel secara eksplisit.
+- Batasi alokasi memori proses menggunakan `MemoryMax=512M` di systemd (berdasarkan hasil pengukuran empiris beban 75–80 sesi simultan di Tahap H10).
+- Berikan batas waktu drain `TimeoutStopSec=30s` agar proses memiliki waktu menyelesaikan transaksi berjalan saat service dimatikan.
 
-### B2. Nginx
-- Siapkan server block reverse proxy di Nginx yang meneruskan header Cloudflare ke aplikasi Go:
-  ```nginx
-  server {
-      listen 80;
-      server_name <domain>;
-      location / {
-          proxy_pass http://127.0.0.1:8080;
-          proxy_set_header Host $host;
-          proxy_set_header X-Real-IP $remote_addr;
-          proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-          proxy_set_header X-Forwarded-Proto $scheme;
-          proxy_set_header CF-Connecting-IP $http_cf_connecting_ip;
-      }
-  }
-  ```
+#### Berkas Unit Lengkap `/etc/systemd/system/goblast.service`:
+```ini
+[Unit]
+Description=GO BLAST by Feepay WhatsApp Engine
+Documentation=https://github.com/fetrusmeilanoilhamsyah/GO-BLAST-by-feepay
+After=network.target postgresql.service
+Wants=postgresql.service
 
-### B3. SSL dan domain
-- Pasang SSL Let's Encrypt / certbot pada block Nginx di atas, atau gunakan mode SSL Full/Strict Cloudflare.
-- Catatan: Domain `feepay.web.id` tidak boleh disentuh atau dikonfigurasi ulang secara sembarangan karena terkait aplikasi lain yang ada.
+[Service]
+Type=simple
+User=goblast
+Group=goblast
+WorkingDirectory=/var/www/goblast
+ExecStart=/var/www/goblast/goblast run
+Restart=always
+RestartSec=5s
+
+# Manajemen memori dan penghentian anggun (graceful shutdown)
+MemoryMax=512M
+TimeoutStopSec=30s
+LimitNOFILE=65535
+
+# Pemuatan konfigurasi rahasia produksi (izin berkas wajib 0600)
+EnvironmentFile=/var/www/goblast/.env
+
+# Pengamanan proses sistem Linux (Hardening)
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+NoNewPrivileges=true
+ReadWritePaths=/var/www/goblast/data /var/www/goblast/backups /var/www/goblast/uploads
+
+# Standar output diarahkan ke systemd journal
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=goblast
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Perintah aktivasi service di VPS:
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable goblast
+sudo systemctl start goblast
+sudo systemctl status goblast
+```
+
+### B2. Konfigurasi Nginx Reverse Proxy
+Konfigurasi Nginx di bawah ini mencakup proteksi batas ukuran unggahan 6 MB, penerusan header IP Cloudflare, serta pembatasan akses direktori internal.
+
+#### Berkas Konfigurasi Lengkap `/etc/nginx/sites-available/goblast.conf`:
+```nginx
+# Konfigurasi Subnet Resmi Cloudflare untuk Restorasi IP Klien Asli
+set_real_ip_from 173.245.48.0/20;
+set_real_ip_from 103.21.244.0/22;
+set_real_ip_from 103.22.200.0/22;
+set_real_ip_from 103.31.4.0/22;
+set_real_ip_from 141.101.64.0/18;
+set_real_ip_from 108.162.192.0/18;
+set_real_ip_from 190.93.240.0/20;
+set_real_ip_from 188.114.96.0/20;
+set_real_ip_from 197.234.240.0/22;
+set_real_ip_from 198.41.128.0/17;
+set_real_ip_from 162.158.0.0/15;
+set_real_ip_from 104.16.0.0/13;
+set_real_ip_from 104.24.0.0/14;
+set_real_ip_from 172.64.0.0/13;
+set_real_ip_from 131.0.72.0/22;
+set_real_ip_from 2400:cb00::/32;
+set_real_ip_from 2606:4700::/32;
+set_real_ip_from 2803:f800::/32;
+set_real_ip_from 2405:b500::/32;
+set_real_ip_from 2405:8100::/32;
+set_real_ip_from 2a06:98c0::/29;
+set_real_ip_from 2c0f:f248::/32;
+set_real_ip_from 127.0.0.1;
+real_ip_header CF-Connecting-IP;
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name goblast.feepay.web.id;
+
+    # Pengalihan otomatis HTTP ke HTTPS
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name goblast.feepay.web.id;
+
+    # Sertifikat SSL (Let's Encrypt / Cloudflare Origin CA)
+    ssl_certificate /etc/ssl/certs/goblast.crt;
+    ssl_certificate_key /etc/ssl/private/goblast.key;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers HIGH:!aNULL:!MD5;
+    ssl_prefer_server_ciphers on;
+
+    # Batas ukuran payload unggahan (sesuai batas file nomor 6 MB)
+    client_max_body_size 6m;
+
+    # Isolasi berkas sensitif dari web
+    location ~ /\.(env|git|gbak|sql) {
+        deny all;
+        return 404;
+    }
+
+    # Optional: Batasi akses IP khusus untuk rute admin (jika diinginkan pemilik)
+    # location ^~ /admin {
+    #     allow 203.0.113.50; # IP kantor / VPN pemilik
+    #     deny all;
+    #     proxy_pass http://127.0.0.1:8080;
+    #     proxy_set_header Host $host;
+    #     proxy_set_header X-Real-IP $remote_addr;
+    #     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    #     proxy_set_header X-Forwarded-Proto $scheme;
+    #     proxy_set_header CF-Connecting-IP $http_cf_connecting_ip;
+    # }
+
+    # Rute utama aplikasi Go
+    location / {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_http_version 1.1;
+
+        # Header penerusan identitas klien dan protokol
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header CF-Connecting-IP $http_cf_connecting_ip;
+
+        # Timeout proxy yang wajar untuk operasi upload dan polling
+        proxy_connect_timeout 10s;
+        proxy_read_timeout 90s;
+        proxy_send_timeout 90s;
+
+        # Nonaktifkan buffering proxy untuk respons cepat
+        proxy_buffering off;
+    }
+}
+```
+
+Aktivasi Nginx:
+```bash
+sudo ln -s /etc/nginx/sites-available/goblast.conf /etc/nginx/sites-enabled/
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+### B3. SSL dan Domain
+- Pasang sertifikat SSL gratis via Certbot (`certbot --nginx -d goblast.feepay.web.id`) atau pasang Cloudflare Origin CA Certificate dengan mode enkripsi Cloudflare *Full (Strict)*.
+- **Peringatan Domain**: Subdomain `feepay.web.id` digunakan bersama oleh aplikasi lain. Dilarang mengubah root record domain atau sertifikat domain utama tanpa koordinasi dengan pengelola sistem Feepay lainnya.
 
 ### B4. Variabel lingkungan
+Tabel variabel lingkungan berikut menyelaraskan seluruh variabel yang dibaca di kode (`internal/config/config.go`), `.env.example`, dan dokumentasi deployment:
+
 | Nama Variabel | Fungsi | Contoh Nilai | Sifat |
 |---|---|---|---|
 | `APP_ENV` | Lingkungan aplikasi | `production` / `dev` | Wajib |
 | `APP_ADDR` | Alamat bind aplikasi | `127.0.0.1:8080` (wajib loopback di produksi) | Wajib |
 | `ALLOW_PUBLIC_BIND` | Mengizinkan bind publik di produksi jika `true` | `false` | Opsional |
+| `APP_PUBLIC_HOST` | Host publik aplikasi untuk validasi Origin CSRF | `goblast.feepay.web.id` | Opsional |
 | `DATABASE_URL` | String koneksi PostgreSQL | `postgres://<user>:<pass>@localhost:5432/goblast` | Wajib |
+| `TEST_DATABASE_URL` | String koneksi database PostgreSQL untuk pengujian | `postgres://<user>:<pass>@localhost:5432/goblast_test` | Wajib untuk tes |
 | `DB_MAX_CONNS` | Batas maksimum koneksi pool DB aplikasi | `25` (default 25) | Opsional |
 | `DB_MIN_CONNS` | Batas minimum koneksi pool DB aplikasi | `5` (default 5) | Opsional |
 | `SESSION_SECRET` | Rahasia cookie sesi dan tanda tangan CSRF (32 byte base64) | `(base64 dari 32 byte acak)` | Wajib |
@@ -191,29 +349,68 @@ Panduan dan aturan mengenai keamanan aplikasi dan prosedur deploy sistem GO BLAS
 | `BACKUP_KEY` | Kunci enkripsi cadangan database (.gbak) AES-256-GCM (32 byte base64) | `(base64 dari 32 byte acak)` | Wajib untuk fitur backup |
 | `BACKUP_KEY_PREV` | Kunci cadangan versi sebelumnya untuk rotasi kunci cadangan | `(base64 dari 32 byte)` | Opsional |
 | `ALLOW_WEB_RESTORE` | Mengizinkan pemulihan database melalui antarmuka panel admin | `false` (default false) | Opsional |
-| `TRUSTED_PROXY_CIDRS` | Daftar CIDR proxy tepercaya untuk parsing IP asli klien (Cloudflare & Loopback) | `127.0.0.1/32,::1/128,173.245.48.0/20,...` | Opsional (default internal/Cloudflare) |
+| `MAX_ACTIVE_SESSIONS` | Batas maksimal sesi WhatsApp aktif simultan | `50` (rentang aman hasil ukur H10: 75–80) | Wajib di prod |
+| `CS_WHATSAPP_URL` | Tautan WhatsApp Customer Service resmi | `https://wa.me/6281200000000` | Opsional |
+| `CS_TELEGRAM_URL` | Tautan Telegram Customer Service resmi | `https://t.me/feepay_cs` | Opsional |
+| `CHANNEL_TELEGRAM_URL` | Tautan Channel Telegram resmi | `https://t.me/goblast_channel` | Opsional |
 | `CLIENT_IP_HEADER` | Nama header IP klien asli dari reverse proxy | `CF-Connecting-IP` | Opsional (default CF-Connecting-IP) |
+| `TRUSTED_PROXY_CIDRS` | Daftar CIDR proxy tepercaya untuk parsing IP asli klien (Cloudflare & Loopback) | `127.0.0.1/32,::1/128,173.245.48.0/20,...` | Opsional (default internal/Cloudflare) |
 | `TURNSTILE_SITE_KEY` | Site key Cloudflare Turnstile publik | `0x4AAAAAA...` | Opsional |
 | `TURNSTILE_SECRET_KEY` | Secret key Cloudflare Turnstile | `0x4AAAAAA...` | Opsional |
-| `APP_PUBLIC_HOST` | Host publik aplikasi untuk validasi Origin CSRF | `goblast.feepay.web.id` | Opsional |
 
 #### Rumus Kapasitas Koneksi Database:
-Untuk mencegah kegagalan pool koneksi database di produksi karena kehabisan koneksi PostgreSQL, kapasitas koneksi harus memenuhi rumus:
+Untuk mencegah kegagalan pool koneksi database di produksi akibat kehabisan koneksi PostgreSQL, kapasitas koneksi harus memenuhi rumus:
 $$\text{DB\_MAX\_CONNS} + \text{batas pool whatsmeow} + 10 < \text{max\_connections PostgreSQL}$$
 
-Penjelasan:
-- `DB_MAX_CONNS`: batas pool pgxpool aplikasi utama (default: 25).
+Penjelasan parameter:
+- `DB_MAX_CONNS`: batas pool `pgxpool` aplikasi utama (default: 25).
 - `batas pool whatsmeow`: batas pool whatsmeow sqlstore (`SetMaxOpenConns`, default: 10).
-- `10`: margin pengaman untuk migrasi skema database, koneksi administrasi, pemantauan pg_stat, dan psql ad-hoc.
+- `10`: margin pengaman untuk proses migrasi database, koneksi administrasi psql, dan pemantauan `pg_stat`.
 - `max_connections PostgreSQL`: batas maksimal koneksi di PostgreSQL (default umumnya 100).
 - Contoh konfigurasi default: $25 + 10 + 10 = 45 < 100$ (Aman).
 
-### B5. Migrasi
-- Jalankan migrasi (misal `go run ./cmd/goblast migrate up`) menggunakan folder db/migrations sebelum memulai versi biner baru.
+### B5. Konfigurasi dan Tuning PostgreSQL
+Untuk server VPS ramping (RAM 1 GB – 2 GB), sesuaikan berkas konfigurasi `/etc/postgresql/17/main/postgresql.conf`:
 
-### B6. Restart
-- Lakukan deploy atau restart hanya di jam sepi, dan persiapkan pemberitahuan ke pekerja.
-- Restart aplikasi menyebabkan seluruh sesi WhatsApp terputus; pekerja wajib melakukan scan ulang untuk menghubungkan akun.
+```ini
+# Koneksi dan Memori
+max_connections = 100
+shared_buffers = 256MB                  # 512MB jika RAM VPS 2 GB
+work_mem = 4MB
+maintenance_work_mem = 64MB
+effective_cache_size = 768MB
+
+# Write Ahead Log (WAL) & Checkpoint
+checkpoint_completion_target = 0.9
+wal_buffers = 16MB
+default_statistics_target = 100
+
+# Timeouts Pengaman Aplikasi
+statement_timeout = 30000               # 30 detik
+lock_timeout = 5000                     # 5 detik
+idle_in_transaction_session_timeout = 30000 # 30 detik
+```
+
+#### Pengaturan Autovacuum Agresif untuk Tabel Antrean:
+Tabel `campaign_numbers` mengalami ratusan operasi `UPDATE` klaim dan status per menit, yang dapat menimbulkan bloat dead tuples jika tidak segera dibersihkan. Jalankan perintah SQL berikut di database produksi:
+```sql
+ALTER TABLE campaign_numbers SET (
+    autovacuum_vacuum_scale_factor = 0.05,
+    autovacuum_analyze_scale_factor = 0.02,
+    autovacuum_vacuum_cost_limit = 1000
+);
+```
+
+### B6. Migrasi Database
+- Seluruh migrasi berada di direktori `db/migrations/` dan dieksekusi maju menggunakan perintah CLI resmi:
+  ```bash
+  /var/www/goblast/goblast migrate up
+  ```
+- Periksa versi migrasi saat ini:
+  ```bash
+  /var/www/goblast/goblast migrate version
+  ```
+- Dilarang keras mengedit berkas migrasi lama yang telah diterapkan di produksi (`0001` s.d. `0024`). Seluruh penyesuaian skema baru wajib dibuat sebagai file migrasi baru dengan bagian `Up` dan `Down`.
 
 ### B7. Cadangan Database dan Prosedur Pemulihan (Tahap H9)
 Sistem dilengkapi modul cadangan otomatis terenkripsi penuh yang beroperasi tanpa membocorkan kunci enkripsi ke berkas cadangan:
@@ -242,21 +439,21 @@ Sistem dilengkapi modul cadangan otomatis terenkripsi penuh yang beroperasi tanp
      ```
 
 3. **Prosedur Pemulihan Bencana (Disaster Recovery Drill)**:
-   Pemulihan penuh basis data dieksekusi secara atomik menggunakan perintah CLI resmi.
+   Pemulihan basis data dieksekusi secara atomik menggunakan perintah CLI resmi.
 
    **Skenario A: Pemulihan ke Database Kosong (Bencana Total)**
    ```bash
-   # 1. Pastikan aplikasi GO BLAST tidak berjalan
+   # 1. Hentikan aplikasi GO BLAST
    sudo systemctl stop goblast
 
    # 2. Siapkan database PostgreSQL target baru yang bersih
    createdb -h localhost -U postgres goblast
 
    # 3. Jalankan migrasi hingga versi terbaru
-   ./goblast migrate up
+   /var/www/goblast/goblast migrate up
 
    # 4. Eksekusi pemulihan dari berkas .gbak
-   ./goblast restore --file /var/www/goblast/backups/20261017_030000_otomatis_abc123.gbak
+   /var/www/goblast/goblast restore --file /var/www/goblast/backups/20261017_030000_otomatis_abc123.gbak
 
    # 5. Nyalakan kembali aplikasi
    sudo systemctl start goblast
@@ -264,8 +461,8 @@ Sistem dilengkapi modul cadangan otomatis terenkripsi penuh yang beroperasi tanp
 
    **Skenario B: Pemulihan ke Database yang Tidak Kosong**
    ```bash
-   # Gunakan bendera --force-nonempty (sistem akan meminta konfirmasi ketik kata 'RESTORE')
-   ./goblast restore --file /var/www/goblast/backups/20261017_030000_otomatis_abc123.gbak --force-nonempty
+   # Gunakan bendera --force-nonempty (sistem meminta konfirmasi ketik kata 'RESTORE')
+   /var/www/goblast/goblast restore --file /var/www/goblast/backups/20261017_030000_otomatis_abc123.gbak --force-nonempty
    ```
 
 4. **Verifikasi Pasca-Pemulihan**:
@@ -277,25 +474,197 @@ Sistem dilengkapi modul cadangan otomatis terenkripsi penuh yang beroperasi tanp
    - Memastikan 0 saldo minus, 0 duplikat upah/referral, dan 0 foreign key orphan rows.
 
 5. **Latihan Uji Coba Pemulihan (Restoration Drill)**:
-   Pemilik dianjurkan melakukan uji coba pemulihan pada mesin lokal atau server staging minimal sekali setiap bulan:
+   Lakukan uji coba pemulihan pada mesin lokal atau server staging minimal sekali setiap bulan:
    1. Unduh berkas `.gbak` terbaru dari panel `/admin/backups`.
    2. Pasang environment pengujian dengan `BACKUP_KEY` dan `ENCRYPTION_KEY` yang sama.
    3. Jalankan `./goblast restore --file <berkas.gbak> --force-nonempty` pada database pengujian.
    4. Periksa log hasil pemulihan untuk memastikan seluruh invarian data berstatus lulus (`OK`).
 
-### B8. Rollback
-- Simpan tiga biner build terakhir yang berhasil di-deploy.
-- Lakukan langkah mengembalikan versi dengan menghentikan service, mengubah symlink biner lama, dan menyalakan kembali service.
-- Jangan melakukan rollback aplikasi jika migrasi database pada versi terbaru tidak kompatibel mundur (tidak bisa di-rollback secara aman).
+### B8. Prosedur Deploy Rilis Baru
+Lakukan deploy pada jam sepi trafik dan berikan pemberitahuan jeda layanan kepada pekerja:
 
-### B9. Health check & Readiness probe
-- `/healthz` (Liveness probe): membalas status `200 OK` murni untuk mendeteksi apakah proses web hidup (tetap `200 OK` walau server sedang dalam proses *draining* atau DB lambat).
-- `/readyz` (Readiness probe): membalas `200 OK` hanya jika database berhasil di-*ping* dan server tidak sedang *draining*. Mengembalikan `503 Service Unavailable` saat server sedang proses shutdown (*draining*) atau database terputus, sehingga reverse proxy/load balancer tidak lagi mengirimkan trafik baru.
+1. **Kompilasi Biner Linux**:
+   Kompilasi biner pada mesin build atau CI/CD tanpa menyertakan simbol debug untuk memperkecil ukuran biner:
+   ```bash
+   GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o goblast-v1.2.0 ./cmd/goblast
+   ```
+2. **Kirim Biner dan Aset ke Server**:
+   ```bash
+   scp goblast-v1.2.0 deploy@vps:/var/www/goblast/bin/
+   rsync -avz --delete static/ deploy@vps:/var/www/goblast/static/
+   rsync -avz --delete locales/ deploy@vps:/var/www/goblast/locales/
+   rsync -avz db/migrations/ deploy@vps:/var/www/goblast/db/migrations/
+   ```
+3. **Pemberitahuan Pekerja**: Kirim pengumuman bahwa server akan diperbarui dan sesi WhatsApp akan terputus.
+4. **Hentikan Layanan Lama**:
+   ```bash
+   sudo systemctl stop goblast
+   ```
+   Systemd mengirimkan sinyal SIGTERM dan menunggu hingga 30 detik (`TimeoutStopSec=30s`) agar server menyelesaikan request dan draining akun WhatsApp yang sedang berjalan.
+5. **Jalankan Migrasi Database**:
+   ```bash
+   /var/www/goblast/bin/goblast-v1.2.0 migrate up
+   ```
+6. **Perbarui Symlink Biner Aktif**:
+   ```bash
+   ln -sfn /var/www/goblast/bin/goblast-v1.2.0 /var/www/goblast/goblast
+   ```
+7. **Nyalakan Layanan**:
+   ```bash
+   sudo systemctl start goblast
+   ```
+8. **Verifikasi Probe Kesehatan**:
+   ```bash
+   curl -I http://127.0.0.1:8080/healthz   # Harus 200 OK
+   curl -I http://127.0.0.1:8080/readyz    # Harus 200 OK
+   ```
+9. **Konsekuensi Arsitektur Sesi WhatsApp (Keputusan B1)**:
+   Proses shutdown mematikan koneksi soket whatsmeow di memori. Sesi WhatsApp terputus dan status akun direset ke `terputus`. Pekerja wajib melakukan scan ulang QR code atau tautkan ulang perangkat untuk memulai sesi kerja baru.
 
-### B10. Cloudflare (Keputusan G1 & F1)
-- Konfigurasi produksi: Cloudflare berada di depan Nginx, Nginx meneruskan header `CF-Connecting-IP` ke aplikasi Go.
-- Pembacaan IP klien asli (`getIP` / `getClientIP`):
-  1. Remote address koneksi TCP wajib berasal dari `TRUSTED_PROXY_CIDRS` (subnet IP resmi Cloudflare dan loopback server internal).
-  2. Nilai header `CF-Connecting-IP` disanitasi dan divalidasi keabsahan formatnya menggunakan `net.ParseIP`.
-  3. Jika remote address bukan proxy tepercaya atau format IP di header tidak valid, header tersebut diabaikan dan sistem menggunakan remote address TCP murni untuk mencegah spoofing IP rate limit.
-- CAPTCHA Turnstile (Keputusan F1): Diaktifkan pada formulir publik (`login.html` dan `register.html`) untuk menyaring bot sebelum komputasi password hashing. Di lingkungan produksi (`production`), sistem menolak penggunaan Turnstile Test Key dummy milik Cloudflare.
+### B9. Prosedur Rollback
+Jika biner versi baru mengalami galat fatal (panic / crash loop / bug kritis):
+
+1. **Hentikan Service**:
+   ```bash
+   sudo systemctl stop goblast
+   ```
+2. **Rollback Migrasi Database (Jika Diperlukan)**:
+   Hanya lakukan jika migrasi versi baru memiliki skrip `Down` yang aman dan belum merusak integritas data:
+   ```bash
+   /var/www/goblast/goblast migrate down
+   ```
+3. **Kembalikan Symlink ke Biner Versi Sebelumnya**:
+   ```bash
+   ln -sfn /var/www/goblast/bin/goblast-v1.1.0 /var/www/goblast/goblast
+   ```
+4. **Nyalakan Kembali Service**:
+   ```bash
+   sudo systemctl start goblast
+   ```
+5. **Verifikasi Status**:
+   ```bash
+   sudo systemctl status goblast
+   curl -I http://127.0.0.1:8080/readyz
+   ```
+
+### B10. Incident Runbook Singkat
+
+#### (a) Memori Membengkak / Mendekati MemoryMax 512M
+- **Gejala**: RSS memori di atas 450 MB, log systemd mencatat peringatan cgroup memory, atau proses dihentikan oleh OOM killer.
+- **Penyebab**: Lonjakan sesi WhatsApp aktif melebihi batas aman (`MAX_ACTIVE_SESSIONS`), atau antrean unggahan nomor berukuran besar.
+- **Tindakan**:
+  1. Restart proses untuk merebut kembali memori heap: `sudo systemctl restart goblast`.
+  2. Turunkan sementara nilai `MAX_ACTIVE_SESSIONS` di file `.env` (misal dari 75 menjadi 40).
+  3. Muat ulang konfigurasi: `sudo systemctl restart goblast`.
+
+#### (b) Disk Server / Database Penuh
+- **Gejala**: PostgreSQL menolak transaksi baru dengan galat `could not extend file: No space left on device`.
+- **Tindakan**:
+  1. Periksa ruang disk: `df -h`.
+  2. Bersihkan berkas sementara lama: `find /var/www/goblast/data/tmp/ -type f -mmin +60 -delete`.
+  3. Bersihkan log journald lama: `sudo journalctl --vacuum-size=200M`.
+  4. Jalankan vacuum manual pada tabel antrean: `psql -U goblast -d goblast -c "VACUUM (ANALYZE) campaign_numbers;"`.
+
+#### (c) Kunci Enkripsi Bocor (`ENCRYPTION_KEY` / `BACKUP_KEY`)
+- **Tindakan Rotasi Darurat**:
+  1. Generate kunci acak baru 32 byte base64: `openssl rand -base64 32`.
+  2. Edit berkas `/var/www/goblast/.env`:
+     - Pindahkan nilai `ENCRYPTION_KEY` lama ke `ENCRYPTION_KEY_PREV`.
+     - Masukkan kunci acak baru ke `ENCRYPTION_KEY`.
+     - Lakukan hal serupa pada `BACKUP_KEY` dan `BACKUP_KEY_PREV` jika kunci cadangan turut bocor.
+  3. Restart aplikasi: `sudo systemctl restart goblast`.
+  4. Aplikasi otomatis mendekripsi data lama menggunakan `k0` dan menulis ulang data baru menggunakan `k1`.
+  5. Periksa log aplikasi untuk memastikan tidak ada galat dekripsi.
+
+#### (d) Nomor Customer Terindikasi Bocor
+- **Tindakan Isolasi**:
+  1. Buka menu `/admin/campaigns` dan ubah status seluruh kampanye aktif menjadi `paused`.
+  2. Periksa log audit pengunduhan sisa nomor: `SELECT * FROM audit_logs WHERE action = 'admin_campaign_export_numbers' ORDER BY created_at DESC LIMIT 20;`.
+  3. Bekukan akun admin atau pekerja yang terindikasi mencurigakan via panel admin atau perintah SQL.
+
+#### (e) Pencabutan Sesi Admin & Pekerja Massal
+- **Tindakan Cabut Sesi Seketika**:
+  Jika token sesi atau cookie dicuri secara massal:
+  1. Eksekusi query penghapusan seluruh sesi web dari psql:
+     ```sql
+     DELETE FROM web_sessions;
+     ```
+  2. Putus seluruh sesi WhatsApp yang sedang terhubung:
+     ```bash
+     sudo systemctl restart goblast
+     ```
+  3. Seluruh admin dan pekerja otomatis ter-logout dan wajib memasukkan kredensial baru.
+  4. *(Rencana CLI TODO)*: Sediakan perintah CLI `goblast revoke-sessions --all` agar tindakan ini dapat dijalankan langsung tanpa membuka psql.
+
+### B11. Pemantauan dan Tanda Bahaya (Monitoring)
+
+#### Metrik Utama yang Wajib Dipantau:
+1. **Penggunaan Memori (RSS)**: Wajib di bawah 450 MB (batas cgroup: 512 MB).
+2. **Koneksi Database Aktif**: Periksa via `SELECT count(*) FROM pg_stat_activity WHERE datname = 'goblast';`. Jumlah koneksi tidak boleh mendekati 100.
+3. **Ruang Disk Bebas**: Partisi root `/` wajib memiliki ruang bebas minimal 2 GB untuk menampung cadangan harian.
+
+#### Pola Log Tanda Bahaya di `journalctl -u goblast -f`:
+- `cipher: message authentication failed`: Indikasi kunci enkripsi salah atau korupsi data rekening.
+- `ArgonGate rejected: queue full`: Indikasi serangan brute-force login massal yang sedang membebani server.
+- `pool exhausted`: Waktu tunggu koneksi database habis; segera cek query yang terkunci atau naikkan kapasitas pool.
+- `whatsmeow connect error`: Gangguan jaringan ke server WhatsApp; pantau apakah terjadi massal atau pada nomor tertentu.
+
+---
+
+## Bagian C. VPS Tetap Ramping
+
+### C1. Daftar Berkas di Server Produksi
+Untuk menjaga keamanan dan meminimalkan jejak penyimpanan di server VPS:
+
+- **HANYA BERKAS INI YANG BOLEH ADA DI SERVER PRODUKSI**:
+  - Biner tunggal hasil kompilasi: `/var/www/goblast/goblast` (atau di folder `bin/`).
+  - Berkas template dan statis frontend: `/var/www/goblast/static/`.
+  - Berkas terjemahan antarmuka: `/var/www/goblast/locales/`.
+  - Berkas skrip migrasi database: `/var/www/goblast/db/migrations/`.
+  - Berkas konfigurasi rahasia: `/var/www/goblast/.env` (izin akses ketat `0600`, pemilik `goblast:goblast`).
+  - Direktori penyimpanan data operasional: `data/`, `uploads/`, `backups/`.
+- **DILARANG KERAS BERADA DI SERVER PRODUKSI**:
+  - Seluruh kode sumber Go (`*.go`).
+  - Repositori git (`.git/`, `.gitignore`).
+  - Kompiler Go dan toolchain pengembangan (`go`, `gopls`, `gcc`).
+  - Direktori spike dan prototipe (`spike/`).
+  - Data pengujian dan mock (`testdata/`, berkas pengujian `*_test.go`).
+  - Berkas nomor telepon mentah (`*.csv`, `*.txt`, `*.xlsx`).
+
+### C2. Tabel Direktori yang Bertumbuh
+
+| Direktori | Peruntukan | Perkiraan Pertumbuhan | Penanggung Jawab | Mekanisme Pembersihan |
+|---|---|---|---|---|
+| `data/tmp/` | Berkas sementara ekspor dan pemrosesan impor | 10–50 MB / hari | Aplikasi backend | Dibersihkan otomatis oleh pembersih berkas sementara untuk file berusia > 1 jam (`TmpFilesMaxAge`). |
+| `uploads/` | Lampiran gambar kampanye pengiriman | 1–5 MB per kampanye | Admin & Aplikasi | Dihapus otomatis saat admin mengeksekusi pembersihan penyimpanan arsip kampanye lama (`AdminStoragePurge`). |
+| `backups/` | Berkas cadangan database terenkripsi (`.gbak`) | 5–20 MB per cadangan harian | Aplikasi backend (Modul H9) | Dikelola otomatis oleh skema retensi GFS (7 harian, 4 mingguan). Cadangan terverifikasi terakhir dilindungi dari penghapusan. |
+| Log Systemd (`journald`) | Log output aplikasi Go dan Nginx | 50–200 MB / minggu | OS Linux (`journald`) | Dibatasi otomatis melalui konfigurasi `/etc/systemd/journald.conf` dengan `SystemMaxUse=500M`. |
+
+---
+
+## Bagian D. Daftar Kesiapan Produksi (Go-Live Checklist)
+
+Tabel berikut memuat 20 butir verifikasi kesiapan sistem sebelum GO BLAST dibuka untuk trafik publik dan pekerja:
+
+| No | Butir Periksa | Kategori | Status | Cara Membuktikan | Penanggung Jawab |
+|---|---|---|---|---|---|
+| 1 | 22 Variabel Lingkungan Lengkap | Konfigurasi | Siap | Jalankan unit test `TestGuard_EnvVarsSync`; periksa kelengkapan file `.env` produksi. | Admin / Sistem |
+| 2 | Kunci Enkripsi Acak 32-Byte | Keamanan | Siap | Periksa panjang decoding base64 dari `ENCRYPTION_KEY`, `BACKUP_KEY`, dan `SESSION_SECRET` (wajib tepat 32 byte, bukan nilai contoh). | Admin |
+| 3 | Migrasi Skema DB Versi Terbaru | Database | Siap | Eksekusi `./goblast migrate version`; pastikan versi migrasi berada di versi `24` tanpa galat tertunda. | Admin |
+| 4 | Admin Pertama & TOTP Aktif | Akses | Perlu Tindakan | Buat akun admin pertama melalui CLI; login dan tuntaskan alur setup TOTP di `/admin/totp/setup`. | Pemilik |
+| 5 | Step-Up 2FA Berfungsi | Akses | Siap | Akses rute sensitif (contoh: ubah pengaturan di `/admin/settings`); verifikasi modal permintaan TOTP 5 menit muncul. | Admin |
+| 6 | Cloudflare Turnstile Aktif & Teruji | Proteksi Bot | Perlu Tindakan | Buka form login & register; pastikan widget Turnstile muncul dan verifikasi berhasil dengan kunci Cloudflare resmi. | Admin |
+| 7 | CSP Bebas Pelanggaran di Browser | Keamanan Web | Siap | Buka seluruh halaman pekerja dan admin dengan console browser terbuka; pastikan 0 pesan CSP violation. | Admin |
+| 8 | Logout POST-Only Ditegakkan | Akses | Siap | Akses rute `GET /logout`; pastikan server mengembalikan kode respons HTTP 405 Method Not Allowed. | Sistem |
+| 9 | Uji Cadangan & Integritas (.gbak) | Cadangan | Siap | Buat cadangan manual di `/admin/backups`; periksa kemunculan file `.gbak` dan status integritas terverifikasi di database. | Admin |
+| 10 | Uji Coba Latihan Pemulihan (Drill) | Bencana | Siap | Jalankan `./goblast restore --file <file.gbak> --force-nonempty` pada database staging; verifikasi seluruh data pulih utuh. | Admin |
+| 11 | MemoryMax 512M di Systemd | Infrastruktur | Siap | Jalankan `systemctl show goblast -p MemoryMax`; pastikan bernilai `536870912` (512M). | Admin |
+| 12 | TimeoutStopSec 30s di Systemd | Infrastruktur | Siap | Jalankan `systemctl show goblast -p TimeoutStopUSec`; pastikan bernilai `30000000` (30s). | Admin |
+| 13 | Nginx Proxy Headers & 6m Body Size | Web Server | Siap | Periksa `nginx -T`; verifikasi `client_max_body_size 6m;` dan penerusan header `CF-Connecting-IP`. | Admin |
+| 14 | SSL / HTTPS Aktif (Grade A) | Keamanan Web | Siap | Akses domain via HTTPS di browser; verifikasi gembok SSL valid dan header HSTS terpasang. | Admin |
+| 15 | Tautan CS & Channel Resmi Valid | Konfigurasi | Siap | Klik tautan CS WhatsApp, CS Telegram, dan Channel di footer; verifikasi mengarah ke URL resmi berawalan `https://`. | Admin |
+| 16 | Koneksi WhatsApp Terhubung & Putus Bersih | Integrasi WA | Perlu Tindakan | Tautkan 1 nomor WhatsApp uji coba; verifikasi QR terhubung, status menjadi terhubung, dan tombol putuskan bekerja bersih. | Pemilik |
+| 17 | Worker Financial Rate Limit Berfungsi | Keamanan Akses | Siap | Kirim permintaan penarikan beruntun; pastikan permintaan ke-11 dalam 10 menit menerima HTTP 429 Too Many Requests. | Sistem |
+| 18 | ArgonGate Melindungi Serangan Brute-Force | Performa | Siap | Verifikasi pembatasan komputasi argon2id aktif dengan `ArgonConcurrencyLimit = 2` dan `ArgonQueueLimit = 8`. | Sistem |
+| 19 | Autovacuum Agresif Tabel Antrean | Database | Siap | Query `pg_options` pada tabel `campaign_numbers`; pastikan `autovacuum_vacuum_scale_factor = 0.05`. | Admin |
+| 20 | Direktori Bersih Tanpa Kode Sumber | Kebersihan VPS | Siap | Jalankan `find /var/www/goblast -name "*.go" -o -name ".git"`; pastikan output kosong di server produksi. | Admin |

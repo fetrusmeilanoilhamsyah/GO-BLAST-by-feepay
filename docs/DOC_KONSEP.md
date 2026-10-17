@@ -114,48 +114,59 @@ Preview di panel hanyalah simulasi, bukan jaminan tampilan di HP penerima.
 
 ## 9. Upah, referral, dan dompet
 
-**Mata uang tunggal.** Semua upah dan bonus referral dihitung dalam mata uang tunggal Rupiah (IDR), satu angka untuk seluruh pekerja. Tidak ada pemilihan mata uang akun saat pendaftaran. USDT hanya didapat lewat konversi eksplisit dari saldo rupiah ("Tukar ke USDT") dengan kurs yang diatur admin di panel (`rate_idr_to_usdt`), dilengkapi batas usia kurs maksimal 24 jam dan `request_token` idempoten.
+**Mata uang tunggal.** Semua upah dan bonus referral dihitung dalam mata uang tunggal Rupiah (IDR), satu angka untuk seluruh pekerja (Tahap S1). Tidak ada pemilihan mata uang akun saat pendaftaran. USDT hanya didapat lewat konversi eksplisit dari saldo rupiah ("Tukar ke USDT") dengan kurs yang diatur admin di panel (`rate_idr_to_usdt`), dilengkapi batas usia kurs maksimal 24 jam dan `request_token` idempoten.
 
 **Upah pekerja.** Dihitung per pesan berstatus `terkirim` dalam rupiah utuh. Pesan gagal atau tidak terdaftar tidak dibayar. Rate hari ini ditampilkan di halaman pekerja/publik (misal: "Rp 50 per pesan" serta estimasi ekuivalen USDT jika kurs valid < 24 jam).
 
-**Referral.** Setiap pekerja punya link referral unik. Kalau pekerja A mendaftar lewat link pekerja B, maka setiap pesan terkirim oleh A memberi B sebuah bonus per pesan dalam rupiah. Satu tingkat saja, bukan berantai.
+**Referral otomatis satu tingkat (Keputusan D & Tahap H6).** Setiap pekerja punya link dan kode referral unik. Kalau pekerja A mendaftar lewat link pekerja B, maka setiap pesan yang berhasil dikirim oleh A memberikan bonus per pesan (`rate_referral`) kepada B secara otomatis dalam transaksi atomik yang sama. Sistem strictly single-tier (A mengajak B, B mengajak C: kiriman C membayar B, bukan A). Dilengkapi proteksi anti-kecurangan (anti-fraud): penolakan bonus jika akun pengundang dibekukan/nonaktif, penolakan bonus jika pengundang dan pekerja berbagi hash rekening tujuan penarikan yang sama (`payout_dest_hash`), penolakan self-referral, dan tanpa batas waktu maupun batas akumulasi bonus.
 
 **Rate dicatat per pesan.** Rate yang berlaku saat pesan terkirim disimpan bersama pesan itu di buku besar (`rate_snapshot`). Kalau admin mengubah rate besok, penghasilan kemarin tidak berubah.
 
-**Catatan saldo.** Penghasilan dan mutasi dicatat sebagai buku besar append-only di `ledger_entries` (setiap transaksi menambah satu baris), bukan sebagai satu angka saldo yang ditimpa. Setiap baris menyimpan mata uangnya (`IDR` atau `USDT`).
+**Catatan saldo.** Penghasilan dan mutasi dicatat sebagai buku besar append-only di `ledger_entries` (setiap transaksi menambah satu baris), bukan sebagai satu angka saldo yang ditimpa. Ditegakkan oleh trigger database yang menolak UPDATE dan DELETE. Setiap baris menyimpan mata uangnya (`IDR` atau `USDT`).
 
-**Dompet admin.** Jumlah nomor yang boleh dimasukkan dibatasi oleh dompet kas admin. Biaya terburuk per nomor = upah + bonus referral. Sistem menolak nomor yang melebihi dompet, sehingga kewajiban upah tidak pernah melebihi uang yang dialokasikan.
+**Dompet admin (Keputusan #5).** Dompet kas admin berfungsi murni untuk pembukuan operasional dan pemantauan sisa modal modal per mata uang (IDR dan USDT). Admin bebas mengunggah database nomor tanpa memblokir kuota saldo kas, memberikan fleksibilitas penuh bagi admin dalam menjalankan kampanye.
 
-**Penarikan.** Penarikan rupiah diambil dari saldo rupiah, sedangkan penarikan USDT diambil dari saldo USDT hasil penukaran. Pekerja mengajukan tarik saldo, saldo langsung dikunci/dikurangi di buku besar, masuk antrean `withdrawals`, admin transfer manual, lalu menandai selesai di panel.
+**Penarikan.** Penarikan rupiah diambil dari saldo rupiah, sedangkan penarikan USDT diambil dari saldo USDT hasil penukaran. Pekerja mengajukan tarik saldo, saldo langsung didebit di buku besar, masuk antrean `withdrawals` berstatus `menunggu`, admin mentransfer manual dan melakukan verifikasi, lalu menandai selesai di panel dengan bukti transaksi. Dilengkapi masa penahanan 24 jam (`withdraw_locked_until`) jika pekerja baru saja mengubah rekening/wallet demi mencegah pembobolan akun.
 Metode penarikan yang didukung:
 - **Lokal (Indonesia - saldo IDR):** DANA, Seabank, BCA, dan transfer bank lokal.
 - **Internasional (saldo USDT):** USDT jaringan BEP20.
 
 ## 10. Kecepatan dan pengaman akun
 
-Ada empat kecepatan, dengan jeda awal antar pesan:
+Ada empat kecepatan, dengan jeda antar pesan:
 
-| Kecepatan | Jeda awal |
+| Kecepatan | Jeda dasar |
 |---|---|
 | fast | 1 detik |
 | medium | 5 detik |
 | slow | 15 detik |
 | over slow | 30 detik |
 
-Semua nilai jeda diatur admin di panel, tidak ditanam di kode. Jeda sebenarnya ditambah variasi acak kecil. Batas harian per akun untuk tiap kecepatan belum diputuskan (bagian 15).
+Nilai jeda kecepatan di atas dan batas harian akun dikelola sebagai **konstanta backend** di `internal/config/limits.go` (Tahap S5 & Keputusan C1), bukan diatur lewat form panel admin, demi mencegah salah konfigurasi teknis oleh admin non-teknis. Jeda pengiriman aktual ditambahkan variasi acak (jitter ±20%) untuk menghindari pola mekanis robotik.
 
-Pengaman yang wajib ada karena akun WhatsApp pekerja bisa dibanned (ini otomasi tidak resmi dan melanggar ketentuan WhatsApp), terutama di kecepatan fast:
-- Batas harian per akun.
-- Sesi otomatis berhenti kalau ada tanda masalah.
-- Pekerja diberi tahu risiko ini sejak mendaftar, diperingatkan lagi saat memilih kecepatan tinggi, dan disarankan memakai nomor khusus.
+Batas harian pengiriman per akun disetel bernilai 0 (tanpa batas) sebagai konstanta backend sesuai Keputusan C1 pemilik, dengan peringatan sadar risiko pada antarmuka.
 
-## 11. Sesi dan privasi pekerja
+Pengaman yang wajib ada:
+- Pemutus sirkuit (circuit breaker): 5 kegagalan fatal beruntun otomatis menghentikan akun pekerja dengan alasan jelas (`stop_reason`).
+- Pekerja diberi tahu risiko pemblokiran WhatsApp sejak mendaftar, diperingatkan kembali saat memilih profil kecepatan tinggi, dan disarankan menggunakan nomor cadangan.
 
-- Server secara teknis memegang akses ke akun WhatsApp pekerja selama sesi aktif. Karena itu:
-  - Sistem tidak menyimpan isi pesan masuk atau chat pribadi pekerja.
-  - Data sesi dilindungi dan dihapus ketika pekerja berhenti atau sesi terputus. Protokol Noise melindungi lalu lintas, bukan kunci yang tersimpan; kunci whatsmeow tersimpan tidak terenkripsi di tabel whatsmeow_* pada database yang sama; mitigasi: dihapus saat berhenti, enkripsi disk VPS, pengguna database terbatas (dikerjakan di Tahap 16). Pekerja scan ulang tiap kali kerja.
-  - Admin tidak membuka chat pribadi pekerja. Ini juga tertulis di syarat dan ketentuan.
-- Nomor customer tidak pernah ditampilkan ke pekerja. Pekerja hanya melihat angka agregat.
+## 11. Sesi, privasi pekerja, dan siklus hidup data
+
+**Sesi WhatsApp dan Restart Server (Keputusan B1 & Tahap H4):**
+- Server memegang akses ke sesi WhatsApp pekerja selama aktif demi otomasi pengiriman.
+- **Kebijakan Restart Server:** Sesi WhatsApp **tidak dipulihkan otomatis saat server restart**. Saat boot, sistem membersihkan sisa perangkat whatsmeow yatim (`ReconcileOnBoot`), mengatur seluruh akun menjadi `terputus`, dan pekerja wajib melakukan pemindaian (scan QR/pairing) ulang saat server kembali aktif.
+- Sistem tidak pernah menyimpan isi percakapan pribadi atau pesan masuk milik pekerja.
+- Kunci sesi whatsmeow disimpan di tabel `whatsmeow_*` lokal dan **sengaja dikecualikan dari berkas cadangan database (`.gbak`)** demi keamanan perangkat pekerja.
+
+**Privasi Nomor Customer:**
+- Nomor customer tidak pernah dikirim ke browser pekerja atau respons API pekerja. Pekerja hanya melihat agregat statistik.
+- Di log aplikasi server, nomor telepon pelanggan disamarkan otomatis (misal `62812****678`).
+
+**Siklus Hidup Data ("Datanya ke Mana?"):**
+Sesuai Keputusan O & Arsitektur Tahap H8:
+1. **Pengarsipan Kampanye:** Mengarsipkan kampanye hanya menyembunyikannya dari daftar utama dan menjadikannya berstatus hanya-baca (*read-only*). **Pengarsipan tidak menghapus nomor apa pun**; seluruh data nomor dan file batch tetap tersimpan aman.
+2. **Pembersihan Kampanye (*Purge* Manual):** Dijalankan secara sadar oleh admin via `/admin/campaigns/{id}/purge`. Nomor `tersedia` (belum terkirim) dihapus fisik; sedangkan nomor `terkirim`, `gagal`, dan `tidak_terdaftar` **dianonimkan** (`phone_e164 = 'x' || id`, `country_code = 'XX'`, nama dan custom data dihapus). Relasi buku besar (`ledger_entries`) berstatus `ON DELETE RESTRICT` sehingga catatan finansial dan saldo pekerja tetap 100% utuh dan valid selamanya.
+3. **Pembersihan Server Rutin:** File pecahan upload sementara di `data/tmp/` dibersihkan otomatis jika > 1 jam; sesi web expired dibersihkan berkala; riwayat audit login gagal disimpan 30 hari; dan notifikasi terbaca disimpan 90 hari.
 
 ## 12. Laporan
 
@@ -171,21 +182,22 @@ Dashboard diperbarui dengan polling berkala (5 sampai 10 detik), bukan WebSocket
 
 **Publik** melihat sisa nomor tersedia (live), rate hari ini, dan cara mendaftar.
 
-## 13. Skala dan stack
+## 13. Skala dan stack (Berdasarkan Hasil Ukur Empiris Tahap H10)
 
-Asumsi skala:
-- Pekerja terdaftar: 100 sampai 1000 orang, tapi tidak online bersamaan.
-- Beban server ditentukan oleh jumlah **nomor WhatsApp yang aktif bersamaan**, bukan jumlah pekerja. Perkiraan awal 20 sampai 30 sesi, tapi karena satu pekerja boleh banyak nomor, angkanya bisa lebih besar dan harus diukur (Tahap 3 dan 15).
-- Untuk melindungi VPS, ada pengaturan batas total sesi aktif dan batas nomor per pekerja. Kelebihannya mengantre, tidak ditolak mendadak. Nilai awal ditentukan dari hasil pengukuran memori per sesi.
-- Database nomor: dimulai dari sekitar 10 ribu, kadang hanya puluhan nomor per hari menyesuaikan dompet.
+Asumsi skala dan batasan terukur:
+- Beban server ditentukan oleh jumlah **nomor WhatsApp yang aktif bersamaan**, bukan jumlah pekerja terdaftar.
+- **Batas Memori VPS:** Alokasi `MemoryMax = 512M` di systemd memberikan batas aman terverifikasi (puncak riil beban ekstrem L6 pada 1.000 sesi rate limit + 200 req/s brute force adalah ~204 MB, dengan headroom 2.5x).
+- **Kapasitas Sesi Aktif:** Berdasarkan formula empiris $MAX\_ACTIVE\_SESSIONS = \lfloor(\text{memori\_aplikasi} - 50\text{ MB}) / 4.5\text{ MB}\rfloor$, batas aman untuk alokasi RAM 400 MB adalah **75–80 sesi WhatsApp aktif simultan**.
+- **Koneksi Database:** `DB_MAX_CONNS = 25`–`30` (sangat mencukupi untuk 50 worker serentak dengan latensi klaim p95 < 10ms dan RT DB per pesan sukses tepat 2 round-trip), `DB_MIN_CONNS = 5`, serta batas pool whatsmeow 10 koneksi.
+- Database nomor: Teruji hingga 1.000.000 nomor dan 500.000 buku besar tanpa bottleneck indeks (kueri klaim 1.017 ms via partial index SKIP LOCKED).
 
 Stack:
-- Backend: Go. Alasan: hemat memori untuk sesi yang hidup terus, satu program tunggal.
-- Pustaka WhatsApp: whatsmeow (belum diuji, wajib dicoba dulu sebelum fase 1). Pustaka ini tidak resmi, bisa rusak kalau WhatsApp mengubah protokol.
-- Database: PostgreSQL.
-- Antarmuka: halaman server-rendered dari Go (template) dengan HTMX seperlunya. Tidak ada React terpisah.
-- Bahasa antarmuka: Indonesia, Inggris, dan Mandarin. Teks disimpan di berkas terjemahan, bukan di kode. Terjemahan harus natural, bukan kaku atau terasa seperti hasil mesin. Draf dari AI wajib ditinjau penutur asli sebelum rilis.
-- Server: VPS yang sudah ada, Nginx sebagai reverse proxy.
+- Backend: Go (versi 1.26+, diuji pada Go 1.27.2). Alasan: hemat memori untuk sesi yang hidup terus, satu program tunggal.
+- Pustaka WhatsApp: whatsmeow (protokol sinkronisasi Noise/WebSocket mandiri).
+- Database: PostgreSQL 17 (dengan migrasi Goose 0001–0024).
+- Antarmuka: Halaman server-rendered dari Go (`html/template`) dengan CSS adaptif responsif, tanpa framework JS berat.
+- Bahasa antarmuka: Indonesia, Inggris, dan Mandarin.
+- Server: VPS Linux di belakang reverse proxy Nginx dan Cloudflare.
 
 ## 14. Arah ke depan (bukan fase 1)
 
@@ -194,20 +206,21 @@ Kalau sistem ini berhasil, kemungkinan FEEPAY mulai menjual produk digital (kode
 - Template mungkin perlu varian per bahasa atau negara, dipilih berdasarkan kode negara nomor. Belum ada di fase 1.
 - Mengirim pesan massal ke nomor di negara lain bisa terkena aturan setempat tentang izin menghubungi (misalnya di Eropa dan Amerika). Pemilik proyek perlu memeriksa ini sebelum nomor luar negeri dipakai dalam skala besar.
 
-## 15. Keputusan yang masih terbuka
+## 15. Status Keputusan Proyek
 
-Jangan diputuskan sendiri oleh AI agent. Tanya pemilik proyek.
+Status keputusan dari rapat dan rangkaian pengujian H1–H10:
 
-1. Definisi "terkirim": cukup diterima server WhatsApp (centang satu), atau harus sampai ke HP penerima (centang dua)? Usulan: centang satu, karena lebih cepat dan tidak bergantung HP penerima, tapi lebih mudah dicurangi.
-2. Batas harian per kecepatan.
-3. Jumlah percobaan ulang sebelum nomor dianggap `gagal`.
-4. Cara menentukan mata uang akun pekerja. Usulan: dipilih pekerja saat daftar dan tidak bisa diganti setelah ada penghasilan.
-5. Cara menghitung dompet dengan dua mata uang. Usulan: admin mengisi satu kurs acuan di panel, dipakai hanya untuk menghitung kebutuhan dompet dan laporan, tidak untuk mengonversi saldo pekerja.
-6. Nilai awal batas nomor per pekerja dan batas total sesi aktif (setelah pengukuran memori).
-7. Mode bawaan template: `tombol_asli` atau `kartu_link` (setelah uji Tahap 3).
-8. Penanda klik unik per pekerja di link pesan, untuk melihat pekerja mana yang kirimannya benar-benar menghasilkan kunjungan dan sebagai pengaman dari pekerja yang hanya mengejar angka terkirim. Disarankan, tapi belum diputuskan masuk fase 1.
-9. Pencegahan referral palsu (orang mendaftarkan akun kedua miliknya sendiri untuk menggaruk bonus). Minimal: satu nomor WhatsApp hanya bisa terdaftar sekali, dan admin bisa menonaktifkan akun.
-10. Apakah bonus referral punya batas waktu atau batas jumlah.
+- [ ] 1. Definisi "terkirim": centang satu (`server_ack`) atau centang dua (`delivery_ack`). Saat ini berjalan stabil pada `server_ack`. Menunggu keputusan final pemilik.
+- [x] 2. Batas harian per kecepatan: Diputuskan 0 (tanpa batas) sebagai konstanta backend (Keputusan C1).
+- [x] 3. Jumlah percobaan ulang sebelum `gagal`: Diputuskan 3 kali (`MaxAttempts = 3`) sebagai konstanta backend (Keputusan C1).
+- [x] 4. Cara menentukan mata uang akun pekerja: Diputuskan mata uang tunggal Rupiah (IDR) untuk upah dan referral; USDT hanya via konversi manual kurs admin (Tahap S1).
+- [x] 5. Dompet admin dengan dua mata uang: Dompet murni untuk pencatatan/pembukuan modal, tidak memblokir kuota unggah nomor (Keputusan #5).
+- [x] 6. Nilai awal batas sesi aktif dan pool koneksi: Diukur empiris di Tahap H10: `MAX_ACTIVE_SESSIONS = 75-80`, `DB_MAX_CONNS = 25-30`, `MemoryMax = 512M`.
+- [x] 7. Mode bawaan template: Default `kartu_link`, opsi `tombol_asli` dibuka sebagai eksperimental dengan peringatan sadar risiko dan persetujuan wajib (Tahap H7).
+- [ ] 8. Penanda klik unik per pekerja di link pesan: Direncanakan untuk fase 2 (Tahap 19).
+- [x] 9. Pencegahan referral palsu: Referral otomatis 1 tingkat, dibayar per pesan sukses, anti self-referral, deteksi multi-akun hash rekening sama, pengundang wajib aktif (Tahap H6).
+- [x] 10. Batas waktu atau jumlah bonus referral: Diputuskan tidak ada batas waktu dan tidak ada batas jumlah bonus (Keputusan D).
+- [ ] 11. Font: Menggunakan font sistem bersih tanpa Google Fonts / web fonts eksternal.
 
 ## 16. Fase 1 (MVP)
 

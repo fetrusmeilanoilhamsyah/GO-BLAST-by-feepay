@@ -2,20 +2,34 @@
 .env
 *.pem
 *.key
+*.session
 
 # Data & Unggahan (Tidak boleh masuk git)
 /uploads/
 /data/
 /import/
 
+# Berkas Nomor & Cadangan
+*.gbak
+*.dump
+*.sql
+!db/migrations/*.sql
+!db/seed/*.sql
+*.csv
+!testdata/**/*.csv
+!testdata/*.csv
+*.xlsx
+
 # Database Lokal
 *.db
 *.sqlite
 
-# Cadangan
+# Cadangan Folder
 /backups/
 
 # Biner & Temporer
+/goblast
+goblast
 /tmp/
 /bin/
 *.exe
@@ -24,3 +38,4 @@
 # Sistem & IDE
 .DS_Store
 .idea/
+.vscode/

@@ -35,6 +35,9 @@ type Config struct {
 	BackupKey          []byte
 	BackupKeyPrev      []byte
 	AllowWebRestore    bool
+	DBMaxConns         int
+	DBMinConns         int
+	TestDatabaseURL    string
 }
 
 func Load() (*Config, error) {
@@ -45,6 +48,7 @@ func Load() (*Config, error) {
 		AppEnv:             os.Getenv("APP_ENV"),
 		AppAddr:            os.Getenv("APP_ADDR"),
 		DatabaseURL:        os.Getenv("DATABASE_URL"),
+		TestDatabaseURL:    os.Getenv("TEST_DATABASE_URL"),
 		SessionSecret:      os.Getenv("SESSION_SECRET"),
 		CSWhatsAppURL:      os.Getenv("CS_WHATSAPP_URL"),
 		CSTelegramURL:      os.Getenv("CS_TELEGRAM_URL"),
@@ -53,6 +57,24 @@ func Load() (*Config, error) {
 		TurnstileSiteKey:   os.Getenv("TURNSTILE_SITE_KEY"),
 		TurnstileSecretKey: os.Getenv("TURNSTILE_SECRET_KEY"),
 		AppPublicHost:      os.Getenv("APP_PUBLIC_HOST"),
+	}
+
+	if valStr := os.Getenv("DB_MAX_CONNS"); valStr != "" {
+		if val, err := strconv.Atoi(valStr); err == nil && val > 0 {
+			cfg.DBMaxConns = val
+		}
+	}
+	if cfg.DBMaxConns == 0 {
+		cfg.DBMaxConns = DefaultDBMaxConns
+	}
+
+	if valStr := os.Getenv("DB_MIN_CONNS"); valStr != "" {
+		if val, err := strconv.Atoi(valStr); err == nil && val >= 0 {
+			cfg.DBMinConns = val
+		}
+	}
+	if cfg.DBMinConns == 0 {
+		cfg.DBMinConns = DefaultDBMinConns
 	}
 
 	if cfg.AppEnv == "" {
