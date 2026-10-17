@@ -171,7 +171,7 @@ Aplikasi secara ketat mengirimkan header keamanan pada seluruh respons HTTP:
 ### B1. Isolasi di VPS Linux & Unit Systemd
 - Gunakan pengguna sistem tanpa privilese root (`goblast:goblast`) untuk mengoperasikan aplikasi.
 - Aplikasi wajib di-bind ke loopback lokal `127.0.0.1:8080`. Bind publik `0.0.0.0` di produksi ditolak oleh server kecuali jika `ALLOW_PUBLIC_BIND=true` disetel secara eksplisit.
-- Batasi alokasi memori proses menggunakan `MemoryMax=512M` di systemd (berdasarkan hasil pengukuran empiris beban 75–80 sesi simultan di Tahap H10).
+- Batasi alokasi memori proses menggunakan aturan MemoryMax sebesar 75% dari total RAM VPS (contoh VPS 1 GB: 768M; VPS 2 GB: 1536M) sebagai aturan pengaman, bukan angka tetap. Angka final diisi setelah pemilik mengukur memori riil per sesi WhatsApp.
 - Berikan batas waktu drain `TimeoutStopSec=30s` agar proses memiliki waktu menyelesaikan transaksi berjalan saat service dimatikan.
 
 #### Berkas Unit Lengkap `/etc/systemd/system/goblast.service`:
@@ -192,7 +192,8 @@ Restart=always
 RestartSec=5s
 
 # Manajemen memori dan penghentian anggun (graceful shutdown)
-MemoryMax=512M
+# MemoryMax diatur sebesar 75% total RAM VPS (aturan pengaman; sesuaikan setelah pengukuran riil)
+MemoryMax=75%
 TimeoutStopSec=30s
 LimitNOFILE=65535
 
@@ -349,7 +350,7 @@ Tabel variabel lingkungan berikut menyelaraskan seluruh variabel yang dibaca di 
 | `BACKUP_KEY` | Kunci enkripsi cadangan database (.gbak) AES-256-GCM (32 byte base64) | `(base64 dari 32 byte acak)` | Wajib untuk fitur backup |
 | `BACKUP_KEY_PREV` | Kunci cadangan versi sebelumnya untuk rotasi kunci cadangan | `(base64 dari 32 byte)` | Opsional |
 | `ALLOW_WEB_RESTORE` | Mengizinkan pemulihan database melalui antarmuka panel admin | `false` (default false) | Opsional |
-| `MAX_ACTIVE_SESSIONS` | Batas maksimal sesi WhatsApp aktif simultan | `50` (rentang aman hasil ukur H10: 75–80) | Wajib di prod |
+| `MAX_ACTIVE_SESSIONS` | Batas maksimal sesi WhatsApp aktif simultan | `20` (nilai awal sementara; sesuaikan setelah pemilik mengukur memori riil) | Wajib di prod |
 | `CS_WHATSAPP_URL` | Tautan WhatsApp Customer Service resmi | `https://wa.me/6281200000000` | Opsional |
 | `CS_TELEGRAM_URL` | Tautan Telegram Customer Service resmi | `https://t.me/feepay_cs` | Opsional |
 | `CHANNEL_TELEGRAM_URL` | Tautan Channel Telegram resmi | `https://t.me/goblast_channel` | Opsional |
@@ -368,6 +369,41 @@ Penjelasan parameter:
 - `10`: margin pengaman untuk proses migrasi database, koneksi administrasi psql, dan pemantauan `pg_stat`.
 - `max_connections PostgreSQL`: batas maksimal koneksi di PostgreSQL (default umumnya 100).
 - Contoh konfigurasi default: $25 + 10 + 10 = 45 < 100$ (Aman).
+
+### B4.1 Prosedur Pengukuran Memori Riil per Sesi WhatsApp
+
+Batas sesi aktif (`MAX_ACTIVE_SESSIONS`) dan alokasi `MemoryMax` tidak boleh diasumsikan tanpa pengukuran. Pemilik wajib melakukan pengukuran langsung di lingkungan VPS menggunakan akun WhatsApp cadangan sebelum membuka sistem ke banyak pekerja.
+
+#### Langkah-Langkah Pengukuran:
+1. **Catat Kondisi Awal (Baseline):**
+   Sebelum ada sesi WhatsApp yang terhubung, catat metrik memori proses:
+   - `HeapAlloc` dan `Sys` dari endpoint `/admin/api/metrics`.
+   - `RSS` (Resident Set Size) dari terminal VPS: `ps -o rss= -p $(pidof goblast)`.
+2. **Uji Bertahap (1, 3, dan 5 Akun):**
+   - Sambungkan 1 akun WhatsApp cadangan, tunggu 2 menit dalam keadaan idle terhubung, lalu catat metrik.
+   - Sambungkan akun ke-2 dan ke-3 (total 3 akun), tunggu 2 menit, catat metrik.
+   - Sambungkan akun ke-4 dan ke-5 (total 5 akun), tunggu 2 menit, catat metrik.
+3. **Uji Pengiriman Riil:**
+   - Buat kampanye kecil dan kirim pesan ke nomor milik sendiri melalui akun-akun cadangan tersebut, lalu catat lonjakan metrik saat proses kirim berlangsung.
+4. **Rumus Perhitungan:**
+   - **Memori per sesi**:
+     $$\text{Memori per sesi} = \frac{\text{RSS dengan } n \text{ akun} - \text{RSS awal}}{n}$$
+     *Gunakan nilai terbesar dari seluruh baris pengukuran, bukan nilai rata-rata.*
+   - **Kapasitas MAX_ACTIVE_SESSIONS**:
+     $$\text{MAX\_ACTIVE\_SESSIONS} = \left\lfloor \frac{\text{RAM yang dialokasikan untuk aplikasi} - \text{RSS awal}}{1{,}5 \times \text{Memori per sesi}} \right\rfloor$$
+     *Faktor pengali 1,5 memberikan margin pengaman 50% untuk lonjakan sinkronisasi data WhatsApp dan buffer jaringan.*
+
+#### Lembar Tabel Isian Pengukuran Pemilik:
+
+| Kondisi Uji | Jumlah Akun | HeapAlloc (MB) | Sys (MB) | RSS (KB / MB) | Kenaikan RSS dari Awal | Memori per Sesi | Catatan |
+|---|---|---|---|---|---|---|---|
+| Awal (Idle / No WA) | 0 | ... | ... | ... | 0 | - | Baseline sebelum sesi WA |
+| Idle 1 Akun (2 menit) | 1 | ... | ... | ... | ... | ... | Akun cadangan #1 |
+| Idle 3 Akun (2 menit) | 3 | ... | ... | ... | ... | ... | Akun cadangan #1–#3 |
+| Idle 5 Akun (2 menit) | 5 | ... | ... | ... | ... | ... | Akun cadangan #1–#5 |
+| Mengirim Pesan Nyata | 5 | ... | ... | ... | ... | ... | Kirim campaign kecil ke nomor sendiri |
+| **Nilai Terbesar Diambil** | - | - | - | - | - | **... MB** | *Gunakan nilai puncak ini untuk rumus* |
+
 
 ### B5. Konfigurasi dan Tuning PostgreSQL
 Untuk server VPS ramping (RAM 1 GB – 2 GB), sesuaikan berkas konfigurasi `/etc/postgresql/17/main/postgresql.conf`:
@@ -549,12 +585,12 @@ Jika biner versi baru mengalami galat fatal (panic / crash loop / bug kritis):
 
 ### B10. Incident Runbook Singkat
 
-#### (a) Memori Membengkak / Mendekati MemoryMax 512M
-- **Gejala**: RSS memori di atas 450 MB, log systemd mencatat peringatan cgroup memory, atau proses dihentikan oleh OOM killer.
-- **Penyebab**: Lonjakan sesi WhatsApp aktif melebihi batas aman (`MAX_ACTIVE_SESSIONS`), atau antrean unggahan nomor berukuran besar.
+#### (a) Memori Membengkak / Mendekati Batas MemoryMax
+- **Gejala**: RSS memori mendekati batas `MemoryMax`, log systemd mencatat peringatan cgroup memory, atau proses dihentikan oleh OOM killer.
+- **Penyebab**: Lonjakan sesi WhatsApp aktif melebihi kapasitas memori server, atau antrean unggahan nomor berukuran besar.
 - **Tindakan**:
   1. Restart proses untuk merebut kembali memori heap: `sudo systemctl restart goblast`.
-  2. Turunkan sementara nilai `MAX_ACTIVE_SESSIONS` di file `.env` (misal dari 75 menjadi 40).
+  2. Turunkan sementara nilai `MAX_ACTIVE_SESSIONS` di file `.env` (misal dari 20 menjadi 10).
   3. Muat ulang konfigurasi: `sudo systemctl restart goblast`.
 
 #### (b) Disk Server / Database Penuh
@@ -599,7 +635,7 @@ Jika biner versi baru mengalami galat fatal (panic / crash loop / bug kritis):
 ### B11. Pemantauan dan Tanda Bahaya (Monitoring)
 
 #### Metrik Utama yang Wajib Dipantau:
-1. **Penggunaan Memori (RSS)**: Wajib di bawah 450 MB (batas cgroup: 512 MB).
+1. **Penggunaan Memori (RSS)**: Wajib dipantau agar berada di bawah 80% dari batas `MemoryMax` cgroup.
 2. **Koneksi Database Aktif**: Periksa via `SELECT count(*) FROM pg_stat_activity WHERE datname = 'goblast';`. Jumlah koneksi tidak boleh mendekati 100.
 3. **Ruang Disk Bebas**: Partisi root `/` wajib memiliki ruang bebas minimal 2 GB untuk menampung cadangan harian.
 
@@ -644,7 +680,7 @@ Untuk menjaga keamanan dan meminimalkan jejak penyimpanan di server VPS:
 
 ## Bagian D. Daftar Kesiapan Produksi (Go-Live Checklist)
 
-Tabel berikut memuat 20 butir verifikasi kesiapan sistem sebelum GO BLAST dibuka untuk trafik publik dan pekerja:
+Tabel berikut memuat 21 butir verifikasi kesiapan sistem sebelum GO BLAST dibuka untuk trafik publik dan pekerja:
 
 | No | Butir Periksa | Kategori | Status | Cara Membuktikan | Penanggung Jawab |
 |---|---|---|---|---|---|
@@ -658,7 +694,7 @@ Tabel berikut memuat 20 butir verifikasi kesiapan sistem sebelum GO BLAST dibuka
 | 8 | Logout POST-Only Ditegakkan | Akses | Siap | Akses rute `GET /logout`; pastikan server mengembalikan kode respons HTTP 405 Method Not Allowed. | Sistem |
 | 9 | Uji Cadangan & Integritas (.gbak) | Cadangan | Siap | Buat cadangan manual di `/admin/backups`; periksa kemunculan file `.gbak` dan status integritas terverifikasi di database. | Admin |
 | 10 | Uji Coba Latihan Pemulihan (Drill) | Bencana | Siap | Jalankan `./goblast restore --file <file.gbak> --force-nonempty` pada database staging; verifikasi seluruh data pulih utuh. | Admin |
-| 11 | MemoryMax 512M di Systemd | Infrastruktur | Siap | Jalankan `systemctl show goblast -p MemoryMax`; pastikan bernilai `536870912` (512M). | Admin |
+| 11 | MemoryMax 75% RAM VPS di Systemd | Infrastruktur | Perlu Tindakan | Hitung 75% RAM VPS dan ukur memori per sesi riil; sesuaikan unit systemd goblast.service. | Pemilik |
 | 12 | TimeoutStopSec 30s di Systemd | Infrastruktur | Siap | Jalankan `systemctl show goblast -p TimeoutStopUSec`; pastikan bernilai `30000000` (30s). | Admin |
 | 13 | Nginx Proxy Headers & 6m Body Size | Web Server | Siap | Periksa `nginx -T`; verifikasi `client_max_body_size 6m;` dan penerusan header `CF-Connecting-IP`. | Admin |
 | 14 | SSL / HTTPS Aktif (Grade A) | Keamanan Web | Siap | Akses domain via HTTPS di browser; verifikasi gembok SSL valid dan header HSTS terpasang. | Admin |
@@ -668,3 +704,4 @@ Tabel berikut memuat 20 butir verifikasi kesiapan sistem sebelum GO BLAST dibuka
 | 18 | ArgonGate Melindungi Serangan Brute-Force | Performa | Siap | Verifikasi pembatasan komputasi argon2id aktif dengan `ArgonConcurrencyLimit = 2` dan `ArgonQueueLimit = 8`. | Sistem |
 | 19 | Autovacuum Agresif Tabel Antrean | Database | Siap | Query `pg_options` pada tabel `campaign_numbers`; pastikan `autovacuum_vacuum_scale_factor = 0.05`. | Admin |
 | 20 | Direktori Bersih Tanpa Kode Sumber | Kebersihan VPS | Siap | Jalankan `find /var/www/goblast -name "*.go" -o -name ".git"`; pastikan output kosong di server produksi. | Admin |
+| 21 | go test -race lulus untuk paket engine, wa, web, campaign, backup | Pengujian | Perlu Tindakan | Jalankan go test -race ./internal/... di lingkungan dengan gcc atau WSL/Linux. | Pemilik |

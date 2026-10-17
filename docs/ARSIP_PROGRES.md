@@ -27,12 +27,12 @@ Dokumen aktif dan log terkini (Tahap H11 ke atas) berada di [DOC_PROGRES.md](DOC
      - Perbaikan Bug Pemutus Sirkuit Engine (`internal/engine/engine.go`): Error jaringan transien whatsmeow berkelas `ClassPastiBelumTerkirim` sebelumnya salah menaikkan `consecutiveFailures`, menyebabkan akun terhenti permanen setelah 5 kali putus sementara. Diperbaiki dengan mencatat `BackoffCount`, jeda acak jitter 2 detik, dan melewati kenaikan circuit breaker.
      - Migrasi 0024 (`db/migrations/0024_ledger_campaign_number_fk_index.sql`): Menambahkan indeks tanpa kondisi `idx_ledger_entries_campaign_number_id ON ledger_entries (campaign_number_id)` untuk mempercepat penegakan foreign key ON DELETE RESTRICT saat penghapusan nomor kampanye massal (Purge). Uji siklus migrasi Goose: Up 24 -> DownTo 18 -> Up 24 terverifikasi lulus 100%.
      - Perbaikan Tes Sesi Web (`internal/web/referral_h6_test.go`): Mengganti modulo random kecil pada pembuatan username/referral mock dengan penanganan error eksplisit dan timestamp unix nano unik.
-  4. Rekomendasi Penyetelan Parameter Hasil Ukur Empiris:
+  4. Rekomendasi Penyetelan Parameter (Belum Diukur dengan Sesi WhatsApp Nyata):
      - `DB_MAX_CONNS`: 25–30 (cukup untuk 50 worker serentak; saat beban puncak 50 worker fast, pool peak acquired 25/25, antrean tunggu 3.25% dengan rerata tunggu 23.74ms).
      - `DB_MIN_CONNS`: 5 (menjaga pool tetap hangat saat proses booting).
      - Batas koneksi whatsmeow: 10 (`SetMaxOpenConns(10)`, `SetMaxIdleConns(2)`).
-     - `MemoryMax` systemd: 512 MB (puncak memori riil L6 dengan 1.000 sesi rate limit + 200 req/s brute force adalah 203.81 MB; batas 512 MB menyediakan buffer 2.5x sebelum terbunuh OOM killer).
-     - Rumus `MAX_ACTIVE_SESSIONS`: `MAX_ACTIVE_SESSIONS = ⌊(memori_aplikasi - memori_dasar) / (1.5 × memori_per_sesi)⌋`. Dengan estimasi alokasi RAM 400 MB, memori dasar 50 MB, dan ~3 MB per sesi whatsmeow (termasuk buffer sinkronisasi), batas aman adalah ~75–80 sesi aktif simultan.
+     - `MemoryMax` systemd: disetel sebesar 75% RAM VPS sebagai aturan pengaman (angka tetap 512 MB sebelumnya hanya contoh; puncak riil L6 adalah 203.81 MB pada 1.000 sesi rate limit + 200 req/s brute force, namun berjalan **tanpa sesi WhatsApp**).
+     - Rumus `MAX_ACTIVE_SESSIONS`: `MAX_ACTIVE_SESSIONS = ⌊(memori_aplikasi - memori_dasar) / (1.5 × memori_per_sesi)⌋`. Memori per sesi whatsmeow **belum pernah diukur dengan sesi WhatsApp nyata** (estimasi 3 MB atau 4.5 MB sebelumnya hanyalah asumsi teoretis). Angka 75–80 sesi belum terbukti; sementara dipasang nilai awal konservatif `MAX_ACTIVE_SESSIONS = 20` sampai pemilik melakukan pengukuran riil.
      - Rancangan Tabel Ringkasan Saldo (Kueri 5 L9: 126.81 ms > 50 ms): Diusulkan tabel ringkasan saldo `user_balances (user_id BIGINT PRIMARY KEY, currency VARCHAR(10), balance BIGINT, updated_at TIMESTAMPTZ)` yang di-update secara atomik saat penulisan `ledger_entries` untuk menghindari Seq Scan penuh pada 500k+ baris buku besar.
   5. Verifikasi Pengujian: Seluruh pengujian paket repo standar lulus 100% (`go test -p 1 ./...`) dan 11 skenario uji beban lulus 100% (`go test -tags load ./internal/loadtest`).
 

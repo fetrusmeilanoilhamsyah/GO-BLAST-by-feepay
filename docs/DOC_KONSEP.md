@@ -182,12 +182,12 @@ Dashboard diperbarui dengan polling berkala (5 sampai 10 detik), bukan WebSocket
 
 **Publik** melihat sisa nomor tersedia (live), rate hari ini, dan cara mendaftar.
 
-## 13. Skala dan stack (Berdasarkan Hasil Ukur Empiris Tahap H10)
+## 13. Skala dan stack
 
-Asumsi skala dan batasan terukur:
+Asumsi skala dan batasan sistem:
 - Beban server ditentukan oleh jumlah **nomor WhatsApp yang aktif bersamaan**, bukan jumlah pekerja terdaftar.
-- **Batas Memori VPS:** Alokasi `MemoryMax = 512M` di systemd memberikan batas aman terverifikasi (puncak riil beban ekstrem L6 pada 1.000 sesi rate limit + 200 req/s brute force adalah ~204 MB, dengan headroom 2.5x).
-- **Kapasitas Sesi Aktif:** Berdasarkan formula empiris $MAX\_ACTIVE\_SESSIONS = \lfloor(\text{memori\_aplikasi} - 50\text{ MB}) / 4.5\text{ MB}\rfloor$, batas aman untuk alokasi RAM 400 MB adalah **75–80 sesi WhatsApp aktif simultan**.
+- **Batas Memori VPS:** Alokasi `MemoryMax` di systemd disetel sebesar 75% dari total RAM VPS sebagai aturan pengaman, bukan angka tetap. Angka final diisi setelah pengukuran langsung oleh pemilik. Pengujian beban ekstrem L6 mencatat puncak RSS ~204 MB (pada 1.000 sesi rate limit + 200 req/s brute force), namun uji L6 berjalan **tanpa sesi WhatsApp**.
+- **Kapasitas Sesi Aktif:** Memori per sesi whatsmeow **belum diukur dengan sesi WhatsApp nyata** (rumus terdahulu hanya berbasis asumsi teoretis yang belum terbukti). Nilai default `MAX_ACTIVE_SESSIONS = 20` dipasang sebagai nilai awal sementara yang konservatif sampai pemilik melakukan pengukuran riil menggunakan akun WhatsApp cadangan.
 - **Koneksi Database:** `DB_MAX_CONNS = 25`–`30` (sangat mencukupi untuk 50 worker serentak dengan latensi klaim p95 < 10ms dan RT DB per pesan sukses tepat 2 round-trip), `DB_MIN_CONNS = 5`, serta batas pool whatsmeow 10 koneksi.
 - Database nomor: Teruji hingga 1.000.000 nomor dan 500.000 buku besar tanpa bottleneck indeks (kueri klaim 1.017 ms via partial index SKIP LOCKED).
 
@@ -215,7 +215,7 @@ Status keputusan dari rapat dan rangkaian pengujian H1–H10:
 - [x] 3. Jumlah percobaan ulang sebelum `gagal`: Diputuskan 3 kali (`MaxAttempts = 3`) sebagai konstanta backend (Keputusan C1).
 - [x] 4. Cara menentukan mata uang akun pekerja: Diputuskan mata uang tunggal Rupiah (IDR) untuk upah dan referral; USDT hanya via konversi manual kurs admin (Tahap S1).
 - [x] 5. Dompet admin dengan dua mata uang: Dompet murni untuk pencatatan/pembukuan modal, tidak memblokir kuota unggah nomor (Keputusan #5).
-- [x] 6. Nilai awal batas sesi aktif dan pool koneksi: Diukur empiris di Tahap H10: `MAX_ACTIVE_SESSIONS = 75-80`, `DB_MAX_CONNS = 25-30`, `MemoryMax = 512M`.
+- [ ] 6. Nilai awal batas sesi aktif dan pool koneksi: Menunggu pengukuran memori per sesi dengan akun WhatsApp cadangan oleh pemilik. Sementara memakai nilai awal konservatif `MAX_ACTIVE_SESSIONS = 20`, `DB_MAX_CONNS = 25-30`, dan `MemoryMax` sebesar 75% RAM VPS.
 - [x] 7. Mode bawaan template: Default `kartu_link`, opsi `tombol_asli` dibuka sebagai eksperimental dengan peringatan sadar risiko dan persetujuan wajib (Tahap H7).
 - [ ] 8. Penanda klik unik per pekerja di link pesan: Direncanakan untuk fase 2 (Tahap 19).
 - [x] 9. Pencegahan referral palsu: Referral otomatis 1 tingkat, dibayar per pesan sukses, anti self-referral, deteksi multi-akun hash rekening sama, pengundang wajib aktif (Tahap H6).

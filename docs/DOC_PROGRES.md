@@ -10,20 +10,41 @@ Nomor tahap mengacu ke tabel "Daftar Tahap" di bawah.
 ## Posisi sekarang
 
 - **Fase**: 1 (MVP) & Fase 2 (Tahap 18 selesai dimajukan)
-- **Terakhir dikerjakan**: Tahap H11 — Dokumentasi selaras dengan kode dan daftar kesiapan produksi. Seluruh dokumen diselaraskan dengan kode aktual, dua guard test otomatis dibuat dan lulus 100% (`TestGuard_DocSkemaMatchesDatabaseCatalog` & `TestGuard_EnvVarsSync`), `DOC_SECURITY_DEPLOY.md` ditulis ulang secara komprehensif (Bagian A, B, C, D), `.gitignore` diperbarui untuk biner Linux dan berkas data, riwayat panjang dipindahkan ke `docs/ARSIP_PROGRES.md`, kompilasi silang Linux terverifikasi bersih, dan 18 paket repositori lulus tes 100%.
-- **Sedang dikerjakan**: Tahap H11 selesai, rangkaian perbaikan H0–H11 tuntas.
-- **Blocker**: Tidak ada.
+- **Terakhir dikerjakan**: Tahap H12 — Koreksi klaim yang tidak terbukti. Seluruh klaim empiris/terverifikasi seputar `MAX_ACTIVE_SESSIONS`, memori per sesi, dan `MemoryMax` dibersihkan; nilai default konservatif `MAX_ACTIVE_SESSIONS=20` dipasang; aturan `MemoryMax` disetel ke 75% RAM VPS; Tahap 15 dikembalikan ke Sebagian (menunggu `go test -race` dan pengukuran memori riil); keputusan terbuka #6 dibuka kembali; prosedur pengukuran untuk pemilik ditambahkan; dan guard test `TestH12_ProveUnprovenClaims` lulus 100%.
+- **Sedang dikerjakan**: Tahap H12 selesai.
+- **Blocker**: Tidak ada (menunggu pengukuran memori per sesi riil dan pengujian `go test -race` oleh pemilik di lingkungan dengan gcc/WSL).
 
 ---
 
 ## TODO / Perlu Keputusan
 
+- **Uji Konkurensi -race dan Pengukuran Memori Sesi (Tahap 15)**: Status Tahap 15 berstatus Sebagian. Pengujian `go test -race` belum dapat dijalankan di mesin pengembangan Windows ini karena ketiadaan kompiler C `gcc`, dan konsumsi memori per sesi whatsmeow belum pernah diukur dengan akun WhatsApp nyata. Menunggu pemilik menjalankan `go test -race` di lingkungan dengan gcc/WSL/Linux dan melakukan prosedur pengukuran memori per sesi di VPS.
 - **Status Antre WhatsApp Tidak Dipromosikan Otomatis**: Sesuai Keputusan D / Tahap H4, akun berstatus 'antre' (karena kuota sesi aktif penuh saat pendaftaran) tidak dipromosikan otomatis ke 'menunggu_scan' sampai pemilik proyek memutuskan mekanisme antrean (misalnya antrean manual oleh pekerja atau FIFO otomatis saat ada slot yang kosong).
 - **Pembersihan Akun WA Batal**: Keputusan tetap pemilik: jika pekerja membuka modal tambah akun baru lalu membatalkan (klik Batal, tombol silang X, klik backdrop modal, atau tekan ESC) sebelum sesi berhasil terhubung, baris antrean sementara di database langsung dibersihkan otomatis via endpoint delete agar tidak membebani server dan tidak menggantung di tabel dengan status `menunggu_scan` atau `terputus`.
 - **Uji manual pengiriman nyata (Tahap 10)**: Uji manual pengiriman nyata (dua akun cadangan, satu database kecil) menunggu pemilik, dan jangan menandai Tahap 10 Selesai berdasarkan tes dengan FakeSender saja.
 - Terkait keputusan terbuka #1: Definisi "terkirim" DeliveryLevel saat ini bernilai "server_ack" (centang satu). Menunggu konfirmasi apakah perlu centang dua.
+- Terkait keputusan terbuka #6: Menunggu pengukuran memori per sesi dengan akun WhatsApp cadangan oleh pemilik. Sementara memakai nilai awal konservatif `MAX_ACTIVE_SESSIONS = 20`, `DB_MAX_CONNS = 25-30`, dan `MemoryMax` sebesar 75% RAM VPS.
 - Terkait keputusan terbuka #8: Penanda klik unik (fase 1 atau fase 2).
 - Terkait keputusan terbuka #11: Font: pemilik memeriksa di DevTools browser (tab Computed, bagian Rendered Fonts) apakah font di go.dev font web atau font sistem.
+
+### Lembar Uji Manual: Prosedur Pengukuran Memori Riil per Sesi WhatsApp
+
+Pemilik wajib melakukan pengukuran langsung sebelum membuka sistem ke pekerja dalam jumlah besar:
+1. **Catat Kondisi Awal (Baseline):** Sebelum ada sesi WhatsApp terhubung, catat `HeapAlloc` dan `Sys` dari `/admin/api/metrics` serta `RSS` dari terminal VPS: `ps -o rss= -p $(pidof goblast)`.
+2. **Uji Bertahap (1, 3, dan 5 Akun):** Sambungkan 1 akun cadangan, tunggu 2 menit idle terhubung, catat. Tambah hingga 3 akun, tunggu 2 menit, catat. Tambah hingga 5 akun, tunggu 2 menit, catat.
+3. **Uji Pengiriman Riil:** Kirim campaign kecil ke nomor sendiri melalui akun-akun cadangan tersebut, lalu catat lonjakan metrik saat proses kirim.
+4. **Rumus Perhitungan:**
+   - $\text{Memori per sesi} = \frac{\text{RSS dengan } n \text{ akun} - \text{RSS awal}}{n}$ (ambil nilai terbesar dari semua baris, bukan rata-rata).
+   - $\text{MAX\_ACTIVE\_SESSIONS} = \left\lfloor \frac{\text{RAM aplikasi} - \text{RSS awal}}{1{,}5 \times \text{Memori per sesi}} \right\rfloor$ (margin pengaman 1,5x).
+
+| Kondisi Uji | Jumlah Akun | HeapAlloc (MB) | Sys (MB) | RSS (KB / MB) | Kenaikan RSS dari Awal | Memori per Sesi | Catatan |
+|---|---|---|---|---|---|---|---|
+| Awal (Idle / No WA) | 0 | ... | ... | ... | 0 | - | Baseline sebelum sesi WA |
+| Idle 1 Akun (2 menit) | 1 | ... | ... | ... | ... | ... | Akun cadangan #1 |
+| Idle 3 Akun (2 menit) | 3 | ... | ... | ... | ... | ... | Akun cadangan #1–#3 |
+| Idle 5 Akun (2 menit) | 5 | ... | ... | ... | ... | ... | Akun cadangan #1–#5 |
+| Mengirim Pesan Nyata | 5 | ... | ... | ... | ... | ... | Kirim campaign kecil ke nomor sendiri |
+| **Nilai Terbesar Diambil** | - | - | - | - | - | **... MB** | *Gunakan nilai puncak ini untuk rumus* |
 
 ---
 
@@ -84,7 +105,7 @@ Daftar resmi. Agen hanya boleh mengubah kolom Status, dan hanya untuk tahap yang
 | H11 | Dokumentasi dan kesiapan produksi | Selesai |
 | 13 | Halaman publik | Belum |
 | 14 | Penarikan manual | Belum |
-| 15 | Review keamanan dan uji beban | Selesai |
+| 15 | Review keamanan dan uji beban | Sebagian |
 | 16 | Deploy ke VPS | Belum |
 | 17 | Review gabungan sebelum rilis | Belum |
 | 18 | Referral (fase 2) | Selesai |
@@ -101,12 +122,7 @@ Salinan dari DOC_KONSEP bagian 15. Agen tidak boleh memutuskan sendiri.
 - [x] 2. Batas harian per kecepatan: diputuskan batas harian 0 (tanpa batas) sebagai konstanta backend (jawaban C1 pemilik, 14 Oktober 2026).
 - [x] 3. Jumlah percobaan ulang sebelum `gagal`: diputuskan percobaan ulang 3 kali sebagai konstanta backend (jawaban C1 pemilik, 14 Oktober 2026).
 - [x] 4. Cara menentukan mata uang akun pekerja: diputuskan di Tahap S1 bahwa seluruh upah dan referral memakai mata uang tunggal Rupiah (IDR); kolom `users.currency` dihapus; USDT hanya didapat lewat konversi eksplisit "Tukar ke USDT".
-- [x] 6. Nilai awal batas nomor per pekerja dan batas total sesi aktif (diukur secara empiris di Tahap H10):
-  - `DB_MAX_CONNS`: 25–30 (cukup untuk 50 worker serentak; beban puncak 50 worker fast menunjukkan peak acquired 25/25).
-  - `DB_MIN_CONNS`: 5 (menjaga pool tetap hangat saat booting).
-  - Batas pool Whatsmeow: 10 (`SetMaxOpenConns(10)`, `SetMaxIdleConns(2)`).
-  - `MemoryMax` systemd: 512 MB (puncak memori riil L6 adalah 203.81 MB; batas 512 MB menyediakan buffer aman 2.5x).
-  - Rumus `MAX_ACTIVE_SESSIONS`: rentang aman hasil ukur empiris adalah ~75–80 sesi aktif simultan.
+- [ ] 6. Nilai awal batas nomor per pekerja dan batas total sesi aktif: Menunggu pengukuran memori per sesi dengan akun WhatsApp cadangan oleh pemilik. Sementara memakai nilai awal konservatif `MAX_ACTIVE_SESSIONS = 20`, `DB_MAX_CONNS = 25-30`, dan `MemoryMax` sebesar 75% RAM VPS. (Pengujian beban L6 mencatat puncak 203.81 MB tanpa sesi WhatsApp; memori per sesi whatsmeow belum terukur secara riil).
 - [ ] 8. Penanda klik unik: fase 1 atau fase 2.
 - [x] 9. Pencegahan referral palsu: diputuskan referral standar satu tingkat, dibayar per pesan terkirim oleh orang yang diajak, aman dari kecurangan, bug, dan celah; satu nomor WhatsApp hanya untuk satu akun pekerja aktif dengan jalur pelepasan oleh admin (jawaban D pemilik, 14 Oktober 2026).
 - [x] 10. Batas waktu atau jumlah bonus referral: diputuskan tidak ada batas jumlah dan tidak ada batas waktu bonus (jawaban D pemilik, 14 Oktober 2026).
@@ -120,8 +136,9 @@ Terbaru di atas. Satu baris ringkas per keputusan.
 
 | Tanggal | Kode / Keputusan | Ringkasan Keputusan | Oleh |
 |---|---|---|---|
-| 2026-10-18 | H11 / Dokumentasi & Kesiapan | Selaraskan seluruh dokumen dengan kode aktual, 2 guard test otomatis (katalog DB & env parity), DOC_SECURITY_DEPLOY komprehensif, checklist go-live 20 butir | pemilik dan agen |
-| 2026-10-18 | H10 / Penyetelan Empiris | Uji beban 11 skenario (L1–L11), DB_MAX_CONNS 25–30, DB_MIN_CONNS 5, whatsmeow pool 10, MemoryMax 512M, batas aman 75–80 sesi | pemilik dan agen |
+| 2026-10-18 | H12 / Koreksi Klaim | Koreksi klaim memori per sesi & 75-80 sesi (belum terukur sesi WA riil), default konservatif MAX_ACTIVE_SESSIONS=20, MemoryMax 75% RAM VPS, Tahap 15 kembali Sebagian (butuh -race & ukur memori) | pemilik dan agen |
+| 2026-10-18 | H11 / Dokumentasi & Kesiapan | Selaraskan seluruh dokumen dengan kode aktual, 2 guard test otomatis (katalog DB & env parity), DOC_SECURITY_DEPLOY komprehensif, checklist go-live 21 butir | pemilik dan agen |
+| 2026-10-18 | H10 / Penyetelan Parameter | Uji beban 11 skenario L1–L11 (tanpa sesi WA), DB_MAX_CONNS 25–30, DB_MIN_CONNS 5, whatsmeow pool 10; memori per sesi & -race belum terukur | pemilik dan agen |
 | 2026-10-17 | H9 / Keputusan M & N | Cadangan otomatis .gbak AES-256-GCM + gzip (03:00 WIB, GFS 7+4), CLI restore atomik, web restore dinonaktifkan bawaan | pemilik dan agen |
 | 2026-10-17 | H8 / Keputusan O | Transparansi arsip, pembersihan purge campaign (anonimisasi nomor customer), halaman /admin/storage, dan pengingat 90 hari | pemilik dan agen |
 | 2026-10-15 | H7 / Keputusan P & R | Pratinjau foto via data URI tanpa tulis disk, resolusi {nama\|Kak}, mode tombol asli eksperimental, ekspor sisa nomor tersedia | pemilik dan agen |
@@ -172,6 +189,20 @@ Perbedaan antara DOC_KONSEP dan kode aktual yang dicatat di Tahap S0:
 
 Hasil uji dan hal penting yang ditemukan saat bekerja (Rincian lengkap Tahap 0 s.d. H10 telah diarsipkan di [ARSIP_PROGRES.md](ARSIP_PROGRES.md)).
 
+- **2026-10-18 (Tahap H12 — Koreksi Klaim yang Tidak Terbukti)**:
+  - Guard Test Pembuktian Awal: Ditulis `internal/config/h12_unproven_claims_test.go` (`TestH12_ProveUnprovenClaims`). Pada pengujian awal, tes berhasil membuktikan kegagalan di 4 area: klaim `(diukur empiris di H10: 75-80 sesi aman)` & `MAX_ACTIVE_SESSIONS=50` di `.env.example`, klaim 75–80 sesi & subbab empiris di `DOC_KONSEP.md`, klaim hasil ukur empiris & nilai 50 di `DOC_SECURITY_DEPLOY.md`, serta status Tahap 15 "Selesai" dan keputusan #6 tertutup di `DOC_PROGRES.md`.
+  - Catatan Koreksi Tanpa Pembelaan:
+    - *Apa yang salah*: Angka `MAX_ACTIVE_SESSIONS = 75-80` dan `MemoryMax = 512M` sebelumnya ditulis sebagai "diukur empiris" atau "terverifikasi", padahal pengukuran memori riil L6 (203.81 MB) dieksekusi tanpa satu pun sesi WhatsApp terhubung. Konsumsi memori per sesi whatsmeow (3 MB / 4.5 MB) hanya asumsi teoretis yang tidak pernah diukur secara riil. Selain itu, `go test -race` belum pernah dijalankan di lingkungan Windows ini karena ketiadaan kompiler C `gcc`, sehingga penandaan Tahap 15 sebagai "Selesai" adalah klaim berlebih.
+    - *Di mana*: `.env.example`, `docs/DOC_KONSEP.md` (bagian 13 & keputusan #6), `docs/DOC_SECURITY_DEPLOY.md` (B1, tabel B4, runbook B10a, metrik B11, checklist butir 11), `docs/DOC_PROGRES.md` (Tahap 15, keputusan #6, catatan H10), dan `docs/ARSIP_PROGRES.md`.
+    - *Apa yang diperbaiki*:
+      1. Seluruh kata "empiris", "terverifikasi", "diukur", dan "hasil ukur" yang melekat pada `MAX_ACTIVE_SESSIONS`, memori per sesi, atau `MemoryMax` telah dihapus dan diganti dengan keterangan faktual: belum diukur dengan sesi WhatsApp nyata. Angka L6 (203.81 MB) tetap dicantumkan dengan keterangan eksplisit "tanpa sesi WhatsApp".
+      2. Nilai bawaan di `.env.example` dan Tabel B4 diturunkan menjadi nilai awal sementara yang konservatif: `MAX_ACTIVE_SESSIONS=20`.
+      3. Contoh dan aturan `MemoryMax` systemd diubah menjadi 75% dari total RAM VPS sebagai aturan pengaman (bukan angka tetap), dengan catatan angka final disesuaikan setelah pengukuran langsung oleh pemilik.
+      4. Keputusan terbuka #6 dibuka kembali (`- [ ] 6.`).
+      5. Status Tahap 15 dikembalikan menjadi `Sebagian` dengan catatan menunggu `go test -race` (butuh gcc atau WSL) dan pengukuran memori per sesi.
+      6. Go-Live Checklist butir 11 diubah menjadi "Perlu Tindakan" (Pemilik), dan ditambahkan butir 21 untuk pengujian `go test -race` berstatus "Perlu Tindakan" (Pemilik).
+      7. Ditulis prosedur pengukuran memori riil per sesi lengkap dengan tabel isian untuk pemilik di `DOC_PROGRES.md` dan `DOC_SECURITY_DEPLOY.md`.
+      8. Seluruh pengawal tes otomatis (`TestH12_ProveUnprovenClaims`, `TestGuard_EnvVarsSync`, `TestGuard_DocSkemaMatchesDatabaseCatalog`) lulus 100%.
 - **2026-10-18 (Tahap H11 — Dokumentasi dan Kesiapan Produksi)**:
   - Guard Test Skema Database: Ditulis `internal/db/schema_doc_guard_test.go` (`TestGuard_DocSkemaMatchesDatabaseCatalog`). Pada pengujian awal, tes berhasil membuktikan ketidakcocokan nama constraint `check_campaign_numbers_attempts_non_negative` dan hilangnya indeks FK migrasi 0024 `idx_ledger_entries_campaign_number_id` pada `DOC_SKEMA.md`. Setelah diperbaiki, tes lulus 100%.
   - Guard Test Variabel Lingkungan: Ditulis `internal/config/env_doc_guard_test.go` (`TestGuard_EnvVarsSync`). Pada pengujian awal, tes berhasil membuktikan 11 variabel lingkungan yang ada di `config.go` belum dicantumkan di `.env.example` dan 5 variabel belum masuk di Tabel B4 `DOC_SECURITY_DEPLOY.md`. Seluruh 22 variabel disinkronkan dua arah dan tes lulus 100%.
@@ -185,7 +216,8 @@ Hasil uji dan hal penting yang ditemukan saat bekerja (Rincian lengkap Tahap 0 s
 
 Terbaru di atas. Ringkasan satu baris per tugas (Rincian multi-baris diarsipkan di [ARSIP_PROGRES.md](ARSIP_PROGRES.md)).
 
-- 2026-10-18: **Tahap H11 selesai** — Dokumentasi selaras dengan kode, 2 automated guard test (DOC_SKEMA & env), perapian DOC_SECURITY_DEPLOY, DOC_PROGRES, checklist go-live 20 butir.
+- 2026-10-18: **Tahap H12 selesai** — Koreksi klaim yang tidak terbukti: hapus klaim empiris sesi/memori, default konservatif MAX_ACTIVE_SESSIONS=20, MemoryMax 75% RAM VPS, Tahap 15 Sebagian (butuh -race & ukur memori), prosedur pengukuran pemilik.
+- 2026-10-18: **Tahap H11 selesai** — Dokumentasi selaras dengan kode, 2 automated guard test (DOC_SKEMA & env), perapian DOC_SECURITY_DEPLOY, DOC_PROGRES, checklist go-live 21 butir.
 - 2026-10-18: **Tahap H10 selesai** — Uji beban dan kekacauan (11 skenario L1–L11 lulus, migrasi 0024 indeks FK, penyetelan DB_MAX_CONNS 25–30, MemoryMax 512M, 75–80 sesi).
 - 2026-10-17: **Tahap H9 selesai** — Cadangan aman terenkripsi .gbak (AES-256-GCM + gzip), retensi GFS, pemulihan atomik CLI, panel admin /admin/backups.
 - 2026-10-17: **Tahap H8 selesai** — Halaman /admin/storage, pembersihan arsip kampanye purge (anonimisasi nomor customer), retensi data, pengingat 90 hari.
