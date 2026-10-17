@@ -1161,6 +1161,17 @@ func (e *Engine) runWorker(ctx context.Context, accountID, workerID int64) {
 		// 3. Pemutus sirkuit per akun: 5 hasil buruk beruntun selain NomorTidakValid & tidak_terdaftar
 		if class == ClassTerkirim {
 			consecutiveFailures = 0
+		} else if class == ClassPastiBelumTerkirim {
+			e.metrics.BackoffCount.Add(1)
+			backoffWait := time.Duration(float64(2*time.Second) * (0.8 + 0.4*rand.Float64()))
+			select {
+			case <-ctx.Done():
+				return
+			case <-e.drainChan:
+				return
+			case <-time.After(backoffWait):
+			}
+			continue
 		} else if class != ClassNomorTidakValid {
 			consecutiveFailures++
 			maxFail := config.MaxConsecutiveFailures

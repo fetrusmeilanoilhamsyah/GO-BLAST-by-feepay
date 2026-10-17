@@ -53,10 +53,10 @@ var (
 	DailyLimitPerAccount = 0
 
 	// DefaultDBMaxConns adalah batas maksimal koneksi pool database (Tahap H1).
-	DefaultDBMaxConns = 20
+	DefaultDBMaxConns = 25
 
 	// DefaultDBMinConns adalah batas minimal koneksi pool database (Tahap H1).
-	DefaultDBMinConns = 2
+	DefaultDBMinConns = 5
 
 	// DefaultDBMaxConnLifetime adalah batas umur maksimal koneksi pool (30 menit).
 	DefaultDBMaxConnLifetime = 30 * time.Minute

@@ -300,7 +300,10 @@ func TestH6_AdminWallet_IncludesReferralInSpent(t *testing.T) {
 	}
 
 	var workerID int64
-	_ = pool.QueryRow(ctx, `INSERT INTO users (username, password_hash, role, display_name, status, referral_code) VALUES ($1, 'hash', 'worker', 'Worker Wallet', 'active', $2) RETURNING id`, fmt.Sprintf("ww_%d", time.Now().UnixNano()%100000), fmt.Sprintf("REFWW_%d", time.Now().UnixNano()%10000)).Scan(&workerID)
+	err = pool.QueryRow(ctx, `INSERT INTO users (username, password_hash, role, display_name, status, referral_code) VALUES ($1, 'hash', 'worker', 'Worker Wallet', 'active', $2) RETURNING id`, fmt.Sprintf("ww_%d", time.Now().UnixNano()), fmt.Sprintf("RWW%d", time.Now().UnixNano()%1000000000)).Scan(&workerID)
+	if err != nil {
+		t.Fatalf("insert worker failed: %v", err)
+	}
 
 	defer func() {
 		testutil.CleanupTestData(pool, []int64{workerID}, nil)
