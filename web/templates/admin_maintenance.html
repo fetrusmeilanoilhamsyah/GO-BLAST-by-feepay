@@ -7,22 +7,22 @@
     <div style="font-size: 13px; color: var(--color-muted); margin-bottom: 16px;">
         <a href="/admin" style="color: var(--color-link); text-decoration: none;">Admin</a>
         <span style="margin: 0 6px;">/</span>
-        <span style="color: var(--color-text); font-weight: 600;">Pemeliharaan & Diagnostik</span>
+        <span style="color: var(--color-text); font-weight: 600;">{{ call .T "maint.breadcrumb" }}</span>
     </div>
 
     <!-- Header -->
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 12px;">
         <div>
             <h1 style="font-size: 22px; font-weight: 800; color: var(--color-text); margin: 0; letter-spacing: -0.02em;">
-                Pemeliharaan & Diagnostik Sistem
+                {{ call .T "maint.page_title" }}
             </h1>
             <p style="font-size: 13px; color: var(--color-muted); margin: 4px 0 0 0;">
-                Kontrol status pemeliharaan sistem, kesehatan database, status mesin pengiriman, dan log aktivitas audit.
+                {{ call .T "maint.page_desc" }}
             </p>
         </div>
         <div>
             <button type="button" id="btn-refresh-maintenance" class="btn btn-secondary" style="padding: 8px 16px; font-size: 13px; cursor: pointer;">
-                Segarkan Data
+                {{ call .T "maint.btn_refresh" }}
             </button>
         </div>
     </div>
@@ -45,19 +45,19 @@
             <div>
                 <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
                     <h2 style="font-size: 17px; font-weight: 700; color: var(--color-text); margin: 0;">
-                        Mode Pemeliharaan (Maintenance Mode)
+                        {{ call .T "maint.mode_title" }}
                     </h2>
                     {{if .MaintenanceMode}}
-                    <span class="badge badge-danger" style="font-size: 11px; padding: 3px 8px;">Aktif (Pekerja Dialihkan)</span>
+                    <span class="badge badge-danger" style="font-size: 11px; padding: 3px 8px;">{{ call .T "maint.status_active_workers_redirected" }}</span>
                     {{else}}
-                    <span class="badge badge-success" style="font-size: 11px; padding: 3px 8px;">Nonaktif (Layanan Normal)</span>
+                    <span class="badge badge-success" style="font-size: 11px; padding: 3px 8px;">{{ call .T "maint.status_inactive_normal" }}</span>
                     {{end}}
                 </div>
                 <p style="font-size: 13px; color: var(--color-muted); margin: 0; line-height: 1.5; max-width: 680px;">
                     {{if .MaintenanceMode}}
-                    Sistem saat ini sedang dalam status pemeliharaan umum. Seluruh halaman panel pekerja dialihkan ke halaman pemeliharaan dan pengiriman mesin dihentikan otomatis. Admin tetap memiliki akses penuh.
+                    {{ call .T "maint.mode_desc_active" }}
                     {{else}}
-                    Sistem beroperasi normal. Semua pekerja dapat mengakses panel, mengelola akun WhatsApp, dan melakukan penarikan.
+                    {{ call .T "maint.mode_desc_inactive" }}
                     {{end}}
                 </p>
             </div>
@@ -66,11 +66,11 @@
                 <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
                 {{if .MaintenanceMode}}
                 <button type="submit" class="btn btn-secondary" style="padding: 10px 20px; font-size: 13px; font-weight: 600; cursor: pointer; color: var(--color-success); border-color: var(--color-success);">
-                    Nonaktifkan Mode Pemeliharaan
+                    {{ call .T "maint.btn_deactivate_mode" }}
                 </button>
                 {{else}}
                 <button type="submit" class="btn btn-secondary" style="padding: 10px 20px; font-size: 13px; font-weight: 600; cursor: pointer; color: var(--color-danger); border-color: var(--color-danger);">
-                    Aktifkan Mode Pemeliharaan
+                    {{ call .T "maint.btn_activate_mode" }}
                 </button>
                 {{end}}
             </form>
@@ -81,10 +81,10 @@
     <div class="card" style="margin-bottom: 24px; padding: 24px; border: 1px solid var(--color-border); border-radius: 10px; background: var(--color-card);">
         <div style="margin-bottom: 16px;">
             <h2 style="font-size: 17px; font-weight: 700; color: var(--color-text); margin: 0 0 6px 0;">
-                Kunci Granular Sistem (Emergency Feature Locks)
+                {{ call .T "maint.granular_title" }}
             </h2>
             <p style="font-size: 13px; color: var(--color-muted); margin: 0; line-height: 1.5;">
-                Kunci fitur spesifik secara independen tanpa mematikan seluruh panel pekerja. Pekerja yang membuka halaman akan melihat jendela pemberitahuan fitur yang dikunci beserta pesan admin.
+                {{ call .T "maint.granular_desc" }}
             </p>
         </div>
 
@@ -96,20 +96,20 @@
                 <div style="padding: 16px; border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-surface-muted);">
                     <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
                         <label for="lock_withdrawals" style="font-weight: 700; font-size: 14px; color: var(--color-text); cursor: pointer;">
-                            Tolak Penarikan & Konversi
+                            {{ call .T "maint.lock_withdrawals_title" }}
                         </label>
                         {{if .LockWithdrawals}}
-                        <span class="badge badge-danger" style="font-size: 11px;">Terkunci</span>
+                        <span class="badge badge-danger" style="font-size: 11px;">{{ call .T "maint.badge_locked" }}</span>
                         {{else}}
-                        <span class="badge badge-success" style="font-size: 11px;">Aktif</span>
+                        <span class="badge badge-success" style="font-size: 11px;">{{ call .T "maint.badge_active" }}</span>
                         {{end}}
                     </div>
                     <p style="font-size: 12px; color: var(--color-muted); margin: 0 0 12px 0; line-height: 1.4;">
-                        Menolak permintaan pencairan saldo pekerja dan konversi IDR ke USDT (`lock_withdrawals`).
+                        {{ call .T "maint.lock_withdrawals_desc" }}
                     </p>
                     <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; cursor: pointer;">
                         <input type="checkbox" id="lock_withdrawals" name="lock_withdrawals" value="1" {{if .LockWithdrawals}}checked{{end}}>
-                        <span>Aktifkan Kunci Penarikan</span>
+                        <span>{{ call .T "maint.lock_withdrawals_cb" }}</span>
                     </label>
                 </div>
 
@@ -117,20 +117,20 @@
                 <div style="padding: 16px; border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-surface-muted);">
                     <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
                         <label for="lock_linking" style="font-weight: 700; font-size: 14px; color: var(--color-text); cursor: pointer;">
-                            Tolak Penautan Akun WhatsApp
+                            {{ call .T "maint.lock_linking_title" }}
                         </label>
                         {{if .LockLinking}}
-                        <span class="badge badge-danger" style="font-size: 11px;">Terkunci</span>
+                        <span class="badge badge-danger" style="font-size: 11px;">{{ call .T "maint.badge_locked" }}</span>
                         {{else}}
-                        <span class="badge badge-success" style="font-size: 11px;">Aktif</span>
+                        <span class="badge badge-success" style="font-size: 11px;">{{ call .T "maint.badge_active" }}</span>
                         {{end}}
                     </div>
                     <p style="font-size: 12px; color: var(--color-muted); margin: 0 0 12px 0; line-height: 1.4;">
-                        Menolak inisialisasi QR dan penautan akun WhatsApp baru dari pekerja (`lock_linking`).
+                        {{ call .T "maint.lock_linking_desc" }}
                     </p>
                     <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; cursor: pointer;">
                         <input type="checkbox" id="lock_linking" name="lock_linking" value="1" {{if .LockLinking}}checked{{end}}>
-                        <span>Aktifkan Kunci Penautan</span>
+                        <span>{{ call .T "maint.lock_linking_cb" }}</span>
                     </label>
                 </div>
 
@@ -138,20 +138,20 @@
                 <div style="padding: 16px; border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-surface-muted);">
                     <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
                         <label for="lock_engine" style="font-weight: 700; font-size: 14px; color: var(--color-text); cursor: pointer;">
-                            Hentikan Klaim Mesin (Engine)
+                            {{ call .T "maint.lock_engine_title" }}
                         </label>
                         {{if or .LockEngine .MaintenanceMode}}
-                        <span class="badge badge-danger" style="font-size: 11px;">Terkunci</span>
+                        <span class="badge badge-danger" style="font-size: 11px;">{{ call .T "maint.badge_locked" }}</span>
                         {{else}}
-                        <span class="badge badge-success" style="font-size: 11px;">Aktif</span>
+                        <span class="badge badge-success" style="font-size: 11px;">{{ call .T "maint.badge_active" }}</span>
                         {{end}}
                     </div>
                     <p style="font-size: 12px; color: var(--color-muted); margin: 0 0 12px 0; line-height: 1.4;">
-                        Engine berhenti mengklaim nomor baru, mencatat `sistem dalam perbaikan`, tanpa memutus sesi WA (`lock_engine`).
+                        {{ call .T "maint.lock_engine_desc" }}
                     </p>
                     <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; cursor: pointer;">
                         <input type="checkbox" id="lock_engine" name="lock_engine" value="1" {{if .LockEngine}}checked{{end}}>
-                        <span>Aktifkan Kunci Engine</span>
+                        <span>{{ call .T "maint.lock_engine_cb" }}</span>
                     </label>
                 </div>
             </div>
@@ -159,14 +159,14 @@
             <!-- Pesan untuk Pekerja -->
             <div style="margin-bottom: 16px;">
                 <label for="lock_message" style="display: block; font-weight: 700; font-size: 13px; color: var(--color-text); margin-bottom: 6px;">
-                    Pesan Khusus untuk Pekerja (Ditampilkan di Jendela Peringatan Panel Pekerja)
+                    {{ call .T "maint.lock_msg_label" }}
                 </label>
-                <textarea id="lock_message" name="lock_message" rows="2" style="width: 100%; box-sizing: border-box; padding: 10px 12px; border: 1px solid var(--color-border); border-radius: 6px; background: var(--color-input); color: var(--color-text); font-size: 13px; font-family: inherit; resize: vertical;" placeholder="Contoh: Kami sedang melakukan sinkronisasi database buku besar. Penarikan akan dibuka kembali pukul 14:00 WIB.">{{.LockMessage}}</textarea>
+                <textarea id="lock_message" name="lock_message" rows="2" style="width: 100%; box-sizing: border-box; padding: 10px 12px; border: 1px solid var(--color-border); border-radius: 6px; background: var(--color-input); color: var(--color-text); font-size: 13px; font-family: inherit; resize: vertical;" placeholder="{{ call .T "maint.lock_msg_placeholder" }}">{{.LockMessage}}</textarea>
             </div>
 
             <div style="display: flex; justify-content: flex-end;">
                 <button type="submit" class="btn btn-primary" style="padding: 10px 24px; font-size: 13px; font-weight: 700; cursor: pointer;">
-                    Simpan Pengaturan Kunci & Pesan
+                    {{ call .T "maint.btn_save_locks" }}
                 </button>
             </div>
         </form>
@@ -175,7 +175,7 @@
     <!-- 2. PEMERIKSAAN KESEHATAN SISTEM (COMPREHENSIVE HEALTH CHECKS) -->
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
         <h2 style="font-size: 16px; font-weight: 700; color: var(--color-text); margin: 0;">
-            Hasil Pemeriksaan Kesehatan Sistem (9 Indikator)
+            {{ call .T "maint.health_title" }}
         </h2>
     </div>
 
@@ -184,9 +184,9 @@
         <table class="table" style="width: 100%; border-collapse: collapse; font-size: 13px;">
             <thead>
                 <tr style="border-bottom: 1px solid var(--color-border); text-align: left; background: var(--color-surface-muted);">
-                    <th style="padding: 12px 16px; width: 220px;">Pemeriksaan</th>
-                    <th style="padding: 12px 16px; width: 110px;">Status</th>
-                    <th style="padding: 12px 16px;">Keterangan & Diagnostik</th>
+                    <th style="padding: 12px 16px; width: 220px;">{{ call .T "maint.th_check" }}</th>
+                    <th style="padding: 12px 16px; width: 110px;">{{ call .T "maint.th_status" }}</th>
+                    <th style="padding: 12px 16px;">{{ call .T "maint.th_details" }}</th>
                 </tr>
             </thead>
             <tbody>
@@ -195,11 +195,11 @@
                     <td style="padding: 12px 16px; font-weight: 700; color: var(--color-text);">{{.Name}}</td>
                     <td style="padding: 12px 16px;">
                         {{if eq .Status "ok"}}
-                        <span class="badge badge-success" style="font-size: 11px; text-transform: uppercase;">OK</span>
+                        <span class="badge badge-success" style="font-size: 11px; text-transform: uppercase;">{{ call $.T "maint.status_ok" }}</span>
                         {{else if eq .Status "peringatan"}}
-                        <span class="badge badge-warning" style="font-size: 11px; text-transform: uppercase;">Peringatan</span>
+                        <span class="badge badge-warning" style="font-size: 11px; text-transform: uppercase;">{{ call $.T "maint.status_warning" }}</span>
                         {{else}}
-                        <span class="badge badge-danger" style="font-size: 11px; text-transform: uppercase;">Gagal</span>
+                        <span class="badge badge-danger" style="font-size: 11px; text-transform: uppercase;">{{ call $.T "maint.status_danger" }}</span>
                         {{end}}
                     </td>
                     <td style="padding: 12px 16px; color: var(--color-text); font-size: 13px;">{{.Message}}</td>
@@ -217,14 +217,14 @@
 
     <!-- 2B. STATISTIK OPERASIONAL SINGKAT -->
     <h2 style="font-size: 16px; font-weight: 700; color: var(--color-text); margin-top: 0; margin-bottom: 12px;">
-        Statistik Sumber Daya & Antrean
+        {{ call .T "maint.stats_title" }}
     </h2>
 
     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin-bottom: 28px;">
         <!-- Database -->
         <div class="card" style="margin: 0; padding: 18px; border: 1px solid var(--color-border); border-radius: 10px; background: var(--color-card);">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-                <span style="font-size: 13px; font-weight: 600; color: var(--color-muted);">Database PostgreSQL</span>
+                <span style="font-size: 13px; font-weight: 600; color: var(--color-muted);">{{ call .T "maint.stat_db_title" }}</span>
                 {{if .DBOnline}}
                 <span class="badge badge-success" style="font-size: 11px;">Online</span>
                 {{else}}
@@ -242,11 +242,11 @@
         <!-- Mesin Pengiriman -->
         <div class="card" style="margin: 0; padding: 18px; border: 1px solid var(--color-border); border-radius: 10px; background: var(--color-card);">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-                <span style="font-size: 13px; font-weight: 600; color: var(--color-muted);">Mesin Kirim (Engine)</span>
+                <span style="font-size: 13px; font-weight: 600; color: var(--color-muted);">{{ call .T "maint.stat_engine_title" }}</span>
                 <span class="badge badge-success" style="font-size: 11px;">{{.EngineStatus}}</span>
             </div>
             <div style="font-size: 22px; font-weight: 800; color: var(--color-text); margin-bottom: 6px;">
-                {{.RunningCampaignsCount}} Kampanye
+                {{.RunningCampaignsCount}} {{ call .T "maint.stat_campaigns" }}
             </div>
             <div style="font-size: 12px; color: var(--color-muted); line-height: 1.4;">
                 Sisa {{.AvailableNumbersCount}} nomor tersedia di antrean aktif
@@ -256,11 +256,11 @@
         <!-- WhatsApp Sessions -->
         <div class="card" style="margin: 0; padding: 18px; border: 1px solid var(--color-border); border-radius: 10px; background: var(--color-card);">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-                <span style="font-size: 13px; font-weight: 600; color: var(--color-muted);">Sesi WhatsApp</span>
+                <span style="font-size: 13px; font-weight: 600; color: var(--color-muted);">{{ call .T "maint.stat_sessions_title" }}</span>
                 <span class="badge badge-success" style="font-size: 11px;">{{.ActiveWACount}} Terhubung</span>
             </div>
             <div style="font-size: 22px; font-weight: 800; color: var(--color-text); margin-bottom: 6px;">
-                {{.ActiveWACount}} Sesi Aktif
+                {{.ActiveWACount}} {{ call .T "maint.stat_sessions_active" }}
             </div>
             <div style="font-size: 12px; color: var(--color-muted); line-height: 1.4;">
                 {{.DisconnectedWACount}} akun terputus atau menunggu scan
@@ -270,18 +270,18 @@
         <!-- Penarikan Pending -->
         <div class="card" style="margin: 0; padding: 18px; border: 1px solid var(--color-border); border-radius: 10px; background: var(--color-card);">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-                <span style="font-size: 13px; font-weight: 600; color: var(--color-muted);">Antrean Penarikan</span>
+                <span style="font-size: 13px; font-weight: 600; color: var(--color-muted);">{{ call .T "maint.stat_withdrawals_title" }}</span>
                 {{if gt .PendingWithdrawals 0}}
-                <span class="badge badge-warning" style="font-size: 11px;">Perlu Diproses</span>
+                <span class="badge badge-warning" style="font-size: 11px;">{{ call .T "maint.stat_need_process" }}</span>
                 {{else}}
-                <span class="badge badge-muted" style="font-size: 11px;">Bersih</span>
+                <span class="badge badge-muted" style="font-size: 11px;">{{ call .T "maint.stat_clean" }}</span>
                 {{end}}
             </div>
             <div style="font-size: 22px; font-weight: 800; color: var(--color-text); margin-bottom: 6px;">
-                {{.PendingWithdrawals}} Permintaan
+                {{.PendingWithdrawals}} {{ call .T "maint.stat_requests" }}
             </div>
             <div style="font-size: 12px; color: var(--color-muted); line-height: 1.4;">
-                <a href="/admin/withdrawals" style="color: var(--color-link); text-decoration: underline;">Buka kelola penarikan</a>
+                <a href="/admin/withdrawals" style="color: var(--color-link); text-decoration: underline;">{{ call .T "maint.stat_open_withdrawals" }}</a>
             </div>
         </div>
     </div>
@@ -290,17 +290,17 @@
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
         <div>
             <h2 style="font-size: 16px; font-weight: 700; color: var(--color-text); margin: 0;">
-                Pembatasan Rate Limit Aktif ({{len .ActiveRestrictions}})
+                {{ call .T "maint.restrictions_title" }} ({{len .ActiveRestrictions}})
             </h2>
             <p style="font-size: 12px; color: var(--color-muted); margin: 2px 0 0 0;">
-                Daftar IP dan akun yang sedang dibatasi sementara oleh sistem rate limit anti brute-force.
+                {{ call .T "maint.restrictions_desc" }}
             </p>
         </div>
         {{if .ActiveRestrictions}}
         <form method="POST" action="/admin/maintenance/restrictions/release-all" id="form-release-all-restrictions" style="margin: 0;">
             <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
             <button type="submit" class="btn btn-secondary" style="font-size: 12px; padding: 6px 12px; color: var(--color-danger); border-color: var(--color-danger); cursor: pointer;">
-                Lepas Semua Pembatasan
+                {{ call .T "maint.btn_release_all" }}
             </button>
         </form>
         {{end}}
@@ -310,10 +310,10 @@
         <table class="table" style="width: 100%; border-collapse: collapse; font-size: 12px;">
             <thead>
                 <tr style="border-bottom: 1px solid var(--color-border); text-align: left; background: var(--color-surface-muted);">
-                    <th style="padding: 10px 14px;">Lapisan</th>
-                    <th style="padding: 10px 14px;">Kunci (Tersamar)</th>
-                    <th style="padding: 10px 14px;">Sisa Waktu</th>
-                    <th style="padding: 10px 14px; text-align: right;">Aksi</th>
+                    <th style="padding: 10px 14px;">{{ call .T "maint.th_layer" }}</th>
+                    <th style="padding: 10px 14px;">{{ call .T "maint.th_key" }}</th>
+                    <th style="padding: 10px 14px;">{{ call .T "maint.th_remaining" }}</th>
+                    <th style="padding: 10px 14px; text-align: right;">{{ call .T "maint.th_action" }}</th>
                 </tr>
             </thead>
             <tbody>
@@ -330,7 +330,7 @@
                             <input type="hidden" name="layer" value="{{.Layer}}">
                             <input type="hidden" name="key" value="{{.RawKey}}">
                             <button type="submit" class="btn btn-secondary" style="font-size: 11px; padding: 4px 10px; cursor: pointer;">
-                                Lepas Blokir
+                                {{ call $.T "maint.btn_release" }}
                             </button>
                         </form>
                     </td>
@@ -338,7 +338,7 @@
                 {{else}}
                 <tr>
                     <td colspan="4" style="padding: 24px; text-align: center; color: var(--color-muted);">
-                        Tidak ada pembatasan rate limit yang sedang aktif saat ini.
+                        {{ call .T "maint.empty_restrictions" }}
                     </td>
                 </tr>
                 {{end}}
@@ -349,7 +349,7 @@
     <!-- 3. AUDIT LOGS TERBARU -->
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
         <h2 style="font-size: 16px; font-weight: 700; color: var(--color-text); margin: 0;">
-            Log Audit Terbaru (20 Aktivitas Terakhir)
+            {{ call .T "maint.audit_title" }}
         </h2>
     </div>
 
@@ -358,12 +358,12 @@
         <table class="table" style="width: 100%; border-collapse: collapse; font-size: 12px;">
             <thead>
                 <tr style="border-bottom: 1px solid var(--color-border); text-align: left; background: var(--color-surface-muted);">
-                    <th style="padding: 10px 14px;">Waktu</th>
-                    <th style="padding: 10px 14px;">Aktor</th>
-                    <th style="padding: 10px 14px;">Aksi</th>
-                    <th style="padding: 10px 14px;">Entitas</th>
+                    <th style="padding: 10px 14px;">{{ call .T "maint.th_time" }}</th>
+                    <th style="padding: 10px 14px;">{{ call .T "maint.th_actor" }}</th>
+                    <th style="padding: 10px 14px;">{{ call .T "maint.th_action" }}</th>
+                    <th style="padding: 10px 14px;">{{ call .T "maint.th_entity" }}</th>
                     <th style="padding: 10px 14px;">IP</th>
-                    <th style="padding: 10px 14px;">Detail / Meta</th>
+                    <th style="padding: 10px 14px;">{{ call .T "maint.th_meta" }}</th>
                 </tr>
             </thead>
             <tbody>
@@ -383,7 +383,7 @@
                 {{else}}
                 <tr>
                     <td colspan="6" style="padding: 24px; text-align: center; color: var(--color-muted);">
-                        Belum ada catatan log audit.
+                        {{ call .T "maint.empty_audits" }}
                     </td>
                 </tr>
                 {{end}}
@@ -406,7 +406,7 @@
             </div>
 
             <div style="font-size: 12px; color: var(--color-text); margin: 4px 0;">
-                <span style="color: var(--color-muted);">Entitas:</span> <strong>{{.Entity}} {{if .EntityID}}#{{.EntityID}}{{end}}</strong>
+                <span style="color: var(--color-muted);">{{ call $.T "maint.th_entity" }}:</span> <strong>{{.Entity}} {{if .EntityID}}#{{.EntityID}}{{end}}</strong>
             </div>
 
             {{if .Meta}}
@@ -417,7 +417,7 @@
         </div>
         {{else}}
         <div class="admin-card-item" style="padding: 24px; text-align: center; color: var(--color-muted);">
-            Belum ada catatan log audit.
+            {{ call .T "maint.empty_audits" }}
         </div>
         {{end}}
     </div>

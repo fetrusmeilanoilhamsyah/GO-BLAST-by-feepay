@@ -1320,7 +1320,7 @@ func TestAdminMaintenanceToggleAndWorkerRedirect(t *testing.T) {
 	if rrMaint.Code != http.StatusOK {
 		t.Fatalf("Expected 200 OK from GET /admin/maintenance, got %d", rrMaint.Code)
 	}
-	if !strings.Contains(rrMaint.Body.String(), "Pemeliharaan & Diagnostik Sistem") {
+	if !strings.Contains(rrMaint.Body.String(), "Pemeliharaan & Diagnostik Sistem") && !strings.Contains(rrMaint.Body.String(), "Pemeliharaan &amp; Diagnostik Sistem") {
 		t.Errorf("Expected page title in body, got: %s", rrMaint.Body.String())
 	}
 
