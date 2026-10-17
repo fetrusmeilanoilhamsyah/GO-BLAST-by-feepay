@@ -596,10 +596,15 @@ func (s *Server) HandleAdminCampaignDetail(w http.ResponseWriter, r *http.Reques
 		rows.Close()
 	}
 
-	// Jika campaign sudah dibersihkan, gunakan angka ringkasan historis
-	if c.PurgedAt != nil && c.PurgeSummary != nil {
-		for k, v := range c.PurgeSummary {
-			counts[k] = v
+	// Jika campaign sudah dibersihkan, gunakan angka ringkasan historis (nomor tersedia selalu 0 karena dihapus fisik)
+	if c.PurgedAt != nil {
+		counts["tersedia"] = 0
+		if c.PurgeSummary != nil {
+			for k, v := range c.PurgeSummary {
+				if k != "tersedia" {
+					counts[k] = v
+				}
+			}
 		}
 	}
 

@@ -32,7 +32,7 @@
 
     {{if .Campaign.PurgedAt}}
     <div style="background-color: var(--color-surface-muted); border: 1px solid var(--color-status-done); color: var(--color-status-done); padding: 12px 16px; border-radius: 6px; margin-bottom: 20px; font-size: 14px;">
-        <strong>Data nomor telah dibersihkan:</strong> Nomor customer telah dianonimkan untuk menjaga privasi customer. Riwayat transaksi buku besar dan laporan 14 hari tetap utuh.
+        <strong>Data nomor telah dibersihkan:</strong> Nomor belum terkirim (tersedia) telah dihapus dari database. Nomor customer yang sudah diproses telah dianonimkan demi menjaga privasi. Riwayat transaksi buku besar dan laporan performa tetap utuh.
     </div>
     {{else if .Campaign.ArchivedAt}}
     <div style="background-color: var(--color-surface-muted); border: 1px solid var(--color-border); color: var(--color-muted); padding: 12px 16px; border-radius: 6px; margin-bottom: 20px; font-size: 14px;">
@@ -62,6 +62,13 @@
             <div style="background-color: var(--color-surface-muted); padding: 15px; border-radius: 6px; text-align: center;">
                 <div style="font-size: 13px; color: var(--color-muted); margin-bottom: 5px;">Tersedia</div>
                 <div style="font-size: 24px; font-weight: bold; color: var(--color-accent);">{{index .Counts "tersedia"}}</div>
+                {{if .Campaign.PurgedAt}}
+                {{if gt (index .Campaign.PurgeSummary "dihapus_tersedia") 0}}
+                <div style="font-size: 11px; color: var(--color-muted); margin-top: 4px;">({{index .Campaign.PurgeSummary "dihapus_tersedia"}} dihapus)</div>
+                {{else if gt (index .Campaign.PurgeSummary "tersedia") 0}}
+                <div style="font-size: 11px; color: var(--color-muted); margin-top: 4px;">({{index .Campaign.PurgeSummary "tersedia"}} dihapus)</div>
+                {{end}}
+                {{end}}
             </div>
             <div style="background-color: var(--color-surface-muted); padding: 15px; border-radius: 6px; text-align: center;">
                 <div style="font-size: 13px; color: var(--color-muted); margin-bottom: 5px;">Dikirim</div>
