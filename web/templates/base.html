@@ -11,6 +11,7 @@
     <link rel="stylesheet" href="/static/css/theme.css?v=1">
 </head>
 <body>
+    {{ block "header" . }}{{ end }}
     <main id="main-content">
         {{ template "content" . }}
     </main>

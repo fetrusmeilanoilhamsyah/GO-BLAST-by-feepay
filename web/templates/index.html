@@ -1,15 +1,6 @@
 {{ define "content" }}
 <style nonce="{{ .Nonce }}">
 .pub-wrap{max-width:960px;margin:0 auto;padding:0 16px}
-.pub-topbar{background-color:var(--color-bg);border-bottom:1px solid var(--color-border);padding:8px 0}
-.pub-topbar-inner{display:flex;align-items:center;justify-content:space-between;gap:12px}
-.pub-topbar-brand{display:inline-flex;align-items:center;gap:8px;text-decoration:none;color:var(--color-text)}
-.pub-topbar-logo{height:28px;width:auto;object-fit:contain}
-.pub-topbar-title{font-size:15px;font-weight:800;letter-spacing:-0.02em}
-.pub-topbar-controls{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
-.pub-ctrl-form{display:inline-flex;align-items:center;gap:5px;margin:0}
-.pub-ctrl-label{font-size:12px;color:var(--color-muted);font-weight:500}
-.pub-ctrl-select{font-size:12px;padding:4px 8px;border:1px solid var(--color-border);border-radius:6px;background-color:var(--color-input-bg);color:var(--color-input-text);cursor:pointer}
 .pub-hero{background-color:var(--color-bg-hero);padding:40px 16px 32px;text-align:center;scroll-margin-top:24px}
 .pub-brand-wrap{display:inline-flex;align-items:center;justify-content:center;gap:10px;margin:0 auto 4px}
 .pub-brand-logo{height:40px;width:auto;object-fit:contain;filter:drop-shadow(0 2px 6px var(--color-shadow));transition:transform .2s ease}
@@ -44,7 +35,6 @@
 @media(max-width:600px){
   .pub-brand{font-size:22px}
   .pub-brand-logo{height:32px}
-  .pub-topbar-inner{flex-wrap:wrap;justify-content:center}
   .pub-hero{padding:28px 12px 24px}
   .pub-stat-grid{grid-template-columns:1fr 1fr}
   .pub-steps{grid-template-columns:1fr}
@@ -52,39 +42,6 @@
   .pub-step-icon-wrap{width:68px;height:68px}
 }
 </style>
-
-<header class="pub-topbar">
-  <div class="pub-wrap pub-topbar-inner">
-    <a href="/" class="pub-topbar-brand" title="GO BLAST by feepay">
-      <img src="/static/img/gopher/gopher-flash.webp" alt="Logo GO BLAST" class="pub-topbar-logo" width="28" height="24">
-      <span class="pub-topbar-title">GO BLAST <span class="pub-brand-sub">by feepay</span></span>
-    </a>
-    <div class="pub-topbar-controls">
-      {{ if .Lang }}
-      <form method="POST" action="/language" class="pub-ctrl-form">
-        <input type="hidden" name="csrf_token" value="{{ .CSRFToken }}">
-        <label for="top-lang-sel" class="pub-ctrl-label">{{ call .T "worker.language_title" }}</label>
-        <select id="top-lang-sel" name="lang" class="pub-ctrl-select">
-          <option value="id"{{ if eq .Lang "id" }} selected{{ end }}>Indonesia</option>
-          <option value="en"{{ if eq .Lang "en" }} selected{{ end }}>English</option>
-          <option value="zh"{{ if eq .Lang "zh" }} selected{{ end }}>中文</option>
-        </select>
-        <noscript><button type="submit" class="pub-footer-btn">OK</button></noscript>
-      </form>
-      {{ end }}
-      <form method="POST" action="/theme" class="pub-ctrl-form" id="top-theme-form">
-        <input type="hidden" name="csrf_token" value="{{ .CSRFToken }}">
-        <label for="top-theme-sel" class="pub-ctrl-label">{{ call .T "theme.label" }}</label>
-        <select id="top-theme-sel" name="theme" class="pub-ctrl-select">
-          <option value="auto"{{ if or (eq .Theme "") (eq .Theme "auto") }} selected{{ end }}>{{ call .T "theme.auto" }}</option>
-          <option value="light"{{ if eq .Theme "light" }} selected{{ end }}>{{ call .T "theme.light" }}</option>
-          <option value="dark"{{ if eq .Theme "dark" }} selected{{ end }}>{{ call .T "theme.dark" }}</option>
-        </select>
-        <noscript><button type="submit" class="pub-footer-btn">{{ call .T "theme.choose" }}</button></noscript>
-      </form>
-    </div>
-  </div>
-</header>
 
 <div id="tentang" class="pub-hero">
   <div class="pub-wrap">
