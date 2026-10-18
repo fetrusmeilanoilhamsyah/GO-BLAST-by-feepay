@@ -1,0 +1,450 @@
+#!/usr/bin/env bash
+# goblastctl: Alat Perawatan & Manajemen Operasional GO BLAST by Feepay
+# Dipasang di /usr/local/bin/goblastctl
+
+set -euo pipefail
+
+BASE_DIR="/opt/goblast"
+RELEASES_DIR="${BASE_DIR}/releases"
+CURRENT_LINK="${BASE_DIR}/current"
+BACKUPS_DIR="${BASE_DIR}/backups"
+CONF_DIR="/etc/goblast"
+ENV_FILE="${CONF_DIR}/goblast.env"
+SERVICE_NAME="goblast.service"
+HEALTH_URL="http://127.0.0.1:8090/healthz"
+READYZ_URL="http://127.0.0.1:8090/readyz"
+
+red() { echo -e "\033[31m$*\033[0m"; }
+green() { echo -e "\033[32m$*\033[0m"; }
+yellow() { echo -e "\033[33m$*\033[0m"; }
+bold() { echo -e "\033[1m$*\033[0m"; }
+
+usage() {
+    cat <<EOF
+Penggunaan: goblastctl <perintah> [argumen]
+
+Perintah Operasional:
+  status                   Melihat status layanan, versi aktif, uptime, dan memori
+  doctor                   Pemeriksaan kesehatan sistem lengkap (audit kesiapan)
+  logs [-f] [--since 1h]   Melihat log journald dengan penyamaran data sensitif
+  start                    Menyalakan layanan GO BLAST
+  stop                     Menghentikan layanan GO BLAST
+  restart                  Merestart layanan dengan verifikasi /readyz
+  deploy <paket.tar.gz>    Deploy versi baru secara atomik (dengan rollback otomatis jika gagal)
+  rollback                 Mengembalikan symlink ke versi rilis sebelumnya
+  refresh-cf-ips           Memperbarui daftar subnet resmi Cloudflare untuk Nginx
+  backups                  Melihat daftar berkas cadangan terenkripsi (.gbak)
+  verify-backup            Memeriksa integritas berkas cadangan terbaru
+
+EOF
+    exit 1
+}
+
+cmd_status() {
+    bold "=== STATUS LAYANAN GO BLAST ==="
+    if systemctl is-active --quiet "${SERVICE_NAME}"; then
+        green "[AKTIF] Layanan sedang berjalan"
+    else
+        red "[MATI] Layanan tidak aktif"
+    fi
+
+    if [ -L "${CURRENT_LINK}" ]; then
+        echo "Versi Aktif    : $(basename "$(readlink -f "${CURRENT_LINK}")")"
+    else
+        yellow "Versi Aktif    : Symlink ${CURRENT_LINK} belum terpasang"
+    fi
+
+    local pid
+    pid=$(systemctl show "${SERVICE_NAME}" --property=MainPID --value 2>/dev/null || echo 0)
+    if [ "${pid}" -gt 0 ]; then
+        echo "Main PID       : ${pid}"
+        local rss
+        rss=$(ps -o rss= -p "${pid}" 2>/dev/null || echo 0)
+        echo "Memori RSS     : $((rss / 1024)) MB"
+        local uptime_str
+        uptime_str=$(ps -o etime= -p "${pid}" 2>/dev/null || echo "-")
+        echo "Uptime Proses  : ${uptime_str}"
+    fi
+
+    echo ""
+    bold "Ringkasan Systemd:"
+    systemctl status "${SERVICE_NAME}" --no-pager -n 5 || true
+}
+
+cmd_doctor() {
+    bold "=== DIAGNOSTIK KESEHATAN SISTEM (GO BLAST DOCTOR) ==="
+    local failed=0
+    local warnings=0
+
+    # 1. Status Service
+    if systemctl is-active --quiet "${SERVICE_NAME}"; then
+        green "  [OK] Service ${SERVICE_NAME} aktif"
+    else
+        red "  [GAGAL] Service ${SERVICE_NAME} tidak aktif"
+        failed=$((failed + 1))
+    fi
+
+    # 2. Port 8090
+    local port_bind
+    port_bind=$(ss -tulpn | grep 8090 || true)
+    if echo "${port_bind}" | grep -q "127.0.0.1:8090"; then
+        if echo "${port_bind}" | grep -q "0.0.0.0:8090"; then
+            red "  [GAGAL] Port 8090 mendengarkan secara publik (0.0.0.0)!"
+            failed=$((failed + 1))
+        else
+            green "  [OK] Port 8090 terisolasi di 127.0.0.1"
+        fi
+    else
+        red "  [GAGAL] Port 8090 tidak merespons di loopback"
+        failed=$((failed + 1))
+    fi
+
+    # 3. HTTP Probe
+    local hcode rcode
+    hcode=$(curl -s -o /dev/null -w "%{http_code}" "${HEALTH_URL}" || echo 000)
+    rcode=$(curl -s -o /dev/null -w "%{http_code}" "${READYZ_URL}" || echo 000)
+    if [ "${hcode}" = "200" ]; then
+        green "  [OK] /healthz merespons HTTP 200"
+    else
+        red "  [GAGAL] /healthz merespons HTTP ${hcode}"
+        failed=$((failed + 1))
+    fi
+
+    if [ "${rcode}" = "200" ]; then
+        green "  [OK] /readyz merespons HTTP 200"
+    else
+        red "  [GAGAL] /readyz merespons HTTP ${rcode}"
+        failed=$((failed + 1))
+    fi
+
+    # 4. Database PostgreSQL
+    if sudo -u postgres psql -d goblast -c "SELECT 1;" >/dev/null 2>&1; then
+        green "  [OK] Koneksi database PostgreSQL 'goblast' berhasil"
+    else
+        red "  [GAGAL] Gagal menghubungkan ke database PostgreSQL 'goblast'"
+        failed=$((failed + 1))
+    fi
+
+    # 5. Disk Space
+    local disk_free_pct
+    disk_free_pct=$(df / --output=pcent | tail -1 | tr -dc '0-9')
+    local disk_avail_pct=$((100 - disk_free_pct))
+    if [ "${disk_avail_pct}" -lt 15 ]; then
+        yellow "  [PERINGATAN] Ruang disk bebas hanya ${disk_avail_pct}% (< 15%)"
+        warnings=$((warnings + 1))
+    else
+        green "  [OK] Ruang disk bebas ${disk_avail_pct}%"
+    fi
+
+    # 6. Memori & Swap
+    local mem_avail_mb
+    mem_avail_mb=$(free -m | awk '/Mem:/ {print $7}')
+    if [ "${mem_avail_mb}" -lt 500 ]; then
+        yellow "  [PERINGATAN] Memori RAM tersedia rendah: ${mem_avail_mb} MB"
+        warnings=$((warnings + 1))
+    else
+        green "  [OK] Memori RAM tersedia: ${mem_avail_mb} MB"
+    fi
+
+    # 7. Nginx Syntax
+    if nginx -t >/dev/null 2>&1; then
+        green "  [OK] Sintaks Nginx valid"
+    else
+        red "  [GAGAL] Sintaks Nginx tidak valid"
+        failed=$((failed + 1))
+    fi
+
+    # 8. Sertifikat TLS Let's Encrypt
+    local cert_file="/etc/letsencrypt/live/fetrusmeilanoilhamsyah.my.id/fullchain.pem"
+    if [ -f "${cert_file}" ]; then
+        local exp_date
+        exp_date=$(openssl x509 -enddate -noout -in "${cert_file}" | cut -d= -f2)
+        green "  [OK] Sertifikat TLS terpasang (Kedaluwarsa: ${exp_date})"
+    else
+        yellow "  [PERINGATAN] Sertifikat TLS di ${cert_file} belum ditemukan"
+        warnings=$((warnings + 1))
+    fi
+
+    # 9. Cadangan Database (.gbak)
+    local latest_backup
+    latest_backup=$(ls -t "${BACKUPS_DIR}"/*.gbak 2>/dev/null | head -1 || true)
+    if [ -n "${latest_backup}" ]; then
+        local b_size b_time
+        b_size=$(ls -lh "${latest_backup}" | awk '{print $5}')
+        b_time=$(ls -lh "${latest_backup}" | awk '{print $6, $7, $8}')
+        green "  [OK] Cadangan terbaru: $(basename "${latest_backup}") (${b_size}, ${b_time})"
+    else
+        yellow "  [PERINGATAN] Belum ada berkas cadangan .gbak di ${BACKUPS_DIR}"
+        warnings=$((warnings + 1))
+    fi
+
+    # 10. Layanan Lain di Server
+    local other_failed=0
+    for s in nginx php8.4-fpm botcv bot-asisten translator-bot telegram-bot-api fail2ban; do
+        if ! systemctl is-active --quiet "$s" 2>/dev/null; then
+            yellow "  [PERINGATAN] Layanan server '$s' tidak berstatus active"
+            other_failed=$((other_failed + 1))
+        fi
+    done
+    if [ "${other_failed}" -eq 0 ]; then
+        green "  [OK] Semua 7 layanan lain di server berjalan normal"
+    else
+        warnings=$((warnings + other_failed))
+    fi
+
+    echo ""
+    bold "Hasil Diagnostik:"
+    if [ "${failed}" -eq 0 ] && [ "${warnings}" -eq 0 ]; then
+        green "SEMUA STATUS OK (Sistem Siap Operasi Produksi)"
+    elif [ "${failed}" -eq 0 ]; then
+        yellow "STATUS: AMAN DENGAN ${warnings} PERINGATAN (Periksa catatan di atas)"
+    else
+        red "STATUS: TERDAPAT ${failed} KEGAGALAN & ${warnings} PERINGATAN"
+        return 1
+    fi
+}
+
+cmd_logs() {
+    # Tampilkan log journald dengan masking nomor telepon agar nomor customer tidak pernah bocor
+    journalctl -u "${SERVICE_NAME}" "$@" --no-pager | sed -E 's/([0-9]{4})[0-9]{4,}([0-9]{3})/\1****\2/g'
+}
+
+cmd_restart() {
+    bold "Merestart layanan ${SERVICE_NAME}..."
+    systemctl restart "${SERVICE_NAME}"
+    
+    echo "Menunggu verifikasi kesiapan layanan (/readyz)..."
+    local ready=false
+    for i in {1..15}; do
+        if [ "$(curl -s -o /dev/null -w "%{http_code}" "${READYZ_URL}" || echo 000)" = "200" ]; then
+            ready=true
+            break
+        fi
+        sleep 1
+    done
+
+    if [ "${ready}" = true ]; then
+        green "[SUKSES] GO BLAST berhasil direstart dan siap melayani trafik!"
+    else
+        red "[GAGAL] Layanan tidak merespons HTTP 200 pada /readyz dalam 15 detik!"
+        echo "30 baris log terakhir:"
+        cmd_logs -n 30
+        return 1
+    fi
+}
+
+cmd_deploy() {
+    local pkg="${1:-}"
+    if [ -z "${pkg}" ] || [ ! -f "${pkg}" ]; then
+        red "Error: Berkas paket rilis tidak ditemukan: ${pkg}"
+        echo "Penggunaan: goblastctl deploy /path/to/goblast-vX.Y.Z.tar.gz"
+        exit 1
+    fi
+
+    # Ekstrak versi dari nama berkas (misal goblast-v1.0.0.tar.gz -> v1.0.0)
+    local ver
+    ver=$(basename "${pkg}" | sed -E 's/^goblast-(.+)\.tar\.gz$/\1/')
+    [ -z "${ver}" ] && ver=$(date +%Y%m%d%H%M%S)
+    local target_dir="${RELEASES_DIR}/${ver}"
+
+    bold "=== MEMULAI DEPLOY RILIS ${ver} ==="
+
+    # 1. Verifikasi Checksum SHA256 jika berkas .sha256 ada
+    if [ -f "${pkg}.sha256" ]; then
+        echo "Memverifikasi integritas checksum SHA256..."
+        local calc_hash exp_hash
+        calc_hash=$(sha256sum "${pkg}" | awk '{print $1}')
+        exp_hash=$(awk '{print $1}' "${pkg}.sha256")
+        if [ "${calc_hash}" != "${exp_hash}" ]; then
+            red "GAGAL: Checksum SHA256 tidak cocok! Paket rilis rusak atau tidak sah."
+            exit 1
+        fi
+        green "[OK] Checksum SHA256 terverifikasi (${calc_hash:0:8}...)"
+    fi
+
+    # 2. Siapkan folder rilis
+    mkdir -p "${target_dir}"
+    echo "Mengekstrak paket rilis ke ${target_dir}..."
+    tar -xzf "${pkg}" -C "${target_dir}"
+    chmod +x "${target_dir}/goblast"
+    chown -R goblast:goblast "${target_dir}"
+
+    # 3. Hubungkan folder persisten (data, uploads, backups)
+    ln -sfn "${BASE_DIR}/data" "${target_dir}/data"
+    ln -sfn "${BASE_DIR}/uploads" "${target_dir}/uploads"
+    ln -sfn "${BASE_DIR}/backups" "${target_dir}/backups"
+
+    # 4. Simpan versi sebelumnya untuk cadangan rollback
+    local old_ver=""
+    if [ -L "${CURRENT_LINK}" ]; then
+        old_ver=$(readlink -f "${CURRENT_LINK}")
+    fi
+
+    # 5. Jalankan Migrasi Database
+    echo "Menjalankan migrasi database..."
+    (
+        cd "${target_dir}"
+        set -a
+        [ -f "${ENV_FILE}" ] && . "${ENV_FILE}"
+        set +a
+        sudo -u goblast -E ./goblast migrate up
+    )
+
+    # 6. Alihkan Symlink Current ke Versi Baru
+    echo "Mengalihkan symlink ${CURRENT_LINK} ke ${target_dir}..."
+    ln -sfn "${target_dir}" "${CURRENT_LINK}"
+
+    # 7. Restart Layanan & Smoke Test
+    if cmd_restart; then
+        green "=== DEPLOY ${ver} SUKSES & BERJALAN SEMPURNA ==="
+    else
+        red "=== DEPLOY GAGAL PADA SMOKE TEST! MEMULAI ROLLBACK OTOMATIS ==="
+        if [ -n "${old_ver}" ] && [ -d "${old_ver}" ]; then
+            echo "Mengembalikan symlink ke ${old_ver}..."
+            ln -sfn "${old_ver}" "${CURRENT_LINK}"
+            systemctl restart "${SERVICE_NAME}"
+            yellow "Rollback selesai. Sistem kembali ke versi $(basename "${old_ver}")."
+        fi
+        exit 1
+    fi
+}
+
+cmd_rollback() {
+    bold "=== ROLLBACK KE RILIS SEBELUMNYA ==="
+    local current_target
+    current_target=$(readlink -f "${CURRENT_LINK}" || true)
+
+    local prev_release
+    prev_release=$(ls -dt "${RELEASES_DIR}"/* | grep -v "${current_target}" | head -1 || true)
+
+    if [ -z "${prev_release}" ] || [ ! -d "${prev_release}" ]; then
+        red "Error: Tidak ditemukan rilis sebelumnya di ${RELEASES_DIR}!"
+        exit 1
+    fi
+
+    yellow "Rilis aktif saat ini : $(basename "${current_target}")"
+    yellow "Target rollback       : $(basename "${prev_release}")"
+    yellow "PERINGATAN: Pastikan perubahan skema database kompatibel mundur sebelum rollback!"
+
+    ln -sfn "${prev_release}" "${CURRENT_LINK}"
+    cmd_restart
+    green "Rollback sukses ke rilis $(basename "${prev_release}")!"
+}
+
+cmd_refresh_cf_ips() {
+    bold "Memperbarui daftar subnet resmi Cloudflare..."
+    local cf_conf="${CONF_DIR}/cloudflare-ips.conf"
+    local geo_conf="${CONF_DIR}/cloudflare-geo.conf"
+    local tmp_ips="/tmp/cf_ips_$$.conf"
+    local tmp_geo="/tmp/cf_geo_$$.conf"
+
+    {
+        echo "# Subnet Resmi Cloudflare untuk Restorasi IP"
+        echo "# Diperbarui pada: $(date)"
+        echo ""
+        
+        # IPv4
+        curl -fsSL https://www.cloudflare.com/ips-v4 | while read -r ip; do
+            [ -n "${ip}" ] && echo "set_real_ip_from ${ip};"
+        done
+
+        # IPv6
+        curl -fsSL https://www.cloudflare.com/ips-v6 | while read -r ip; do
+            [ -n "${ip}" ] && echo "set_real_ip_from ${ip};"
+        done
+
+        # Loopback lokal
+        echo "set_real_ip_from 127.0.0.1;"
+        echo "set_real_ip_from ::1;"
+    } > "${tmp_ips}"
+
+    {
+        echo "# Subnet Resmi Cloudflare untuk Proteksi Origin"
+        echo "# Diperbarui pada: $(date)"
+        echo ""
+
+        # IPv4
+        curl -fsSL https://www.cloudflare.com/ips-v4 | while read -r ip; do
+            [ -n "${ip}" ] && echo "${ip} 1;"
+        done
+
+        # IPv6
+        curl -fsSL https://www.cloudflare.com/ips-v6 | while read -r ip; do
+            [ -n "${ip}" ] && echo "${ip} 1;"
+        done
+
+        # Loopback lokal
+        echo "127.0.0.1 1;"
+        echo "::1 1;"
+    } > "${tmp_geo}"
+
+    if [ -s "${tmp_ips}" ] && [ -s "${tmp_geo}" ]; then
+        mv "${tmp_ips}" "${cf_conf}"
+        mv "${tmp_geo}" "${geo_conf}"
+        chmod 0644 "${cf_conf}" "${geo_conf}"
+        green "Daftar IP Cloudflare berhasil disimpan di ${cf_conf} dan ${geo_conf}"
+        if nginx -t >/dev/null 2>&1; then
+            systemctl reload nginx
+            green "Nginx berhasil di-reload dengan IP Cloudflare terbaru"
+        else
+            red "Error: Sintaks Nginx tidak valid setelah pembaruan IP Cloudflare"
+            exit 1
+        fi
+    else
+        red "Gagal mengunduh daftar IP dari cloudflare.com"
+        rm -f "${tmp_ips}" "${tmp_geo}"
+        exit 1
+    fi
+}
+
+cmd_backups() {
+    bold "=== DAFTAR BERKAS CADANGAN (.GBAK) ==="
+    if compgen -G "${BACKUPS_DIR}/*.gbak" > /dev/null; then
+        ls -lh "${BACKUPS_DIR}"/*.gbak
+    else
+        yellow "Belum ada berkas cadangan .gbak di ${BACKUPS_DIR}"
+    fi
+}
+
+cmd_verify_backup() {
+    bold "=== VERIFIKASI BERKAS CADANGAN TERBARU ==="
+    local latest
+    latest=$(ls -t "${BACKUPS_DIR}"/*.gbak 2>/dev/null | head -1 || true)
+    if [ -z "${latest}" ]; then
+        red "Tidak ada berkas cadangan untuk diverifikasi."
+        exit 1
+    fi
+
+    echo "Berkas: ${latest}"
+    local size
+    size=$(ls -lh "${latest}" | awk '{print $5}')
+    echo "Ukuran: ${size}"
+
+    # Verifikasi magic header .gbak (format gbak: "GBAK\x01")
+    local magic
+    magic=$(head -c 5 "${latest}" || true)
+    if [ "${magic}" = "GBAK"$'\x01' ]; then
+        green "[VALID] Magic bytes format GBAK v1 terverifikasi"
+    else
+        yellow "[CATATAN] Format header cadangan: ${magic}"
+    fi
+}
+
+# Router Perintah
+cmd="${1:-}"
+shift || true
+
+case "${cmd}" in
+    status) cmd_status "$@" ;;
+    doctor) cmd_doctor "$@" ;;
+    logs) cmd_logs "$@" ;;
+    start) systemctl start "${SERVICE_NAME}" && cmd_status ;;
+    stop) systemctl stop "${SERVICE_NAME}" && cmd_status ;;
+    restart) cmd_restart ;;
+    deploy) cmd_deploy "$@" ;;
+    rollback) cmd_rollback ;;
+    refresh-cf-ips) cmd_refresh_cf_ips ;;
+    backups) cmd_backups ;;
+    verify-backup) cmd_verify_backup ;;
+    *) usage ;;
+esac

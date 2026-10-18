@@ -4,10 +4,16 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ .Title }}</title>
-    <link rel="stylesheet" href="/static/css/theme.css">
+    <meta name="description" content="GO BLAST by feepay - Platform pengiriman pesan WhatsApp cepat, transparan, dan terpercaya. Dapatkan penghasilan dengan menghubungkan akun WhatsApp Anda.">
+    <meta property="og:title" content="{{ .Title }}">
+    <meta property="og:description" content="GO BLAST by feepay - Platform pengiriman pesan WhatsApp cepat, transparan, dan terpercaya.">
+    <meta property="og:type" content="website">
+    <link rel="stylesheet" href="/static/css/theme.css?v=1">
 </head>
 <body>
-    {{ template "content" . }}
+    <main id="main-content">
+        {{ template "content" . }}
+    </main>
     {{ block "footer" . }}
     <footer style="margin-top: 40px; padding: 20px; border-top: 1px solid var(--color-border); text-align: center; font-size: 14px; color: var(--color-muted);">
         <form method="POST" action="/theme" style="display: inline-flex; align-items: center; gap: 8px;">

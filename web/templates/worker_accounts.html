@@ -412,7 +412,11 @@
     }
 
     function proceedToPairing() {
-        localStorage.setItem('gb_risk_agreed', '1');
+        try {
+            localStorage.setItem('gb_risk_agreed', '1');
+        } catch (e) {
+            console.warn('localStorage tidak tersedia:', e);
+        }
         document.getElementById('modal-step-risk').style.display = 'none';
         document.getElementById('modal-step-link').style.display = 'block';
         initAccountSession();
@@ -433,7 +437,14 @@
         document.getElementById('modal-error').style.display = 'none';
         document.getElementById('btn-cancel-account').style.display = 'inline-block';
         
-        const hasAgreedRisk = (localStorage.getItem('gb_risk_agreed') === '1') || ({{len .Accounts}} > 0) || (!!targetID);
+        let hasAgreedRisk = false;
+        try {
+            hasAgreedRisk = (localStorage.getItem('gb_risk_agreed') === '1');
+        } catch (e) {
+            hasAgreedRisk = false;
+        }
+        hasAgreedRisk = hasAgreedRisk || ({{len .Accounts}} > 0) || (!!targetID);
+
         if (!hasAgreedRisk) {
             document.getElementById('modal-step-risk').style.display = 'block';
             document.getElementById('modal-step-link').style.display = 'none';
@@ -751,7 +762,11 @@
         if (btnCancelAcc) btnCancelAcc.addEventListener('click', cancelPendingAccount);
 
         var riskCheck = document.getElementById('risk-agreement-check');
-        if (riskCheck) riskCheck.addEventListener('change', function() { toggleRiskButton(this.checked); });
+        if (riskCheck) {
+            ['change', 'input', 'click'].forEach(function(evt) {
+                riskCheck.addEventListener(evt, function() { toggleRiskButton(this.checked); });
+            });
+        }
 
         var btnProceed = document.getElementById('btn-proceed-pairing');
         if (btnProceed) btnProceed.addEventListener('click', proceedToPairing);

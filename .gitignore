@@ -32,8 +32,11 @@
 goblast
 /tmp/
 /bin/
+/dist/
 *.exe
 *.exe~
+deploy/*.tar.gz
+deploy/*.tar.gz.sha256
 
 # Sistem & IDE
 .DS_Store

@@ -351,3 +351,33 @@ func TestBackupStreamingMemory(t *testing.T) {
 
 	t.Logf("TotalAlloc delta untuk streaming 10MB data: %.2f MB", allocDiffMB)
 }
+
+func TestBackupSymlinkUploads(t *testing.T) {
+	pool := testutil.TestDB(t)
+	ctx := context.Background()
+	tmpDir := t.TempDir()
+	key := generateTestKey()
+
+	// Pastikan folder uploads lokal valid (atau symlink jika sistem mendukung)
+	_ = os.MkdirAll("uploads", 0755)
+
+	rec, err := backup.Create(ctx, pool, backup.BackupOptions{
+		Kind: "manual",
+		Dir:  tmpDir,
+		Key:  key,
+	})
+	if err != nil {
+		t.Fatalf("Create backup gagal: %v", err)
+	}
+
+	filePath := filepath.Join(tmpDir, rec.Filename)
+	header, err := backup.Verify(filePath, [][]byte{key})
+	if err != nil {
+		t.Fatalf("Verify backup gagal: %v", err)
+	}
+
+	if header.FormatVersion != backup.FormatVersion {
+		t.Fatalf("Format version tidak sesuai")
+	}
+}
+

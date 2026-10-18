@@ -170,8 +170,8 @@ Aplikasi secara ketat mengirimkan header keamanan pada seluruh respons HTTP:
 
 ### B1. Isolasi di VPS Linux & Unit Systemd
 - Gunakan pengguna sistem tanpa privilese root (`goblast:goblast`) untuk mengoperasikan aplikasi.
-- Aplikasi wajib di-bind ke loopback lokal `127.0.0.1:8080`. Bind publik `0.0.0.0` di produksi ditolak oleh server kecuali jika `ALLOW_PUBLIC_BIND=true` disetel secara eksplisit.
-- Batasi alokasi memori proses menggunakan aturan MemoryMax sebesar 75% dari total RAM VPS (contoh VPS 1 GB: 768M; VPS 2 GB: 1536M) sebagai aturan pengaman, bukan angka tetap. Angka final diisi setelah pemilik mengukur memori riil per sesi WhatsApp.
+- Aplikasi wajib di-bind ke loopback lokal `127.0.0.1:8090`. Bind publik `0.0.0.0` di produksi ditolak oleh server kecuali jika `ALLOW_PUBLIC_BIND=true` disetel secara eksplisit.
+- Batasi alokasi memori proses menggunakan aturan MemoryMax sebesar 600M (75% dari sisa aman RAM VPS 2GB setelah dikurangi buffer OS, PostgreSQL, dan proyek lain).
 - Berikan batas waktu drain `TimeoutStopSec=30s` agar proses memiliki waktu menyelesaikan transaksi berjalan saat service dimatikan.
 
 #### Berkas Unit Lengkap `/etc/systemd/system/goblast.service`:
@@ -186,31 +186,37 @@ Wants=postgresql.service
 Type=simple
 User=goblast
 Group=goblast
-WorkingDirectory=/var/www/goblast
-ExecStart=/var/www/goblast/goblast run
-Restart=always
+WorkingDirectory=/opt/goblast/current
+ExecStart=/opt/goblast/current/goblast run
+
+# Penanganan kegagalan & restart terkontrol
+Restart=on-failure
 RestartSec=5s
+StartLimitIntervalSec=60s
+StartLimitBurst=5
 
 # Manajemen memori dan penghentian anggun (graceful shutdown)
-# MemoryMax diatur sebesar 75% total RAM VPS (aturan pengaman; sesuaikan setelah pengukuran riil)
-MemoryMax=75%
+MemoryMax=600M
 TimeoutStopSec=30s
+KillSignal=SIGTERM
 LimitNOFILE=65535
 
-# Pemuatan konfigurasi rahasia produksi (izin berkas wajib 0600)
-EnvironmentFile=/var/www/goblast/.env
+# Pemuatan konfigurasi rahasia produksi (izin berkas wajib 0640 root:goblast)
+EnvironmentFile=/etc/goblast/goblast.env
 
 # Pengamanan proses sistem Linux (Hardening)
 ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
 NoNewPrivileges=true
-ReadWritePaths=/var/www/goblast/data /var/www/goblast/backups /var/www/goblast/uploads
+ReadWritePaths=/opt/goblast/data /opt/goblast/backups /opt/goblast/uploads
 
 # Standar output diarahkan ke systemd journal
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=goblast
+LogRateLimitIntervalSec=30s
+LogRateLimitBurst=500
 
 [Install]
 WantedBy=multi-user.target
@@ -440,13 +446,13 @@ ALTER TABLE campaign_numbers SET (
 ### B6. Migrasi Database
 - Seluruh migrasi berada di direktori `db/migrations/` dan dieksekusi maju menggunakan perintah CLI resmi:
   ```bash
-  /var/www/goblast/goblast migrate up
+  /opt/goblast/current/goblast migrate up
   ```
 - Periksa versi migrasi saat ini:
   ```bash
-  /var/www/goblast/goblast migrate version
+  /opt/goblast/current/goblast migrate version
   ```
-- Dilarang keras mengedit berkas migrasi lama yang telah diterapkan di produksi (`0001` s.d. `0024`). Seluruh penyesuaian skema baru wajib dibuat sebagai file migrasi baru dengan bagian `Up` dan `Down`.
+- Dilarang keras mengedit berkas migrasi lama yang telah diterapkan di produksi (`0001` s.d. `0025`). Seluruh penyesuaian skema baru wajib dibuat sebagai file migrasi baru dengan bagian `Up` dan `Down`.
 
 ### B7. Cadangan Database dan Prosedur Pemulihan (Tahap H9)
 Sistem dilengkapi modul cadangan otomatis terenkripsi penuh yang beroperasi tanpa membocorkan kunci enkripsi ke berkas cadangan:
@@ -456,7 +462,7 @@ Sistem dilengkapi modul cadangan otomatis terenkripsi penuh yang beroperasi tanp
    - Skema retensi GFS: menyimpan 7 cadangan harian dan 4 cadangan mingguan.
    - Pengecekan otomatis ruang disk: minimal 2x ukuran cadangan terakhir atau 100 MB ruang kosong sebelum pembuatan cadangan dimulai.
    - Cadangan terverifikasi terakhir dijamin **tidak pernah dihapus** oleh sistem retensi maupun penghapusan manual.
-   - Berkas cadangan fisik disimpan di folder `backups/` dalam format `.gbak` (AES-256-GCM 64 KB streaming chunks + kompresi gzip + trailer integritas).
+   - Berkas cadangan fisik disimpan di folder `/opt/goblast/backups/` dalam format `.gbak` (AES-256-GCM 64 KB streaming chunks + kompresi gzip + trailer integritas).
    - Seluruh tabel `whatsmeow_*`, `web_sessions`, dan `goose_db_version` **dikecualikan secara ketat**.
 
 2. **Penyalinan Salinan Luar Server (Off-Site Backup)**:
@@ -467,11 +473,11 @@ Sistem dilengkapi modul cadangan otomatis terenkripsi penuh yang beroperasi tanp
      Pasang `rclone` di server VPS dan arahkan sinkronisasi ke penyimpanan cloud terpisah (seperti Cloudflare R2, AWS S3, atau Wasabi):
      ```bash
      # Contoh sinkronisasi harian pukul 04:00 WIB via cron:
-     rclone sync /var/www/goblast/backups/ remote-s3:goblast-offsite-backups/ --fast-list
+     rclone sync /opt/goblast/backups/ remote-s3:goblast-offsite-backups/ --fast-list
      ```
    - **Otomatis via scp ke komputer/laptop pribadi pemilik**:
      ```bash
-     scp -P 22 deploy@vps.goblast.id:/var/www/goblast/backups/*.gbak ~/Backups/goblast/
+     scp -P 22 deploy@vps.goblast.id:/opt/goblast/backups/*.gbak ~/Backups/goblast/
      ```
 
 3. **Prosedur Pemulihan Bencana (Disaster Recovery Drill)**:
@@ -486,10 +492,10 @@ Sistem dilengkapi modul cadangan otomatis terenkripsi penuh yang beroperasi tanp
    createdb -h localhost -U postgres goblast
 
    # 3. Jalankan migrasi hingga versi terbaru
-   /var/www/goblast/goblast migrate up
+   /opt/goblast/current/goblast migrate up
 
    # 4. Eksekusi pemulihan dari berkas .gbak
-   /var/www/goblast/goblast restore --file /var/www/goblast/backups/20261017_030000_otomatis_abc123.gbak
+   /opt/goblast/current/goblast restore --file /opt/goblast/backups/20261017_030000_otomatis_abc123.gbak
 
    # 5. Nyalakan kembali aplikasi
    sudo systemctl start goblast
@@ -498,7 +504,7 @@ Sistem dilengkapi modul cadangan otomatis terenkripsi penuh yang beroperasi tanp
    **Skenario B: Pemulihan ke Database yang Tidak Kosong**
    ```bash
    # Gunakan bendera --force-nonempty (sistem meminta konfirmasi ketik kata 'RESTORE')
-   /var/www/goblast/goblast restore --file /var/www/goblast/backups/20261017_030000_otomatis_abc123.gbak --force-nonempty
+   /opt/goblast/current/goblast restore --file /opt/goblast/backups/20261017_030000_otomatis_abc123.gbak --force-nonempty
    ```
 
 4. **Verifikasi Pasca-Pemulihan**:
@@ -519,63 +525,47 @@ Sistem dilengkapi modul cadangan otomatis terenkripsi penuh yang beroperasi tanp
 ### B8. Prosedur Deploy Rilis Baru
 Lakukan deploy pada jam sepi trafik dan berikan pemberitahuan jeda layanan kepada pekerja:
 
-1. **Kompilasi Biner Linux**:
-   Kompilasi biner pada mesin build atau CI/CD tanpa menyertakan simbol debug untuk memperkecil ukuran biner:
+1. **Kompilasi Biner Linux & Siapkan Paket Rilis**:
+   Kompilasi biner pada mesin build lokal dan kemas bersama aset (templates, static, locales, migrations):
    ```bash
-   GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o goblast-v1.2.0 ./cmd/goblast
+   GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o deploy/goblast ./cmd/goblast
+   tar -czf deploy/goblast-v1.0.0.tar.gz -C deploy/stage .
+   sha256sum deploy/goblast-v1.0.0.tar.gz > deploy/goblast-v1.0.0.tar.gz.sha256
    ```
-2. **Kirim Biner dan Aset ke Server**:
+2. **Kirim Paket Rilis ke Server**:
    ```bash
-   scp goblast-v1.2.0 deploy@vps:/var/www/goblast/bin/
-   rsync -avz --delete static/ deploy@vps:/var/www/goblast/static/
-   rsync -avz --delete locales/ deploy@vps:/var/www/goblast/locales/
-   rsync -avz db/migrations/ deploy@vps:/var/www/goblast/db/migrations/
+   scp deploy/goblast-v1.0.0.tar.gz* deploy@vps:/tmp/
    ```
-3. **Pemberitahuan Pekerja**: Kirim pengumuman bahwa server akan diperbarui dan sesi WhatsApp akan terputus.
-4. **Hentikan Layanan Lama**:
+3. **Eksekusi Deploy Atomik via `goblastctl`**:
+   Utilitas `goblastctl deploy` secara otomatis memverifikasi SHA256, mengekstrak ke `/opt/goblast/releases/v1.0.0`, menghubungkan symlink folder persisten (`data`, `uploads`, `backups`), mengeksekusi migrasi database, mengalihkan symlink `/opt/goblast/current`, merestart service, serta memverifikasi kesehatan `/readyz` (otomatis rollback jika gagal):
    ```bash
-   sudo systemctl stop goblast
+   goblastctl deploy /tmp/goblast-v1.0.0.tar.gz
    ```
-   Systemd mengirimkan sinyal SIGTERM dan menunggu hingga 30 detik (`TimeoutStopSec=30s`) agar server menyelesaikan request dan draining akun WhatsApp yang sedang berjalan.
-5. **Jalankan Migrasi Database**:
+4. **Verifikasi Diagnostik Pasca-Deploy**:
    ```bash
-   /var/www/goblast/bin/goblast-v1.2.0 migrate up
+   goblastctl doctor
+   goblastctl status
    ```
-6. **Perbarui Symlink Biner Aktif**:
-   ```bash
-   ln -sfn /var/www/goblast/bin/goblast-v1.2.0 /var/www/goblast/goblast
-   ```
-7. **Nyalakan Layanan**:
-   ```bash
-   sudo systemctl start goblast
-   ```
-8. **Verifikasi Probe Kesehatan**:
-   ```bash
-   curl -I http://127.0.0.1:8080/healthz   # Harus 200 OK
-   curl -I http://127.0.0.1:8080/readyz    # Harus 200 OK
-   ```
-9. **Konsekuensi Arsitektur Sesi WhatsApp (Keputusan B1)**:
+5. **Konsekuensi Arsitektur Sesi WhatsApp (Keputusan B1)**:
    Proses shutdown mematikan koneksi soket whatsmeow di memori. Sesi WhatsApp terputus dan status akun direset ke `terputus`. Pekerja wajib melakukan scan ulang QR code atau tautkan ulang perangkat untuk memulai sesi kerja baru.
 
 ### B9. Prosedur Rollback
-Jika biner versi baru mengalami galat fatal (panic / crash loop / bug kritis):
+Jika rilis versi baru mengalami galat fatal atau regresi:
 
-1. **Hentikan Service**:
+1. **Rollback Cepat via `goblastctl`**:
+   Perintah ini mengalihkan symlink `/opt/goblast/current` kembali ke rilis sebelumnya dan merestart service secara anggun:
    ```bash
-   sudo systemctl stop goblast
+   goblastctl rollback
    ```
 2. **Rollback Migrasi Database (Jika Diperlukan)**:
-   Hanya lakukan jika migrasi versi baru memiliki skrip `Down` yang aman dan belum merusak integritas data:
+   Hanya lakukan jika migrasi versi baru memiliki skrip `Down` yang aman dan perlu diturunkan:
    ```bash
-   /var/www/goblast/goblast migrate down
+   cd /opt/goblast/current && ./goblast migrate down
    ```
-3. **Kembalikan Symlink ke Biner Versi Sebelumnya**:
+3. **Verifikasi Status**:
    ```bash
-   ln -sfn /var/www/goblast/bin/goblast-v1.1.0 /var/www/goblast/goblast
-   ```
-4. **Nyalakan Kembali Service**:
-   ```bash
-   sudo systemctl start goblast
+   goblastctl doctor
+   goblastctl status
    ```
 5. **Verifikasi Status**:
    ```bash
@@ -653,12 +643,12 @@ Jika biner versi baru mengalami galat fatal (panic / crash loop / bug kritis):
 Untuk menjaga keamanan dan meminimalkan jejak penyimpanan di server VPS:
 
 - **HANYA BERKAS INI YANG BOLEH ADA DI SERVER PRODUKSI**:
-  - Biner tunggal hasil kompilasi: `/var/www/goblast/goblast` (atau di folder `bin/`).
-  - Berkas template dan statis frontend: `/var/www/goblast/static/`.
-  - Berkas terjemahan antarmuka: `/var/www/goblast/locales/`.
-  - Berkas skrip migrasi database: `/var/www/goblast/db/migrations/`.
-  - Berkas konfigurasi rahasia: `/var/www/goblast/.env` (izin akses ketat `0600`, pemilik `goblast:goblast`).
-  - Direktori penyimpanan data operasional: `data/`, `uploads/`, `backups/`.
+  - Direktori rilis terisolasi: `/opt/goblast/releases/<versi>/` (biner `goblast`, `web/templates/`, `web/static/`, `locales/`, `db/migrations/`).
+  - Symlink rilis aktif: `/opt/goblast/current -> /opt/goblast/releases/<versi>`.
+  - Direktori penyimpanan data operasional persisten: `/opt/goblast/data/`, `/opt/goblast/uploads/`, `/opt/goblast/backups/`.
+  - Berkas konfigurasi rahasia: `/etc/goblast/goblast.env` (izin akses ketat `0640`, pemilik `root:goblast`).
+  - Berkas daftar IP Cloudflare: `/etc/goblast/cloudflare-ips.conf`.
+  - Berkas alat operasional CLI: `/usr/local/bin/goblastctl`.
 - **DILARANG KERAS BERADA DI SERVER PRODUKSI**:
   - Seluruh kode sumber Go (`*.go`).
   - Repositori git (`.git/`, `.gitignore`).
@@ -703,5 +693,5 @@ Tabel berikut memuat 21 butir verifikasi kesiapan sistem sebelum GO BLAST dibuka
 | 17 | Worker Financial Rate Limit Berfungsi | Keamanan Akses | Siap | Kirim permintaan penarikan beruntun; pastikan permintaan ke-11 dalam 10 menit menerima HTTP 429 Too Many Requests. | Sistem |
 | 18 | ArgonGate Melindungi Serangan Brute-Force | Performa | Siap | Verifikasi pembatasan komputasi argon2id aktif dengan `ArgonConcurrencyLimit = 2` dan `ArgonQueueLimit = 8`. | Sistem |
 | 19 | Autovacuum Agresif Tabel Antrean | Database | Siap | Query `pg_options` pada tabel `campaign_numbers`; pastikan `autovacuum_vacuum_scale_factor = 0.05`. | Admin |
-| 20 | Direktori Bersih Tanpa Kode Sumber | Kebersihan VPS | Siap | Jalankan `find /var/www/goblast -name "*.go" -o -name ".git"`; pastikan output kosong di server produksi. | Admin |
+| 20 | Direktori Bersih Tanpa Kode Sumber | Kebersihan VPS | Siap | Jalankan `find /opt/goblast -name "*.go" -o -name ".git"`; pastikan output kosong di server produksi. | Admin |
 | 21 | go test -race lulus untuk paket engine, wa, web, campaign, backup | Pengujian | Perlu Tindakan | Jalankan go test -race ./internal/... di lingkungan dengan gcc atau WSL/Linux. | Pemilik |

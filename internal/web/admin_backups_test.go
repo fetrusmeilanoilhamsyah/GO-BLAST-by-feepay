@@ -420,6 +420,7 @@ func TestHealthChecks_BackupHealthItem(t *testing.T) {
 
 	srv.BackupMgr = backup.NewManager(pool, backupDir, key, nil)
 	ctx := context.Background()
+	_, _ = pool.Exec(ctx, "TRUNCATE TABLE backups")
 
 	// 1. Sebelum ada backup -> Health check berstatus 'gagal'
 	results := srv.RunHealthChecks(ctx)

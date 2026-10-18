@@ -179,10 +179,17 @@ func Create(ctx context.Context, pool *pgxpool.Pool, opts BackupOptions) (*Backu
 	}
 
 	// Hitung berkas di uploads/
+	uploadsDir := "uploads"
+	if realDir, err := filepath.EvalSymlinks(uploadsDir); err == nil {
+		uploadsDir = realDir
+	}
 	uploadsCount := 0
-	_ = filepath.Walk("uploads", func(path string, info os.FileInfo, err error) error {
-		if err == nil && info != nil && !info.IsDir() {
-			uploadsCount++
+	_ = filepath.Walk(uploadsDir, func(path string, info os.FileInfo, err error) error {
+		if err == nil && info != nil && !info.IsDir() && path != uploadsDir {
+			rel, rErr := filepath.Rel(uploadsDir, path)
+			if rErr == nil && rel != "." {
+				uploadsCount++
+			}
 		}
 		return nil
 	})
@@ -268,12 +275,12 @@ func Create(ctx context.Context, pool *pgxpool.Pool, opts BackupOptions) (*Backu
 	}
 
 	// 10. Stream seluruh berkas uploads/
-	_ = filepath.Walk("uploads", func(path string, info os.FileInfo, err error) error {
-		if err != nil || info == nil || info.IsDir() {
+	_ = filepath.Walk(uploadsDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info == nil || info.IsDir() || path == uploadsDir {
 			return nil
 		}
-		rel, err := filepath.Rel("uploads", path)
-		if err != nil {
+		rel, err := filepath.Rel(uploadsDir, path)
+		if err != nil || rel == "." {
 			return nil
 		}
 		rel = filepath.ToSlash(rel)
@@ -284,7 +291,9 @@ func Create(ctx context.Context, pool *pgxpool.Pool, opts BackupOptions) (*Backu
 		}
 		defer f.Close()
 
-		_ = streamWriter.WriteFile(rel, info.Size(), f)
+		if err := streamWriter.WriteFile(rel, info.Size(), f); err != nil {
+			return err
+		}
 		return nil
 	})
 

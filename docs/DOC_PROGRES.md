@@ -10,8 +10,8 @@ Nomor tahap mengacu ke tabel "Daftar Tahap" di bawah.
 ## Posisi sekarang
 
 - **Fase**: 1 (MVP) & Fase 2 (Tahap 18 selesai dimajukan)
-- **Terakhir dikerjakan**: Integrasi Maskot Resmi Gopher & Polish UI Panel Pekerja — Penempatan maskot Gopher resmi Renée French (CC BY 3.0) pada titik-titik fungsional: Gopher Kilat (Flash) pada brand login/register dan topbar mobile, Gopher Maling pada kotak pemindaian kode QR WhatsApp, Gopher Santai (Minum Es) pada empty state riwayat penarikan dan aktivitas blast di desktop maupun kartu mobile, Gopher Tim Support pada tombol melayang (FAB) kapsul CS dan pop-up modal Pusat Bantuan CS, serta Gopher Konstruksi pada panel lonceng notifikasi operasional. Perapian layout footer pekerja simetris, eliminasi footer dobel bawaan template, pembersihan total emoji (zero emoji) sesuai aturan DOC_AI_SLOP.md, 100% tes lolos dan build biner bersih.
-- **Sedang dikerjakan**: Menunggu tinjauan pemilik dan arahan commit/push atau tahap berikutnya.
+- **Terakhir dikerjakan**: Tahap 16 — Deploy GO BLAST ke VPS via SSH. Pengoperasian PostgreSQL 16 terisolasi low-RAM (max 40 conn, shared_buffers 64MB), migrasi Goose 0001–0025 sukses, TLS Let's Encrypt aktif di domain `fetrusmeilanoilhamsyah.my.id`, proteksi origin Cloudflare ketat (akses langsung ke IP origin ditolak 403), systemd service `goblast` beroperasi dengan isolasi penuh (`MemoryMax=600M`, `ProtectSystem=strict`, `NoNewPrivileges=true`), CLI pengelola `goblastctl` (doctor, status, logs, restart, backups), drill graceful restart & B1 disconnect sukses, admin awal dibuat dengan kredensial aman di `/root/INITIAL_ADMIN_CREDENTIALS.txt` (0600), seluruh 7 layanan VPS lain berjalan utuh tanpa gangguan, VPS tidak di-reboot (uptime 144+ hari).
+- **Sedang dikerjakan**: Menunggu verifikasi pemilik untuk pengujian login admin, setup TOTP, pengisian kunci Turnstile, dan arahan commit git lokal.
 - **Blocker**: Tidak ada (menunggu pengukuran memori per sesi riil dan pengujian `go test -race` oleh pemilik di lingkungan dengan gcc/WSL).
 
 ---
@@ -109,7 +109,7 @@ Daftar resmi. Agen hanya boleh mengubah kolom Status, dan hanya untuk tahap yang
 | 13 | Halaman publik | Selesai |
 | 14 | Penarikan manual | Belum |
 | 15 | Review keamanan dan uji beban | Sebagian |
-| 16 | Deploy ke VPS | Belum |
+| 16 | Deploy ke VPS | Selesai |
 | 17 | Review gabungan sebelum rilis | Belum |
 | 18 | Referral (fase 2) | Selesai |
 | 19 | Penanda klik (fase 2) | Belum |
@@ -275,6 +275,7 @@ Perbedaan antara DOC_KONSEP dan kode aktual yang dicatat di Tahap S0:
 
 Terbaru di atas. Ringkasan satu baris per tugas (Rincian multi-baris diarsipkan di [ARSIP_PROGRES.md](ARSIP_PROGRES.md)).
 
+- 2026-10-18: **Tahap 16 selesai** — Deploy GO BLAST ke VPS via SSH: PostgreSQL 16 terisolasi low-RAM (max 40 conn, shared_buffers 64MB), Goose migrasi 0001–0025 sukses, TLS Let's Encrypt aktif di `fetrusmeilanoilhamsyah.my.id`, proteksi origin Cloudflare ketat (direct IP tolak 403), systemd service `goblast` beroperasi dengan isolasi penuh (`MemoryMax=600M`, `ProtectSystem=strict`), CLI `goblastctl` (doctor, status, logs, restart, backups), drill restart & B1 disconnect sukses, admin awal dibuat di `/root/INITIAL_ADMIN_CREDENTIALS.txt` (0600), seluruh 7 layanan VPS lain berjalan normal tanpa gangguan, VPS tidak pernah di-reboot.
 - 2026-10-18: **Pemasangan Maskot Gopher Lengkap & Perapian Footer selesai** — Gopher Flash pada brand GO BLAST (login, register, topbar mobile, sidebar drawer, footer); Gopher Maling di atas kotak kode QR tautan WhatsApp; Gopher Minum Es pada empty state riwayat penarikan, aktivitas beranda, dan riwayat blast; footer pekerja disederhanakan simetris & proporsional (margin-top 24px, tautan bantuan/kebijakan tanpa wrap berlebih); lolos seluruh pengujian.
 - 2026-10-18: **Tahap H14 selesai** — Penanganan nomor yang tidak bergantung pada Indonesia: normalisasi E.164 multi-negara via nyaruka/phonenumbers, default_country per campaign & setting sistem, validasi seluler (tolak bukan_seluler), ambiguitas XLSX, pairing nomor internasional, peringatan preview, migrasi 0025, lolos seluruh tes.
 - 2026-10-18: **Tahap H13 selesai** — Perbaikan pemeriksaan nomor terdaftar whatsmeow: prefix '+' query USync, matching r.Query bukan JID LID, hasil tiga keadaan (Terdaftar/TidakTerdaftar/TidakPasti), retry backoff TidakPasti (3x lalu gagal cek_nomor_gagal), metrik engine & health check wa_check_status, sanitasi purge, lolos seluruh tes.

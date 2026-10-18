@@ -1,0 +1,44 @@
+[Unit]
+Description=GO BLAST by Feepay WhatsApp Engine
+Documentation=https://github.com/fetrusmeilanoilhamsyah/GO-BLAST-by-feepay
+After=network.target postgresql.service
+Wants=postgresql.service
+StartLimitIntervalSec=60s
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=goblast
+Group=goblast
+WorkingDirectory=/opt/goblast/current
+ExecStart=/opt/goblast/current/goblast
+
+# Penanganan kegagalan & restart terkontrol
+Restart=on-failure
+RestartSec=5s
+
+# Batas memori & penghentian anggun (MemoryMax dihitung dari sisa RAM aman VPS 2GB)
+MemoryMax=600M
+TimeoutStopSec=30s
+KillSignal=SIGTERM
+LimitNOFILE=65535
+
+# Pemuatan rahasia lingkungan (izin berkas 0640 root:goblast)
+EnvironmentFile=/etc/goblast/goblast.env
+
+# Hardening Isolasi Proses Linux
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+NoNewPrivileges=true
+ReadWritePaths=/opt/goblast/data /opt/goblast/uploads /opt/goblast/backups
+
+# Logging ke systemd journal dengan pembatasan laju log sendiri
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=goblast
+LogRateLimitIntervalSec=30s
+LogRateLimitBurst=500
+
+[Install]
+WantedBy=multi-user.target
