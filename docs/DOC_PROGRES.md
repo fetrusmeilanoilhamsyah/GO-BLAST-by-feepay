@@ -10,8 +10,8 @@ Nomor tahap mengacu ke tabel "Daftar Tahap" di bawah.
 ## Posisi sekarang
 
 - **Fase**: 1 (MVP) & Fase 2 (Tahap 18 selesai dimajukan)
-- **Terakhir dikerjakan**: Tahap H14 — Penanganan nomor yang tidak bergantung pada Indonesia (normalisasi E.164 multi-negara via nyaruka/phonenumbers, default_country per campaign dan di pengaturan sistem, validasi tipe seluler dengan penolakan fixed-line sebagai bukan_seluler, penanganan ambiguitas numerik XLSX, alur pairing pekerja dengan kode negara internasional, peringatan multi-negara & nomor asing pada preview upload, migrasi 0025 siklus Up/Down teruji, 100% tes lulus).
-- **Sedang dikerjakan**: Menunggu arahan tahap berikutnya dari pemilik proyek.
+- **Terakhir dikerjakan**: Peningkatan UX Panel Pekerja — Modernisasi interaksi antarmuka minimalis elegan ala Linear/Vercel (Zero-Dependency Vanilla Web Component `<number-flow>` untuk live odometer database & pendapatan, Sonner-style stacked toast untuk notifikasi ganti password, simpan rekening, penarikan, dan salin tautan referral, transisi visual checkmark monokrom saat WhatsApp terhubung, instant button loading state saat submit form, aman CSP strict tanpa dependensi npm/node, 100% tes lulus tanpa mengubah logika bisnis lama).
+- **Sedang dikerjakan**: Menunggu tinjauan pemilik dan arahan commit/push atau tahap berikutnya.
 - **Blocker**: Tidak ada (menunggu pengukuran memori per sesi riil dan pengujian `go test -race` oleh pemilik di lingkungan dengan gcc/WSL).
 
 ---
@@ -139,6 +139,7 @@ Terbaru di atas. Satu baris ringkas per keputusan.
 
 | Tanggal | Kode / Keputusan | Ringkasan Keputusan | Oleh |
 |---|---|---|---|
+| 2026-10-18 | Keputusan UX Pekerja | Desain UX modern ala Linear/Vercel: Number Flow odometer real-time, Sonner-style stacked toast, transisi visual sukses saat WA terhubung, loading state tombol instan; tanpa dependensi npm luar, tanpa merusak logika bisnis lama | pemilik dan agen |
 | 2026-10-18 | H14 / Nomor Internasional | Normalisasi E.164 independen dari Indonesia, default_country per campaign & settings, validasi seluler (tolak bukan_seluler), mitigasi ambiguitas numerik XLSX, pairing internasional (+62/60/44 dll.), peringatan multi-negara di preview | pemilik dan agen |
 | 2026-10-18 | H13 / Pemeriksaan Nomor | Perbaikan IsOnWhatsApp whatsmeow (prefix '+', pencocokan r.Query bukan LID, tiga keadaan: Terdaftar/TidakTerdaftar/TidakPasti), penanganan retry backoff TidakPasti (3x lalu gagal cek_nomor_gagal), metrik engine, health check wa_check_status, sanitasi purge | pemilik dan agen |
 | 2026-10-18 | H12 / Koreksi Klaim | Koreksi klaim memori per sesi & 75-80 sesi (belum terukur sesi WA riil), default konservatif MAX_ACTIVE_SESSIONS=20, MemoryMax 75% RAM VPS, Tahap 15 kembali Sebagian (butuh -race & ukur memori) | pemilik dan agen |
@@ -191,6 +192,16 @@ Perbedaan antara DOC_KONSEP dan kode aktual yang dicatat di Tahap S0:
 ---
 
 ## Catatan temuan
+
+- **2026-10-18 (Peningkatan UX Panel Pekerja — Linear/Vercel Design System)**:
+  - *Latar Belakang*: Transisi antarmuka panel pekerja sebelumnya terasa kaku karena mengandalkan reload halaman penuh (*full page reload*) dan teks status statis.
+  - *Spesifikasi Komponen UX Modern (Zero-Dependency & Aman CSP)*:
+    1. **Number Flow (Live Odometer Counter)**: Web Component native `<number-flow>` murni CSS transform untuk menganimasikan perubahan angka pada "Sisa Nomor Tersedia" dan "Pendapatan Hari Ini" saat polling `/worker/api/stats` berjalan. Digit yang berubah meluncur vertikal (*spring animation*), digit yang tetap tidak berguncang.
+    2. **Momen WhatsApp Terkoneksi**: Pada modal pairing QR/Phone (`worker_accounts.html`), saat polling mendeteksi `terhubung`, kotak QR tidak langsung hilang seketika, melainkan menampilkan animasi centang sukses monokrom (*animated SVG checkmark*) dengan status "WhatsApp Berhasil Terhubung!", lalu jeda transisi halus membuka form label & kecepatan.
+    3. **Sonner-style Stacked Toast**: Notifikasi mengambang bertumpuk di sudut layar untuk aksi ganti password, simpan rekening, penarikan dana, disconnect akun, dan salin tautan referral, menggantikan kotak alert statis di atas halaman.
+    4. **Instant Button Loading Feedback**: Tombol aksi langsung disabled dan menampilkan teks status loading ("Menyimpan...", "Memproses...") saat diklik untuk mencegah klik ganda dan memberi kepastian respons seketika.
+  - *Komitmen Integritas Kode*: Seluruh logika bisnis lama (transaksi buku besar, perutean WhatsApp, verifikasi CSRF, polling stats, parameter penarikan) dipertahankan 100% tanpa perubahan struktur data backend. Tidak ada penambahan dependensi npm/node luar (murni Vanilla JS & CSS variables).
+  - *Verifikasi & Pengujian*: Seluruh pengujian statis guard CSP (`TestGuard_CSP_TemplatesStaticCheck`), pengujian IDOR (`TestGuard_IDOR_CrossWorkerAccountsAndTickets`), dan seluruh rangkaian test suite repositori (`go test -p 1 ./...`) lulus 100% tanpa ada regresi.
 
 - **2026-10-18 (Tahap H14 — Penanganan Nomor yang Tidak Bergantung pada Indonesia)**:
   - Pembuktian Bug Fail-First: Ditulis `internal/numbers/numbers_h14_test.go` (`TestH14_ProveCurrentBugs`) yang membuktikan dua bug kritis:

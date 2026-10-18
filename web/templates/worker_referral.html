@@ -212,6 +212,9 @@ function showFeedback() {
     const btn = document.getElementById('copy-btn');
     fb.style.display = 'inline-block';
     btn.innerText = 'Tersalin!';
+    if (window.toast) {
+        window.toast.success('Tautan undangan berhasil disalin!');
+    }
     setTimeout(() => {
         fb.style.display = 'none';
         btn.innerText = '{{ call .T "worker.referral_copy" }}';

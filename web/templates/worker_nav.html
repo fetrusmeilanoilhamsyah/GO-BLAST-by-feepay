@@ -952,4 +952,47 @@ function dismissSystemLockModal() {
 }
 </script>
 {{end}}
+
+<script nonce="{{ .Nonce }}" src="/static/js/number-flow.js"></script>
+<script nonce="{{ .Nonce }}" src="/static/js/sonner-toast.js"></script>
+<script nonce="{{ .Nonce }}">
+(function() {
+    // Loading state seketika pada tombol submit saat diklik
+    var forms = document.querySelectorAll('#drawer-right form, .worker-content form');
+    forms.forEach(function(f) {
+        f.addEventListener('submit', function() {
+            var btn = f.querySelector('button[type="submit"]');
+            if (btn && !btn.disabled) {
+                setTimeout(function() {
+                    btn.disabled = true;
+                    btn.style.opacity = '0.7';
+                    btn.style.cursor = 'wait';
+                }, 10);
+            }
+        });
+    });
+
+    // Otomatis picu toast dari parameter URL success atau error (misal setelah ganti password, simpan rekening, penarikan)
+    try {
+        var urlParams = new URLSearchParams(window.location.search);
+        var successMsg = urlParams.get('success');
+        var errorMsg = urlParams.get('error');
+        if (window.toast) {
+            if (successMsg) {
+                window.toast.success(successMsg);
+            }
+            if (errorMsg) {
+                window.toast.error(errorMsg);
+            }
+        }
+        if (successMsg || errorMsg) {
+            urlParams.delete('success');
+            urlParams.delete('error');
+            var newSearch = urlParams.toString();
+            var newURL = window.location.pathname + (newSearch ? '?' + newSearch : '') + window.location.hash;
+            window.history.replaceState({}, document.title, newURL);
+        }
+    } catch (e) {}
+})();
+</script>
 {{end}}

@@ -316,6 +316,17 @@
                         setWithdrawAmount(this.getAttribute('data-amount'), this);
                     });
                 });
+
+                {{if .Success}}
+                if (window.toast) {
+                    window.toast.success({{.Success}});
+                }
+                {{end}}
+                {{if .Error}}
+                if (window.toast) {
+                    window.toast.error({{.Error}});
+                }
+                {{end}}
             });
             </script>
 

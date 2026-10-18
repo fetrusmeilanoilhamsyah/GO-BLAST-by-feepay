@@ -186,8 +186,8 @@
                     badge.innerText = 'Berhasil terhubung! Mengalihkan...';
                 }
                 setTimeout(() => {
-                    window.location.href = '/worker/accounts';
-                }, 1000);
+                    window.location.href = '/worker/accounts?success=WhatsApp+berhasil+terhubung';
+                }, 800);
             } else if (data.status === 'berhenti' || data.status === 'terputus') {
                 clearInterval(pollInterval);
                 if (badge) {

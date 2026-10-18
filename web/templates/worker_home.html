@@ -56,8 +56,8 @@
             <div class="stat-card">
                 <div>
                     <div class="stat-label">{{ call .T "worker.available_numbers_aggregate" }}</div>
-                    <div class="stat-value" id="stat-available-numbers" style="color: var(--color-primary);">
-                        {{.AvailableNumbersFormatted}}
+                    <div class="stat-value" style="color: var(--color-primary);">
+                        <number-flow id="stat-available-numbers" value="{{.AvailableNumbersFormatted}}"></number-flow>
                     </div>
                 </div>
                 <div class="stat-sub"><span id="stat-running-global">{{.RunningAccountsGlobal}}</span> akun bekerja sistem</div>
@@ -91,8 +91,8 @@
             <div class="stat-card">
                 <div>
                     <div class="stat-label">{{ call .T "worker.earned_today" }}</div>
-                    <div class="stat-value" id="stat-earned-today">
-                        Rp {{.EarnedTodayIDRFormatted}}
+                    <div class="stat-value">
+                        <number-flow id="stat-earned-today" prefix="Rp " value="{{.EarnedTodayIDRFormatted}}"></number-flow>
                     </div>
                 </div>
                 <div class="stat-sub">{{if gt .EarnedTodayUSDT 0}}+{{.EarnedTodayUSDTFormatted}} USDT • {{end}}Hari ini</div>
@@ -392,7 +392,16 @@ document.addEventListener('DOMContentLoaded', function() {
             if (typeof openHelpdeskModal === 'function') openHelpdeskModal();
         });
     }
+
+    // Tampilkan Sonner Toast elegan jika ada pesan sukses atau error dari backend
+    {{if .Success}}
+    if (window.toast) window.toast.success({{.Success}});
+    {{end}}
+    {{if .Error}}
+    if (window.toast) window.toast.error({{.Error}});
+    {{end}}
 });
+
 setInterval(function() {
     fetch('/worker/api/stats')
         .then(function(res) {
@@ -401,10 +410,31 @@ setInterval(function() {
         })
         .then(function(data) {
             if (!data) return;
+
+            // Update Sisa Nomor via Number Flow
             var elAvail = document.getElementById('stat-available-numbers');
-            if (elAvail) elAvail.textContent = data.database_tersedia_formatted || data.database_tersedia;
+            if (elAvail) {
+                var vAvail = data.database_tersedia_formatted || data.database_tersedia;
+                if (elAvail.tagName && elAvail.tagName.toLowerCase() === 'number-flow') {
+                    elAvail.setAttribute('value', String(vAvail));
+                } else {
+                    elAvail.textContent = vAvail;
+                }
+            }
+
+            // Update Pendapatan Hari Ini via Number Flow
             var elEarned = document.getElementById('stat-earned-today');
-            if (elEarned) elEarned.textContent = data.pendapatan_hari_ini_formatted || ('Rp ' + data.pendapatan_hari_ini);
+            if (elEarned) {
+                var vEarned = data.pendapatan_hari_ini_formatted || data.pendapatan_hari_ini;
+                var rawEarned = String(vEarned).replace(/^Rp\s*/i, '');
+                if (elEarned.tagName && elEarned.tagName.toLowerCase() === 'number-flow') {
+                    elEarned.setAttribute('value', rawEarned);
+                } else {
+                    elEarned.textContent = 'Rp ' + rawEarned;
+                }
+            }
+
+            // Update Akun Bekerja Sistem
             var elGlobal = document.getElementById('stat-running-global');
             if (elGlobal) elGlobal.textContent = data.akun_bekerja_global;
         })
