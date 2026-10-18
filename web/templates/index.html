@@ -1,19 +1,309 @@
 {{ define "content" }}
-<div class="hero">
-    <h1>{{ .AppName }} <small style="font-size: 0.5em; font-weight: normal;">{{ .AppTagline }}</small></h1>
+<style nonce="{{ .Nonce }}">
+.pub-wrap {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 0 16px;
+}
+.pub-hero {
+  background-color: var(--color-bg-hero);
+  padding: 48px 16px 40px;
+  text-align: center;
+}
+.pub-brand {
+  font-size: 28px;
+  font-weight: 800;
+  color: var(--color-text);
+  letter-spacing: -0.03em;
+  margin: 0 0 4px;
+}
+.pub-brand-sub {
+  font-size: 13px;
+  color: var(--color-muted);
+  font-weight: 500;
+}
+.pub-hero-desc {
+  max-width: 600px;
+  margin: 16px auto 24px;
+  color: var(--color-muted);
+  font-size: 15px;
+  line-height: 1.6;
+}
+.pub-hero-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+.pub-section {
+  padding: 40px 0;
+  border-top: 1px solid var(--color-border);
+}
+.pub-section-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--color-text);
+  margin: 0 0 20px;
+}
+.pub-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 14px;
+}
+.pub-stat-card {
+  background-color: var(--color-card);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 16px 18px;
+  box-sizing: border-box;
+}
+.pub-stat-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-bottom: 6px;
+}
+.pub-stat-value {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--color-text);
+  line-height: 1.2;
+}
+.pub-stat-sub {
+  font-size: 11px;
+  color: var(--color-muted);
+  margin-top: 4px;
+}
+.pub-steps {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+}
+.pub-step {
+  background-color: var(--color-card);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 16px 18px;
+  box-sizing: border-box;
+}
+.pub-step-num {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--color-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 6px;
+}
+.pub-step-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--color-text);
+  margin-bottom: 6px;
+}
+.pub-step-desc {
+  font-size: 13px;
+  color: var(--color-muted);
+  line-height: 1.5;
+}
+.pub-risk-box {
+  background-color: var(--color-surface-muted);
+  border: 1px solid var(--color-border);
+  border-left: 3px solid var(--color-warning);
+  border-radius: 6px;
+  padding: 14px 16px;
+  font-size: 13px;
+  color: var(--color-text);
+  line-height: 1.6;
+  margin-bottom: 10px;
+}
+.pub-faq-item {
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  margin-bottom: 8px;
+  background-color: var(--color-card);
+  overflow: hidden;
+}
+.pub-faq-item summary {
+  padding: 13px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text);
+  cursor: pointer;
+  list-style: none;
+  background-color: var(--color-surface-muted);
+  user-select: none;
+}
+.pub-faq-item summary::-webkit-details-marker { display: none; }
+.pub-faq-item[open] summary {
+  border-bottom: 1px solid var(--color-border);
+}
+.pub-faq-body {
+  padding: 12px 16px;
+  font-size: 13px;
+  color: var(--color-muted);
+  line-height: 1.6;
+}
+.pub-contact-links {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+@media (max-width: 600px) {
+  .pub-brand { font-size: 22px; }
+  .pub-hero { padding: 32px 12px 28px; }
+  .pub-stat-grid { grid-template-columns: 1fr 1fr; }
+  .pub-steps { grid-template-columns: 1fr; }
+}
+</style>
+
+<div class="pub-hero">
+  <div class="pub-wrap">
+    <p class="pub-brand">GO BLAST <span class="pub-brand-sub">by feepay</span></p>
+    <p class="pub-hero-desc">{{ call .T "public.hero_desc" }}</p>
+    <div class="pub-hero-actions">
+      <a href="/login" class="btn btn-primary">{{ call .T "public.btn_login" }}</a>
+      <a href="/register" class="btn btn-secondary">{{ call .T "public.btn_register" }}</a>
+    </div>
+  </div>
 </div>
 
-<div class="card">
-    <p>{{ .SelectLanguage }}</p>
-    <ul>
-        <li><a href="/?lang=id">Bahasa Indonesia</a></li>
-        <li><a href="/?lang=en">English</a></li>
-        <li><a href="/?lang=zh">中文</a></li>
-    </ul>
-    
-    <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--color-bg-hero);">
-        <a href="/login" style="display: inline-block; padding: 10px 20px; background-color: var(--color-primary); color: var(--color-on-primary); border-radius: 4px; text-decoration: none; margin-right: 10px; font-weight: bold;">Login</a>
-        <a href="/register" style="display: inline-block; padding: 10px 20px; background-color: var(--color-bg-hero); color: var(--color-text); border: 1px solid var(--color-border); border-radius: 4px; text-decoration: none; font-weight: bold;">Register</a>
+<div class="pub-wrap">
+
+  {{/* Kartu angka sistem — hanya tampil jika ada data */}}
+  {{ if or .ClaimableCount .WageIDR .ReferralIDR }}
+  <div class="pub-section">
+    <h2 class="pub-section-title">{{ call .T "public.stats_title" }}</h2>
+    <div class="pub-stat-grid">
+      <div class="pub-stat-card">
+        <div class="pub-stat-label">{{ call .T "public.stat_claimable" }}</div>
+        <div class="pub-stat-value">{{ .ClaimableCount }}</div>
+        <div class="pub-stat-sub">{{ call .T "public.stat_claimable_sub" }}</div>
+      </div>
+      {{ if .WageIDR }}
+      <div class="pub-stat-card">
+        <div class="pub-stat-label">{{ call .T "public.stat_wage" }}</div>
+        <div class="pub-stat-value">Rp {{ .WageIDR }}</div>
+        <div class="pub-stat-sub">{{ call .T "public.stat_wage_sub" }}</div>
+      </div>
+      {{ end }}
+      {{ if .ReferralIDR }}
+      <div class="pub-stat-card">
+        <div class="pub-stat-label">{{ call .T "public.stat_referral" }}</div>
+        <div class="pub-stat-value">Rp {{ .ReferralIDR }}</div>
+        <div class="pub-stat-sub">{{ call .T "public.stat_referral_sub" }}</div>
+      </div>
+      {{ end }}
     </div>
-</div>
+  </div>
+  {{ end }}
+
+  {{/* Cara kerja */}}
+  <div class="pub-section">
+    <h2 class="pub-section-title">{{ call .T "public.howto_title" }}</h2>
+    <div class="pub-steps">
+      <div class="pub-step">
+        <div class="pub-step-num">{{ call .T "public.step1_title" }}</div>
+        <div class="pub-step-desc">{{ call .T "public.step1_desc" }}</div>
+      </div>
+      <div class="pub-step">
+        <div class="pub-step-num">{{ call .T "public.step2_title" }}</div>
+        <div class="pub-step-desc">{{ call .T "public.step2_desc" }}</div>
+      </div>
+      <div class="pub-step">
+        <div class="pub-step-num">{{ call .T "public.step3_title" }}</div>
+        <div class="pub-step-desc">{{ call .T "public.step3_desc" }}</div>
+      </div>
+      <div class="pub-step">
+        <div class="pub-step-num">{{ call .T "public.step4_title" }}</div>
+        <div class="pub-step-desc">{{ .Step4Desc }}</div>
+      </div>
+    </div>
+  </div>
+
+  {{/* Risiko */}}
+  <div class="pub-section">
+    <h2 class="pub-section-title">{{ call .T "public.risk_title" }}</h2>
+    <div class="pub-risk-box">{{ call .T "public.risk_desc" }}</div>
+    <div class="pub-risk-box">{{ call .T "public.risk_session" }}</div>
+    <div class="pub-risk-box">{{ call .T "public.risk_privacy" }}</div>
+  </div>
+
+  {{/* FAQ */}}
+  <div class="pub-section">
+    <h2 class="pub-section-title">{{ call .T "public.faq_title" }}</h2>
+
+    <details class="pub-faq-item">
+      <summary>{{ call .T "public.faq_what_title" }}</summary>
+      <div class="pub-faq-body">{{ call .T "public.faq_what_desc" }}</div>
+    </details>
+
+    <details class="pub-faq-item">
+      <summary>{{ call .T "public.faq_who_title" }}</summary>
+      <div class="pub-faq-body">{{ call .T "public.faq_who_desc" }}</div>
+    </details>
+
+    <details class="pub-faq-item">
+      <summary>{{ call .T "public.faq_safe_title" }}</summary>
+      <div class="pub-faq-body">{{ call .T "public.faq_safe_desc" }}</div>
+    </details>
+
+    <details class="pub-faq-item">
+      <summary>{{ call .T "public.faq_wage_title" }}</summary>
+      <div class="pub-faq-body">{{ call .T "public.faq_wage_desc" }}</div>
+    </details>
+
+    <details class="pub-faq-item">
+      <summary>{{ call .T "public.faq_withdraw_title" }}</summary>
+      <div class="pub-faq-body">{{ call .T "public.faq_withdraw_desc" }}</div>
+    </details>
+
+    <details class="pub-faq-item">
+      <summary>{{ call .T "public.faq_message_title" }}</summary>
+      <div class="pub-faq-body">{{ call .T "public.faq_message_desc" }}</div>
+    </details>
+
+    <details class="pub-faq-item">
+      <summary>{{ call .T "public.faq_ban_title" }}</summary>
+      <div class="pub-faq-body">{{ call .T "public.faq_ban_desc" }}</div>
+    </details>
+
+    <details class="pub-faq-item">
+      <summary>{{ call .T "public.faq_referral_title" }}</summary>
+      <div class="pub-faq-body">{{ call .T "public.faq_referral_desc" }}</div>
+    </details>
+
+    <details class="pub-faq-item">
+      <summary>{{ call .T "public.faq_session_title" }}</summary>
+      <div class="pub-faq-body">{{ call .T "public.faq_session_desc" }}</div>
+    </details>
+
+    <details class="pub-faq-item">
+      <summary>{{ call .T "public.faq_contact_title" }}</summary>
+      <div class="pub-faq-body">{{ call .T "public.faq_contact_desc" }}</div>
+    </details>
+  </div>
+
+  {{/* Kontak — hanya jika terisi */}}
+  {{ if or .CSWhatsAppURL .CSTelegramURL .ChannelTelegramURL }}
+  <div class="pub-section">
+    <h2 class="pub-section-title">{{ call .T "public.contact_title" }}</h2>
+    <div class="pub-contact-links">
+      {{ if .CSWhatsAppURL }}
+      <a href="{{ .CSWhatsAppURL }}" class="btn btn-secondary" target="_blank" rel="noopener noreferrer">{{ call .T "public.contact_wa" }}</a>
+      {{ end }}
+      {{ if .CSTelegramURL }}
+      <a href="{{ .CSTelegramURL }}" class="btn btn-secondary" target="_blank" rel="noopener noreferrer">{{ call .T "public.contact_tg" }}</a>
+      {{ end }}
+      {{ if .ChannelTelegramURL }}
+      <a href="{{ .ChannelTelegramURL }}" class="btn btn-secondary" target="_blank" rel="noopener noreferrer">{{ call .T "public.contact_channel" }}</a>
+      {{ end }}
+    </div>
+  </div>
+  {{ end }}
+
+</div>{{/* end pub-wrap */}}
 {{ end }}
+

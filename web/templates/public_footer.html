@@ -1,0 +1,183 @@
+{{ define "footer" }}
+<style nonce="{{ .Nonce }}">
+.pub-footer {
+  background-color: var(--color-bg-hero);
+  border-top: 1px solid var(--color-border);
+  padding: 40px 16px 32px;
+  margin-top: 40px;
+  font-size: 13px;
+  color: var(--color-muted);
+}
+.pub-footer-container {
+  max-width: 960px;
+  margin: 0 auto;
+}
+.pub-footer-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 32px;
+  margin-bottom: 32px;
+}
+.pub-footer-col-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--color-text);
+  margin: 0 0 12px;
+}
+.pub-footer-links {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.pub-footer-links a {
+  color: var(--color-muted);
+  text-decoration: none;
+}
+.pub-footer-links a:hover {
+  color: var(--color-link);
+  text-decoration: underline;
+}
+.pub-footer-tech-desc {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--color-muted);
+  margin: 0 0 10px;
+}
+.pub-footer-more {
+  display: inline-block;
+  font-weight: 600;
+  color: var(--color-link);
+  text-decoration: none;
+}
+.pub-footer-more:hover {
+  text-decoration: underline;
+}
+.pub-footer-bottom {
+  border-top: 1px solid var(--color-border);
+  padding-top: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+.pub-footer-controls {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.pub-footer-form {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.pub-footer-select {
+  font-size: 12px;
+  padding: 4px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background-color: var(--color-input-bg);
+  color: var(--color-input-text);
+}
+.pub-footer-btn {
+  font-size: 12px;
+  padding: 4px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background-color: var(--color-surface-muted);
+  color: var(--color-text);
+  cursor: pointer;
+}
+@media (max-width: 600px) {
+  .pub-footer-grid {
+    grid-template-columns: 1fr;
+    gap: 24px;
+  }
+  .pub-footer-bottom {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+</style>
+
+<footer class="pub-footer">
+  <div class="pub-footer-container">
+    <div class="pub-footer-grid">
+      <!-- Kolom 1: Tentang -->
+      <div class="pub-footer-col">
+        <h3 class="pub-footer-col-title">{{ call .T "footer.col_about_title" }}</h3>
+        <ul class="pub-footer-links">
+          <li><a href="/">{{ call .T "public.about_link" }}</a></li>
+          <li><a href="/#faq">{{ call .T "public.faq_title" }}</a></li>
+          <li><a href="/#kontak">{{ call .T "public.contact_title" }}</a></li>
+        </ul>
+      </div>
+
+      <!-- Kolom 2: Hukum -->
+      <div class="pub-footer-col">
+        <h3 class="pub-footer-col-title">{{ call .T "footer.col_legal_title" }}</h3>
+        <ul class="pub-footer-links">
+          <li><a href="/syarat">{{ call .T "public.footer_terms" }}</a></li>
+          <li><a href="/privasi">{{ call .T "public.footer_privacy" }}</a></li>
+        </ul>
+      </div>
+
+      <!-- Kolom 3: Teknologi dan data -->
+      <div class="pub-footer-col">
+        <h3 class="pub-footer-col-title">{{ call .T "footer.col_tech_title" }}</h3>
+        <p class="pub-footer-tech-desc">{{ call .T "footer.tech_summary" }}</p>
+        <a href="/teknologi" class="pub-footer-more">{{ call .T "footer.learn_more" }} &rarr;</a>
+      </div>
+    </div>
+
+    <div class="pub-footer-bottom">
+      <div class="pub-footer-controls">
+        {{ if .Lang }}
+        <form method="POST" action="/language" class="pub-footer-form">
+          <input type="hidden" name="csrf_token" value="{{ .CSRFToken }}">
+          <label for="pub-lang-sel" style="font-size: 12px; color: var(--color-muted);">{{ call .T "worker.language_title" }}</label>
+          <select id="pub-lang-sel" name="lang" class="pub-footer-select">
+            <option value="id"{{ if eq .Lang "id" }} selected{{ end }}>Indonesia</option>
+            <option value="en"{{ if eq .Lang "en" }} selected{{ end }}>English</option>
+            <option value="zh"{{ if eq .Lang "zh" }} selected{{ end }}>中文</option>
+          </select>
+          <noscript><button type="submit" class="pub-footer-btn">OK</button></noscript>
+        </form>
+        {{ end }}
+
+        <form method="POST" action="/theme" class="pub-footer-form">
+          <input type="hidden" name="csrf_token" value="{{ .CSRFToken }}">
+          <label for="pub-theme-sel" style="font-size: 12px; color: var(--color-muted);">{{ call .T "theme.label" }}</label>
+          <select id="pub-theme-sel" name="theme" class="pub-footer-select">
+            <option value="auto"{{ if or (eq .Theme "") (eq .Theme "auto") }} selected{{ end }}>{{ call .T "theme.auto" }}</option>
+            <option value="light"{{ if eq .Theme "light" }} selected{{ end }}>{{ call .T "theme.light" }}</option>
+            <option value="dark"{{ if eq .Theme "dark" }} selected{{ end }}>{{ call .T "theme.dark" }}</option>
+          </select>
+          <noscript><button type="submit" class="pub-footer-btn">{{ call .T "theme.choose" }}</button></noscript>
+        </form>
+      </div>
+    </div>
+  </div>
+</footer>
+
+<script nonce="{{ .Nonce }}">
+(function() {
+    var ls = document.getElementById('pub-lang-sel');
+    if (ls) {
+        ls.addEventListener('change', function() {
+            this.form.submit();
+        });
+    }
+    var ts = document.getElementById('pub-theme-sel');
+    if (ts) {
+        ts.addEventListener('change', function() {
+            this.form.submit();
+        });
+    }
+})();
+</script>
+{{ end }}

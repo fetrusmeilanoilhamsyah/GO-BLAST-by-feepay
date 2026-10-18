@@ -200,7 +200,9 @@ func (s *Server) SecurityHeadersMiddleware(next http.Handler) http.Handler {
 			w.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload")
 		}
 
-		if strings.HasPrefix(r.URL.Path, "/worker") || strings.HasPrefix(r.URL.Path, "/admin") || strings.HasPrefix(r.URL.Path, "/api") {
+		if r.URL.Path == "/" || r.URL.Path == "/syarat" || r.URL.Path == "/privasi" || r.URL.Path == "/teknologi" {
+			w.Header().Set("Cache-Control", "public, max-age=60")
+		} else if !strings.HasPrefix(r.URL.Path, "/static/") {
 			w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate, private")
 			w.Header().Set("Pragma", "no-cache")
 		}

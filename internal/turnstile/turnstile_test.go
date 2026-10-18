@@ -72,7 +72,8 @@ func TestTurnstile_VerificationScenarios(t *testing.T) {
 		t.Errorf("expected ErrActionMismatch, got ok=%v, err=%v", ok, err)
 	}
 
-	// 4. Hostname mismatch
+	// 4a. Hostname mismatch di produksi: WAJIB ditolak (ErrHostnameMismatch)
+	client.IsProd = true
 	mockResp = VerifyResponse{
 		Success:  true,
 		Action:   "login",
@@ -80,7 +81,14 @@ func TestTurnstile_VerificationScenarios(t *testing.T) {
 	}
 	ok, err = client.Verify(context.Background(), "token", "login", "127.0.0.1")
 	if ok || err != ErrHostnameMismatch {
-		t.Errorf("expected ErrHostnameMismatch, got ok=%v, err=%v", ok, err)
+		t.Errorf("expected ErrHostnameMismatch in prod, got ok=%v, err=%v", ok, err)
+	}
+
+	// 4b. Hostname mismatch di non-produksi: dilewati (sukses) untuk mendukung kunci uji lokal
+	client.IsProd = false
+	ok, err = client.Verify(context.Background(), "token", "login", "127.0.0.1")
+	if !ok || err != nil {
+		t.Errorf("expected success in non-prod with dummy test key hostname, got ok=%v, err=%v", ok, err)
 	}
 
 	// 5. Cloudflare unreachable (500 atau timeout)

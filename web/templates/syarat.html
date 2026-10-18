@@ -1,0 +1,95 @@
+{{ define "content" }}
+<style nonce="{{ .Nonce }}">
+.legal-wrap {
+  max-width: 720px;
+  margin: 40px auto;
+  padding: 0 16px 60px;
+}
+.legal-title {
+  font-size: 24px;
+  font-weight: 800;
+  color: var(--color-text);
+  margin: 0 0 4px;
+}
+.legal-version {
+  font-size: 12px;
+  color: var(--color-muted);
+  margin-bottom: 20px;
+}
+.legal-draft-notice {
+  background-color: var(--color-surface-muted);
+  border: 1px solid var(--color-border);
+  border-left: 3px solid var(--color-warning);
+  border-radius: 6px;
+  padding: 12px 14px;
+  font-size: 13px;
+  color: var(--color-warning);
+  margin-bottom: 28px;
+  line-height: 1.5;
+}
+.legal-section {
+  margin-bottom: 28px;
+}
+.legal-section-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--color-text);
+  margin: 0 0 8px;
+}
+.legal-section-body {
+  font-size: 14px;
+  color: var(--color-muted);
+  line-height: 1.7;
+}
+.legal-back {
+  display: inline-block;
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--color-link);
+}
+</style>
+
+<div class="legal-wrap">
+  <h1 class="legal-title">{{ call .T "terms.title" }}</h1>
+  <p class="legal-version">{{ call .T "terms.version" }}</p>
+
+  <div class="legal-draft-notice">{{ call .T "terms.draft_notice" }}</div>
+
+  <div class="legal-section">
+    <h2 class="legal-section-title">{{ call .T "terms.intro_title" }}</h2>
+    <p class="legal-section-body">{{ call .T "terms.intro_desc" }}</p>
+  </div>
+
+  <div class="legal-section">
+    <h2 class="legal-section-title">{{ call .T "terms.wage_title" }}</h2>
+    <p class="legal-section-body">{{ call .T "terms.wage_desc" }}</p>
+  </div>
+
+  <div class="legal-section">
+    <h2 class="legal-section-title">{{ call .T "terms.withdraw_hold_title" }}</h2>
+    <p class="legal-section-body">{{ call .T "terms.withdraw_hold_desc" }}</p>
+  </div>
+
+  <div class="legal-section">
+    <h2 class="legal-section-title">{{ call .T "terms.risk_title" }}</h2>
+    <p class="legal-section-body">{{ call .T "terms.risk_desc" }}</p>
+  </div>
+
+  <div class="legal-section">
+    <h2 class="legal-section-title">{{ call .T "terms.admin_rights_title" }}</h2>
+    <p class="legal-section-body">{{ call .T "terms.admin_rights_desc" }}</p>
+  </div>
+
+  <div class="legal-section">
+    <h2 class="legal-section-title">{{ call .T "terms.privacy_title" }}</h2>
+    <p class="legal-section-body">{{ call .T "terms.privacy_desc" }}</p>
+  </div>
+
+  <div class="legal-section">
+    <h2 class="legal-section-title">{{ call .T "terms.data_title" }}</h2>
+    <p class="legal-section-body">{{ call .T "terms.data_desc" }}</p>
+  </div>
+
+  <a href="/" class="legal-back">{{ call .T "terms.back_home" }}</a>
+</div>
+{{ end }}

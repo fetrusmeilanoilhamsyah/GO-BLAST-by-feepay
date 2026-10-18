@@ -26,6 +26,7 @@ import (
 	"goblast/internal/db"
 	"goblast/internal/engine"
 	"goblast/internal/i18n"
+	"goblast/internal/money"
 	"goblast/internal/ratelimit"
 	"goblast/internal/safe"
 	"goblast/internal/turnstile"
@@ -48,6 +49,19 @@ type globalStatsCache struct {
 	lastFetch    time.Time
 	claimable    int
 	runningCount int
+}
+
+// publicStatsCache menyimpan angka agregat untuk halaman publik dengan TTL 60 detik.
+// Perlindungan thundering-herd: satu goroutine yang menang lock refresh, sisanya pakai nilai lama.
+type publicStatsCache struct {
+	mu        sync.Mutex
+	lastFetch time.Time
+	claimable int
+	wageIDR   int64
+	refIDR    int64
+	hasWage   bool
+	hasRef    bool
+	loaded    bool
 }
 
 type systemLockCache struct {
@@ -83,6 +97,7 @@ type Server struct {
 	CSTelegramURL      string
 	ChannelTelegramURL string
 	statsCache         globalStatsCache
+	pubStatsCache      publicStatsCache
 	lockCache          systemLockCache
 	draining           atomic.Bool
 
@@ -121,8 +136,12 @@ type Server struct {
 	AllowWebRestore bool
 }
 
-func (s *Server) isProd() bool {
+func (s *Server) IsProd() bool {
 	return s.Env == "prod" || s.Env == "production"
+}
+
+func (s *Server) isProd() bool {
+	return s.IsProd()
 }
 
 func (s *Server) sessionCookieName() string {
@@ -180,6 +199,78 @@ func (s *Server) getGlobalStats(ctx context.Context) (int, int, error) {
 	s.statsCache.lastFetch = time.Now()
 
 	return count, running, nil
+}
+
+// getPublicStats mengambil data agregat nomor dan rate untuk halaman publik dengan cache memori 60 detik.
+// Dilindungi mutex untuk mencegah thundering-herd saat banyak pengunjung serentak.
+// Jika database gagal, mengembalikan nilai cache lama (jika ada) atau nol/false tanpa memicu galat halaman.
+func (s *Server) getPublicStats(ctx context.Context) (claimable int, wageIDR int64, refIDR int64, hasWage bool, hasRef bool) {
+	s.pubStatsCache.mu.Lock()
+	defer s.pubStatsCache.mu.Unlock()
+
+	if s.pubStatsCache.loaded && time.Since(s.pubStatsCache.lastFetch) < 60*time.Second {
+		return s.pubStatsCache.claimable, s.pubStatsCache.wageIDR, s.pubStatsCache.refIDR, s.pubStatsCache.hasWage, s.pubStatsCache.hasRef
+	}
+
+	if s.DB == nil || s.DB.Pool == nil {
+		if s.pubStatsCache.loaded {
+			return s.pubStatsCache.claimable, s.pubStatsCache.wageIDR, s.pubStatsCache.refIDR, s.pubStatsCache.hasWage, s.pubStatsCache.hasRef
+		}
+		return 0, 0, 0, false, false
+	}
+
+	count, err := campaign.ClaimableCount(ctx, s.DB.Pool)
+	if err != nil {
+		if s.pubStatsCache.loaded {
+			return s.pubStatsCache.claimable, s.pubStatsCache.wageIDR, s.pubStatsCache.refIDR, s.pubStatsCache.hasWage, s.pubStatsCache.hasRef
+		}
+		return 0, 0, 0, false, false
+	}
+
+	var wageVal, refVal int64
+	var hasW, hasR bool
+
+	rows, err := s.DB.Pool.Query(ctx, "SELECT key, value::text FROM settings WHERE key IN ('rate_wage', 'rate_referral')")
+	if err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var k, v string
+			if err := rows.Scan(&k, &v); err == nil {
+				v = strings.Trim(v, `"`)
+				if n, err := strconv.ParseInt(v, 10, 64); err == nil && n > 0 {
+					if k == "rate_wage" {
+						wageVal = n
+						hasW = true
+					} else if k == "rate_referral" {
+						refVal = n
+						hasR = true
+					}
+				}
+			}
+		}
+	}
+
+	s.pubStatsCache.claimable = count
+	s.pubStatsCache.wageIDR = wageVal
+	s.pubStatsCache.refIDR = refVal
+	s.pubStatsCache.hasWage = hasW
+	s.pubStatsCache.hasRef = hasR
+	s.pubStatsCache.lastFetch = time.Now()
+	s.pubStatsCache.loaded = true
+
+	return count, wageVal, refVal, hasW, hasR
+}
+
+func isSecureHTTPS(raw string) bool {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return false
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		return false
+	}
+	return strings.EqualFold(u.Scheme, "https") && u.Host != ""
 }
 
 // InvalidateSystemLockCache mengosongkan cache kunci agar pembacaan berikutnya langsung ke database.
@@ -316,8 +407,16 @@ func NewServer(database *db.DB, env string, waMgr *wa.Manager, workCtrl WorkCont
 	base := filepath.Join("web", "templates", "base.html")
 	workerNav := filepath.Join("web", "templates", "worker_nav.html")
 	adminNav := filepath.Join("web", "templates", "admin_nav.html")
+	publicFooter := filepath.Join("web", "templates", "public_footer.html")
 
 	templates := make(map[string]*template.Template)
+
+	publicPages := map[string]bool{
+		"index.html":     true,
+		"syarat.html":    true,
+		"privasi.html":   true,
+		"teknologi.html": true,
+	}
 
 	workerPages := map[string]bool{
 		"worker_home.html":        true,
@@ -351,6 +450,7 @@ func NewServer(database *db.DB, env string, waMgr *wa.Manager, workCtrl WorkCont
 
 	pages := []string{
 		"index.html", "login.html", "register.html", "maintenance.html", "login_totp.html",
+		"syarat.html", "privasi.html", "teknologi.html",
 		"admin_dashboard.html", "admin_settings.html", "admin_wallet.html", "admin_withdrawals.html", "admin_workers.html",
 		"admin_worker_detail.html", "admin_maintenance.html",
 		"admin_campaigns.html", "admin_campaign_form.html", "admin_campaign_detail.html",
@@ -369,6 +469,8 @@ func NewServer(database *db.DB, env string, waMgr *wa.Manager, workCtrl WorkCont
 			tmpl, err = template.ParseFiles(base, workerNav, pagePath)
 		} else if adminPages[page] {
 			tmpl, err = template.ParseFiles(base, adminNav, pagePath)
+		} else if publicPages[page] {
+			tmpl, err = template.ParseFiles(base, publicFooter, pagePath)
 		} else {
 			tmpl, err = template.ParseFiles(base, pagePath)
 		}
@@ -736,6 +838,9 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	handleFunc("GET /readyz", s.handleReadyz)
 
 	handle("/", s.RateLimitPublicMiddleware(s.CSRFMiddleware(http.HandlerFunc(s.handleIndex))))
+	handle("GET /syarat", s.RateLimitPublicMiddleware(s.CSRFMiddleware(http.HandlerFunc(s.handleSyarat))))
+	handle("GET /privasi", s.RateLimitPublicMiddleware(s.CSRFMiddleware(http.HandlerFunc(s.handlePrivasi))))
+	handle("GET /teknologi", s.RateLimitPublicMiddleware(s.CSRFMiddleware(http.HandlerFunc(s.handleTeknologi))))
 	handle("POST /theme", s.RateLimitPublicMiddleware(s.CSRFMiddleware(http.HandlerFunc(s.HandleThemePOST))))
 	handle("POST /language", s.RateLimitPublicMiddleware(s.CSRFMiddleware(http.HandlerFunc(s.HandleLanguagePOST))))
 	handle("/login", s.RateLimitPublicMiddleware(s.CSRFMiddleware(http.HandlerFunc(s.handleLogin))))
@@ -906,6 +1011,36 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Pengunjung yang sudah punya sesi login valid diarahkan ke panel sesuai peran
+	if s.DB != nil && s.DB.Pool != nil {
+		cookieName := s.sessionCookieName()
+		cookie, err := r.Cookie(cookieName)
+		if err != nil && s.isProd() {
+			cookie, err = r.Cookie("gb_session")
+		}
+		if err == nil && cookie.Value != "" {
+			hash := auth.HashSessionToken(cookie.Value)
+			var role string
+			qCtx, qCancel := context.WithTimeout(r.Context(), 2*time.Second)
+			err = s.DB.Pool.QueryRow(qCtx, `
+				SELECT u.role 
+				FROM web_sessions ws
+				JOIN users u ON u.id = ws.user_id
+				WHERE ws.token_hash = $1 AND ws.expires_at > CURRENT_TIMESTAMP AND u.status = 'active'
+			`, hash).Scan(&role)
+			qCancel()
+			if err == nil {
+				if role == "admin" {
+					http.Redirect(w, r, "/admin", http.StatusSeeOther)
+					return
+				} else if role == "worker" {
+					http.Redirect(w, r, "/worker", http.StatusSeeOther)
+					return
+				}
+			}
+		}
+	}
+
 	lang := r.URL.Query().Get("lang")
 	if lang != "" {
 		lang = validateLang(lang)
@@ -926,32 +1061,162 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	claimable, wageIDR, refIDR, hasWage, hasRef := s.getPublicStats(r.Context())
+
+	var wageStr, refStr string
+	if hasWage {
+		wageStr = money.FormatIDR(wageIDR)
+	}
+	if hasRef {
+		refStr = money.FormatIDR(refIDR)
+	}
+
+	step4Fmt := i18n.T(lang, "public.step4_desc")
+	step4Desc := fmt.Sprintf(step4Fmt, money.FormatIDR(config.MinWithdrawIDR))
+
+	var waURL, tgCS, tgCh string
+	if isSecureHTTPS(s.CSWhatsAppURL) {
+		waURL = s.CSWhatsAppURL
+	}
+	if isSecureHTTPS(s.CSTelegramURL) {
+		tgCS = s.CSTelegramURL
+	}
+	if isSecureHTTPS(s.ChannelTelegramURL) {
+		tgCh = s.ChannelTelegramURL
+	}
+
 	data := struct {
-		Lang           string
-		Title          string
-		AppName        string
-		AppTagline     string
-		SelectLanguage string
-		Theme          string
-		CSRFToken      string
-		Nonce          string
-		T              func(string) string
+		Lang               string
+		Title              string
+		AppName            string
+		AppTagline         string
+		Theme              string
+		CSRFToken          string
+		Nonce              string
+		ClaimableCount     int
+		WageIDR            string
+		ReferralIDR        string
+		Step4Desc          string
+		CSWhatsAppURL      string
+		CSTelegramURL      string
+		ChannelTelegramURL string
+		T                  func(string) string
 	}{
-		Lang:           lang,
-		Title:          i18n.T(lang, "app.name"),
-		AppName:        i18n.T(lang, "app.name"),
-		AppTagline:     i18n.T(lang, "app.tagline"),
-		SelectLanguage: i18n.T(lang, "common.select_language"),
-		Theme:          getTheme(r),
-		CSRFToken:      getCSRF(r),
-		Nonce:          getNonce(r),
+		Lang:               lang,
+		Title:              i18n.T(lang, "public.home_title"),
+		AppName:            i18n.T(lang, "app.name"),
+		AppTagline:         i18n.T(lang, "app.tagline"),
+		Theme:              getTheme(r),
+		CSRFToken:          getCSRF(r),
+		Nonce:              getNonce(r),
+		ClaimableCount:     claimable,
+		WageIDR:            wageStr,
+		ReferralIDR:        refStr,
+		Step4Desc:          step4Desc,
+		CSWhatsAppURL:      waURL,
+		CSTelegramURL:      tgCS,
+		ChannelTelegramURL: tgCh,
 		T: func(key string) string {
 			return i18n.T(lang, key)
 		},
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "public, max-age=60")
 	s.Tmpl["index.html"].ExecuteTemplate(w, "base.html", data)
+}
+
+func (s *Server) handleSyarat(w http.ResponseWriter, r *http.Request) {
+	lang := validateLang(r.URL.Query().Get("lang"))
+	if lang == "id" {
+		if cookie, err := r.Cookie("lang"); err == nil {
+			lang = validateLang(cookie.Value)
+		}
+	}
+
+	data := struct {
+		Lang      string
+		Title     string
+		Theme     string
+		CSRFToken string
+		Nonce     string
+		T         func(string) string
+	}{
+		Lang:      lang,
+		Title:     i18n.T(lang, "terms.title"),
+		Theme:     getTheme(r),
+		CSRFToken: getCSRF(r),
+		Nonce:     getNonce(r),
+		T: func(key string) string {
+			return i18n.T(lang, key)
+		},
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "public, max-age=60")
+	s.Tmpl["syarat.html"].ExecuteTemplate(w, "base.html", data)
+}
+
+func (s *Server) handlePrivasi(w http.ResponseWriter, r *http.Request) {
+	lang := validateLang(r.URL.Query().Get("lang"))
+	if lang == "id" {
+		if cookie, err := r.Cookie("lang"); err == nil {
+			lang = validateLang(cookie.Value)
+		}
+	}
+
+	data := struct {
+		Lang      string
+		Title     string
+		Theme     string
+		CSRFToken string
+		Nonce     string
+		T         func(string) string
+	}{
+		Lang:      lang,
+		Title:     i18n.T(lang, "privacy.title"),
+		Theme:     getTheme(r),
+		CSRFToken: getCSRF(r),
+		Nonce:     getNonce(r),
+		T: func(key string) string {
+			return i18n.T(lang, key)
+		},
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "public, max-age=60")
+	s.Tmpl["privasi.html"].ExecuteTemplate(w, "base.html", data)
+}
+
+func (s *Server) handleTeknologi(w http.ResponseWriter, r *http.Request) {
+	lang := validateLang(r.URL.Query().Get("lang"))
+	if lang == "id" {
+		if cookie, err := r.Cookie("lang"); err == nil {
+			lang = validateLang(cookie.Value)
+		}
+	}
+
+	data := struct {
+		Lang      string
+		Title     string
+		Theme     string
+		CSRFToken string
+		Nonce     string
+		T         func(string) string
+	}{
+		Lang:      lang,
+		Title:     i18n.T(lang, "tech.title"),
+		Theme:     getTheme(r),
+		CSRFToken: getCSRF(r),
+		Nonce:     getNonce(r),
+		T: func(key string) string {
+			return i18n.T(lang, key)
+		},
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "public, max-age=60")
+	s.Tmpl["teknologi.html"].ExecuteTemplate(w, "base.html", data)
 }
 
 func getCSRF(r *http.Request) string {

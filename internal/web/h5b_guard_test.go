@@ -51,6 +51,7 @@ func TestGuard_RoutesClassificationAndCSRF(t *testing.T) {
 	var postRoutesWithoutCSRF []string
 	var postRoutesWithoutRateLimit []string
 	var apiGetRoutesWithoutRateLimit []string
+	var publicRoutesWithoutRateLimit []string
 
 	ast.Inspect(registerRoutesFunc.Body, func(n ast.Node) bool {
 		call, ok := n.(*ast.CallExpr)
@@ -116,6 +117,13 @@ func TestGuard_RoutesClassificationAndCSRF(t *testing.T) {
 			}
 		}
 
+		// 3. Public routes classification check (wajib kelas RateLimitPublicMiddleware)
+		if routeStr == "/" || routeStr == "GET /syarat" || routeStr == "GET /privasi" || routeStr == "GET /teknologi" {
+			if !strings.Contains(hStr, "RateLimitPublicMiddleware") {
+				publicRoutesWithoutRateLimit = append(publicRoutesWithoutRateLimit, routeStr)
+			}
+		}
+
 		return true
 	})
 
@@ -127,6 +135,9 @@ func TestGuard_RoutesClassificationAndCSRF(t *testing.T) {
 	}
 	if len(apiGetRoutesWithoutRateLimit) > 0 {
 		t.Errorf("GUARD GAGAL: Ditemukan rute GET API tanpa rate limiter:\n%s", strings.Join(apiGetRoutesWithoutRateLimit, "\n"))
+	}
+	if len(publicRoutesWithoutRateLimit) > 0 {
+		t.Errorf("GUARD GAGAL: Ditemukan rute publik tanpa RateLimitPublicMiddleware:\n%s", strings.Join(publicRoutesWithoutRateLimit, "\n"))
 	}
 }
 

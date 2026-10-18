@@ -121,7 +121,7 @@ func main() {
 	srv.TrustedProxyCIDRs = cfg.ParsedTrustedCIDRs
 	srv.ClientIPHeader = cfg.ClientIPHeader
 	if cfg.TurnstileSecretKey != "" {
-		srv.Turnstile = turnstile.NewClient(cfg.TurnstileSecretKey, cfg.TurnstileSiteKey, cfg.AppPublicHost)
+		srv.Turnstile = turnstile.NewClient(cfg.TurnstileSiteKey, cfg.TurnstileSecretKey, cfg.AppPublicHost, srv.IsProd())
 	}
 
 	mux := http.NewServeMux()

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -36,9 +37,14 @@ type Client struct {
 	PublicHost string
 	VerifyURL  string
 	HTTPClient *http.Client
+	IsProd     bool
 }
 
-func NewClient(siteKey, secretKey, publicHost string) *Client {
+func NewClient(siteKey, secretKey, publicHost string, isProd ...bool) *Client {
+	prod := false
+	if len(isProd) > 0 {
+		prod = isProd[0]
+	}
 	return &Client{
 		SiteKey:    siteKey,
 		SecretKey:  secretKey,
@@ -47,6 +53,7 @@ func NewClient(siteKey, secretKey, publicHost string) *Client {
 		HTTPClient: &http.Client{
 			Timeout: 3 * time.Second,
 		},
+		IsProd: prod,
 	}
 }
 
@@ -119,7 +126,13 @@ func (c *Client) Verify(ctx context.Context, responseToken, expectedAction, remo
 	// Validasi hostname jika PublicHost ditentukan
 	if c.PublicHost != "" && res.Hostname != "" {
 		if !strings.EqualFold(res.Hostname, c.PublicHost) {
-			return false, ErrHostnameMismatch
+			if c.IsProd {
+				return false, ErrHostnameMismatch
+			}
+			slog.Debug("turnstile: validasi hostname dilewati di non-produksi",
+				"response_hostname", res.Hostname,
+				"expected_public_host", c.PublicHost,
+			)
 		}
 	}
 

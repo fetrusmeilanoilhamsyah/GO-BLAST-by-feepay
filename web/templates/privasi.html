@@ -1,0 +1,80 @@
+{{ define "content" }}
+<style nonce="{{ .Nonce }}">
+.legal-wrap {
+  max-width: 720px;
+  margin: 40px auto;
+  padding: 0 16px 60px;
+}
+.legal-title {
+  font-size: 24px;
+  font-weight: 800;
+  color: var(--color-text);
+  margin: 0 0 4px;
+}
+.legal-version {
+  font-size: 12px;
+  color: var(--color-muted);
+  margin-bottom: 20px;
+}
+.legal-draft-notice {
+  background-color: var(--color-surface-muted);
+  border: 1px solid var(--color-border);
+  border-left: 3px solid var(--color-warning);
+  border-radius: 6px;
+  padding: 12px 14px;
+  font-size: 13px;
+  color: var(--color-warning);
+  margin-bottom: 28px;
+  line-height: 1.5;
+}
+.legal-section {
+  margin-bottom: 28px;
+}
+.legal-section-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--color-text);
+  margin: 0 0 8px;
+}
+.legal-section-body {
+  font-size: 14px;
+  color: var(--color-muted);
+  line-height: 1.7;
+}
+.legal-back {
+  display: inline-block;
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--color-link);
+}
+</style>
+
+<div class="legal-wrap">
+  <h1 class="legal-title">{{ call .T "privacy.title" }}</h1>
+  <p class="legal-version">{{ call .T "privacy.version" }}</p>
+
+  <div class="legal-draft-notice">{{ call .T "privacy.draft_notice" }}</div>
+
+  <div class="legal-section">
+    <h2 class="legal-section-title">{{ call .T "privacy.data_collected_title" }}</h2>
+    <p class="legal-section-body">{{ call .T "privacy.data_collected_desc" }}</p>
+  </div>
+
+  <div class="legal-section">
+    <h2 class="legal-section-title">{{ call .T "privacy.wa_session_title" }}</h2>
+    <p class="legal-section-body">{{ call .T "privacy.wa_session_desc" }}</p>
+  </div>
+
+  <div class="legal-section">
+    <h2 class="legal-section-title">{{ call .T "privacy.customer_title" }}</h2>
+    <p class="legal-section-body">{{ call .T "privacy.customer_desc" }}</p>
+  </div>
+
+  <div class="legal-section">
+    <h2 class="legal-section-title">{{ call .T "privacy.retention_title" }}</h2>
+    <p class="legal-section-body">{{ call .T "privacy.retention_desc" }}</p>
+  </div>
+
+  <a href="/" class="legal-back">{{ call .T "privacy.back_home" }}</a>
+</div>
+{{ end }}

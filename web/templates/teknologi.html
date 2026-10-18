@@ -1,0 +1,198 @@
+{{ define "content" }}
+<style nonce="{{ .Nonce }}">
+.tech-wrap {
+  max-width: 860px;
+  margin: 40px auto;
+  padding: 0 16px 60px;
+}
+.tech-title {
+  font-size: 26px;
+  font-weight: 800;
+  color: var(--color-text);
+  margin: 0 0 6px;
+}
+.tech-version {
+  font-size: 13px;
+  color: var(--color-muted);
+  margin-bottom: 28px;
+}
+.tech-section {
+  margin-bottom: 32px;
+}
+.tech-section-title {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--color-text);
+  margin: 0 0 10px;
+}
+.tech-section-body {
+  font-size: 14px;
+  color: var(--color-muted);
+  line-height: 1.7;
+  margin: 0 0 12px;
+}
+.tech-list {
+  margin: 0;
+  padding-left: 20px;
+  font-size: 14px;
+  color: var(--color-muted);
+  line-height: 1.8;
+}
+.tech-table-container {
+  overflow-x: auto;
+  margin-top: 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+}
+.tech-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  text-align: left;
+}
+.tech-table th {
+  background-color: var(--color-surface-muted);
+  color: var(--color-text);
+  font-weight: 700;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--color-border);
+  white-space: nowrap;
+}
+.tech-table td {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--color-border);
+  color: var(--color-muted);
+  vertical-align: top;
+  line-height: 1.5;
+}
+.tech-table tr:last-child td {
+  border-bottom: none;
+}
+.tech-table tr:hover {
+  background-color: var(--color-bg-hero);
+}
+.tech-back {
+  display: inline-block;
+  margin-top: 16px;
+  font-size: 14px;
+  color: var(--color-link);
+  text-decoration: none;
+}
+.tech-back:hover {
+  text-decoration: underline;
+}
+</style>
+
+<div class="tech-wrap">
+  <h1 class="tech-title">{{ call .T "tech.title" }}</h1>
+  <p class="tech-version">{{ call .T "tech.version" }}</p>
+
+  <!-- Bagian Mesin Pengirim -->
+  <div class="tech-section">
+    <h2 class="tech-section-title">{{ call .T "tech.intro_title" }}</h2>
+    <p class="tech-section-body">{{ call .T "tech.intro_desc" }}</p>
+  </div>
+
+  <!-- Bagian Perlakuan Akun WhatsApp Pekerja -->
+  <div class="tech-section">
+    <h2 class="tech-section-title">{{ call .T "tech.worker_wa_title" }}</h2>
+    <p class="tech-section-body">{{ call .T "tech.worker_wa_desc" }}</p>
+  </div>
+
+  <!-- Bagian Keamanan Sistem -->
+  <div class="tech-section">
+    <h2 class="tech-section-title">{{ call .T "tech.security_title" }}</h2>
+    <ul class="tech-list">
+      <li>{{ call .T "tech.sec_password" }}</li>
+      <li>{{ call .T "tech.sec_payout" }}</li>
+      <li>{{ call .T "tech.sec_totp" }}</li>
+      <li>{{ call .T "tech.sec_network" }}</li>
+      <li>{{ call .T "tech.sec_ratelimit" }}</li>
+      <li>{{ call .T "tech.sec_backup" }}</li>
+      <li>{{ call .T "tech.sec_customer_privacy" }}</li>
+    </ul>
+  </div>
+
+  <!-- Bagian Di Mana Data Disimpan -->
+  <div class="tech-section">
+    <h2 class="tech-section-title">{{ call .T "tech.storage_title" }}</h2>
+    <p class="tech-section-body">{{ call .T "tech.storage_desc" }}</p>
+    <div class="tech-table-container">
+      <table class="tech-table">
+        <thead>
+          <tr>
+            <th>{{ call .T "tech.th_datatype" }}</th>
+            <th>{{ call .T "tech.th_location" }}</th>
+            <th>{{ call .T "tech.th_retention" }}</th>
+            <th>{{ call .T "tech.th_access" }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>{{ call .T "tech.row1_type" }}</strong></td>
+            <td>{{ call .T "tech.row1_loc" }}</td>
+            <td>{{ call .T "tech.row1_ret" }}</td>
+            <td>{{ call .T "tech.row1_acc" }}</td>
+          </tr>
+          <tr>
+            <td><strong>{{ call .T "tech.row2_type" }}</strong></td>
+            <td>{{ call .T "tech.row2_loc" }}</td>
+            <td>{{ call .T "tech.row2_ret" }}</td>
+            <td>{{ call .T "tech.row2_acc" }}</td>
+          </tr>
+          <tr>
+            <td><strong>{{ call .T "tech.row3_type" }}</strong></td>
+            <td>{{ call .T "tech.row3_loc" }}</td>
+            <td>{{ call .T "tech.row3_ret" }}</td>
+            <td>{{ call .T "tech.row3_acc" }}</td>
+          </tr>
+          <tr>
+            <td><strong>{{ call .T "tech.row4_type" }}</strong></td>
+            <td>{{ call .T "tech.row4_loc" }}</td>
+            <td>{{ call .T "tech.row4_ret" }}</td>
+            <td>{{ call .T "tech.row4_acc" }}</td>
+          </tr>
+          <tr>
+            <td><strong>{{ call .T "tech.row5_type" }}</strong></td>
+            <td>{{ call .T "tech.row5_loc" }}</td>
+            <td>{{ call .T "tech.row5_ret" }}</td>
+            <td>{{ call .T "tech.row5_acc" }}</td>
+          </tr>
+          <tr>
+            <td><strong>{{ call .T "tech.row6_type" }}</strong></td>
+            <td>{{ call .T "tech.row6_loc" }}</td>
+            <td>{{ call .T "tech.row6_ret" }}</td>
+            <td>{{ call .T "tech.row6_acc" }}</td>
+          </tr>
+          <tr>
+            <td><strong>{{ call .T "tech.row7_type" }}</strong></td>
+            <td>{{ call .T "tech.row7_loc" }}</td>
+            <td>{{ call .T "tech.row7_ret" }}</td>
+            <td>{{ call .T "tech.row7_acc" }}</td>
+          </tr>
+          <tr>
+            <td><strong>{{ call .T "tech.row8_type" }}</strong></td>
+            <td>{{ call .T "tech.row8_loc" }}</td>
+            <td>{{ call .T "tech.row8_ret" }}</td>
+            <td>{{ call .T "tech.row8_acc" }}</td>
+          </tr>
+          <tr>
+            <td><strong>{{ call .T "tech.row9_type" }}</strong></td>
+            <td>{{ call .T "tech.row9_loc" }}</td>
+            <td>{{ call .T "tech.row9_ret" }}</td>
+            <td>{{ call .T "tech.row9_acc" }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Bagian Pihak Ketiga yang Terlibat -->
+  <div class="tech-section">
+    <h2 class="tech-section-title">{{ call .T "tech.third_party_title" }}</h2>
+    <p class="tech-section-body">{{ call .T "tech.third_party_desc" }}</p>
+  </div>
+
+  <a href="/" class="tech-back">&larr; {{ call .T "tech.back_home" }}</a>
+</div>
+{{ end }}

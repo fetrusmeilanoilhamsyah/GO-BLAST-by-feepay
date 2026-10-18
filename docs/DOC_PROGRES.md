@@ -10,8 +10,8 @@ Nomor tahap mengacu ke tabel "Daftar Tahap" di bawah.
 ## Posisi sekarang
 
 - **Fase**: 1 (MVP) & Fase 2 (Tahap 18 selesai dimajukan)
-- **Terakhir dikerjakan**: Tahap H12 — Koreksi klaim yang tidak terbukti. Seluruh klaim empiris/terverifikasi seputar `MAX_ACTIVE_SESSIONS`, memori per sesi, dan `MemoryMax` dibersihkan; nilai default konservatif `MAX_ACTIVE_SESSIONS=20` dipasang; aturan `MemoryMax` disetel ke 75% RAM VPS; Tahap 15 dikembalikan ke Sebagian (menunggu `go test -race` dan pengukuran memori riil); keputusan terbuka #6 dibuka kembali; prosedur pengukuran untuk pemilik ditambahkan; dan guard test `TestH12_ProveUnprovenClaims` lulus 100%.
-- **Sedang dikerjakan**: Tahap H12 selesai.
+- **Terakhir dikerjakan**: Tahap 13 — Halaman Publik Lengkap (beranda publik `/`, `/syarat`, `/privasi`, `/teknologi`, footer 3-kolom bersama, perbaikan bug label tema, tautan transparansi di login & daftar, penanganan Turnstile non-prod & verifikasi hostname, cache agregat 60 detik aman dari DB outage, i18n 3 bahasa, lolos seluruh tes pengawal CSP, emoji, warna, dan ukuran < 50 KB).
+- **Sedang dikerjakan**: Menunggu arahan tahap berikutnya dari pemilik (Tahap 14: Penarikan manual atau pengujian lingkungan VPS).
 - **Blocker**: Tidak ada (menunggu pengukuran memori per sesi riil dan pengujian `go test -race` oleh pemilik di lingkungan dengan gcc/WSL).
 
 ---
@@ -103,7 +103,7 @@ Daftar resmi. Agen hanya boleh mengubah kolom Status, dan hanya untuk tahap yang
 | H9 | Backup aman dan pemulihan | Selesai |
 | H10 | Uji beban dan kekacauan | Selesai |
 | H11 | Dokumentasi dan kesiapan produksi | Selesai |
-| 13 | Halaman publik | Belum |
+| 13 | Halaman publik | Selesai |
 | 14 | Penarikan manual | Belum |
 | 15 | Review keamanan dan uji beban | Sebagian |
 | 16 | Deploy ke VPS | Belum |
@@ -216,6 +216,7 @@ Hasil uji dan hal penting yang ditemukan saat bekerja (Rincian lengkap Tahap 0 s
 
 Terbaru di atas. Ringkasan satu baris per tugas (Rincian multi-baris diarsipkan di [ARSIP_PROGRES.md](ARSIP_PROGRES.md)).
 
+- 2026-10-18: **Tahap 13 selesai** — Halaman publik lengkap: beranda publik "/", "/syarat", "/privasi", "/teknologi", footer 3 kolom bersama, audit whatsmeow, transparansi keamanan faktual, isolasi data privasi, i18n 3 bahasa, lolos seluruh pengawal tes.
 - 2026-10-18: **Tahap H12 selesai** — Koreksi klaim yang tidak terbukti: hapus klaim empiris sesi/memori, default konservatif MAX_ACTIVE_SESSIONS=20, MemoryMax 75% RAM VPS, Tahap 15 Sebagian (butuh -race & ukur memori), prosedur pengukuran pemilik.
 - 2026-10-18: **Tahap H11 selesai** — Dokumentasi selaras dengan kode, 2 automated guard test (DOC_SKEMA & env), perapian DOC_SECURITY_DEPLOY, DOC_PROGRES, checklist go-live 21 butir.
 - 2026-10-18: **Tahap H10 selesai** — Uji beban dan kekacauan (11 skenario L1–L11 lulus, migrasi 0024 indeks FK, penyetelan DB_MAX_CONNS 25–30, MemoryMax 512M, 75–80 sesi).

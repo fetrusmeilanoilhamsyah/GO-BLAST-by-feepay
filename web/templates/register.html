@@ -52,24 +52,35 @@
         <div style="margin-bottom: 20px;">
             <label style="display: flex; align-items: flex-start; gap: 8px; font-size: 13px; cursor: pointer; color: var(--color-text);">
                 <input type="checkbox" name="agree_terms" value="true" required style="margin-top: 3px;">
-                <span>{{ call .T "auth.agree_terms" }} <span class="badge badge-warning" style="font-size: 10px;">{{ call .T "admin.required_label" }}</span></span>
+                <span>Saya telah membaca dan menyetujui <a href="/syarat" target="_blank" style="color: var(--color-link);">{{ call .T "public.footer_terms" }}</a> <span class="badge badge-warning" style="font-size: 10px;">{{ call .T "admin.required_label" }}</span></span>
             </label>
+            <div style="margin-top: 4px; margin-left: 22px;">
+                <a href="/privasi" target="_blank" style="font-size: 12px; color: var(--color-muted);">{{ call .T "public.footer_privacy" }}</a>
+            </div>
         </div>
 
-        {{ if .TurnstileSiteKey }}
-        <div style="margin-bottom: 15px; display: flex; justify-content: center;">
-            <div class="cf-turnstile" data-sitekey="{{ .TurnstileSiteKey }}" data-action="register" data-theme="{{ if eq .Theme "dark" }}dark{{ else }}light{{ end }}"></div>
+        <!-- Turnstile widget — min-height supaya form tidak melompat saat widget dimuat -->
+        <div style="margin-bottom: 15px; min-height: 65px;">
+            {{ if .TurnstileSiteKey }}
+            <div style="display: flex; justify-content: center;">
+                <div class="cf-turnstile" data-sitekey="{{ .TurnstileSiteKey }}" data-action="register" data-theme="{{ if eq .Theme "dark" }}dark{{ else }}light{{ end }}"></div>
+            </div>
+            <script nonce="{{ .Nonce }}" src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+            {{ else if .ShowTurnstileDisabledNotice }}
+            <p style="font-size: 12px; color: var(--color-muted); text-align: center; margin: 0;">{{ call .T "public.turnstile_disabled_notice" }}</p>
+            {{ end }}
         </div>
-        <script nonce="{{ .Nonce }}" src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
-        {{ end }}
 
         <button type="submit" class="btn btn-primary" style="width: 100%; padding: 10px; font-size: 14px; font-weight: bold; cursor: pointer;">
             {{ call .T "auth.register_btn" }}
         </button>
     </form>
 
-    <div style="text-align: center; margin-top: 20px;">
-        <a href="/login" style="color: var(--color-link); font-size: 13px;">{{ call .T "auth.to_login" }}</a>
+    <div style="text-align: center; margin-top: 20px; font-size: 13px;">
+        <a href="/login" style="color: var(--color-link);">{{ call .T "auth.to_login" }}</a>
+    </div>
+    <div style="text-align: center; margin-top: 10px; font-size: 12px; color: var(--color-muted);">
+        <a href="/" style="color: var(--color-muted);">{{ call .T "public.about_link" }}</a>
     </div>
 </div>
 {{ end }}

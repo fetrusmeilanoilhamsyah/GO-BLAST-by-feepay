@@ -277,16 +277,18 @@ func (s *Server) renderLogin(w http.ResponseWriter, r *http.Request, errMsg stri
 	if s.Turnstile != nil && s.Turnstile.IsEnabled() {
 		turnstileSiteKey = s.Turnstile.SiteKey
 	}
+	showTurnstileNotice := !s.isProd() && turnstileSiteKey == ""
 
 	data := map[string]interface{}{
-		"Lang":             lang,
-		"Title":            i18n.T(lang, "auth.login_title"),
-		"Error":            errMsg,
-		"CSRFToken":        csrfToken,
-		"FormToken":        formToken,
-		"TurnstileSiteKey": turnstileSiteKey,
-		"Nonce":            getNonce(r),
-		"Theme":            getTheme(r),
+		"Lang":                        lang,
+		"Title":                       i18n.T(lang, "auth.login_title"),
+		"Error":                       errMsg,
+		"CSRFToken":                   csrfToken,
+		"FormToken":                   formToken,
+		"TurnstileSiteKey":            turnstileSiteKey,
+		"ShowTurnstileDisabledNotice": showTurnstileNotice,
+		"Nonce":                       getNonce(r),
+		"Theme":                       getTheme(r),
 		"T": func(key string) string {
 			return i18n.T(lang, key)
 		},
@@ -502,6 +504,7 @@ func (s *Server) renderRegister(w http.ResponseWriter, r *http.Request, errMsg s
 	if s.Turnstile != nil && s.Turnstile.IsEnabled() {
 		turnstileSiteKey = s.Turnstile.SiteKey
 	}
+	showTurnstileNotice := !s.isProd() && turnstileSiteKey == ""
 
 	refCode := sanitizeReferralCode(r.URL.Query().Get("ref"))
 	if refCode == "" {
@@ -509,15 +512,16 @@ func (s *Server) renderRegister(w http.ResponseWriter, r *http.Request, errMsg s
 	}
 
 	data := map[string]interface{}{
-		"Lang":             lang,
-		"Title":            i18n.T(lang, "auth.register_title"),
-		"Error":            errMsg,
-		"CSRFToken":        csrfToken,
-		"FormToken":        formToken,
-		"TurnstileSiteKey": turnstileSiteKey,
-		"ReferralCode":     refCode,
-		"Nonce":            getNonce(r),
-		"Theme":            getTheme(r),
+		"Lang":                        lang,
+		"Title":                       i18n.T(lang, "auth.register_title"),
+		"Error":                       errMsg,
+		"CSRFToken":                   csrfToken,
+		"FormToken":                   formToken,
+		"TurnstileSiteKey":            turnstileSiteKey,
+		"ShowTurnstileDisabledNotice": showTurnstileNotice,
+		"ReferralCode":                 refCode,
+		"Nonce":                       getNonce(r),
+		"Theme":                       getTheme(r),
 		"T": func(key string) string {
 			return i18n.T(lang, key)
 		},

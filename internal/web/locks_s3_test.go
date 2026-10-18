@@ -249,7 +249,11 @@ func TestLockEngine_StopsEngineAndReason(t *testing.T) {
 		t.Fatalf("setup wa_account gagal: %v", err)
 	}
 
-	// 2. Setup campaign berjalan dengan 1 nomor
+	// 2. Setup campaign berjalan dengan 1 nomor (bersihkan residu pengujian sebelumnya)
+	_, _ = database.Pool.Exec(ctx, "DELETE FROM campaign_numbers WHERE campaign_id IN (SELECT id FROM campaigns WHERE name = 'Camp S3 Engine')")
+	_, _ = database.Pool.Exec(ctx, "DELETE FROM number_batches WHERE campaign_id IN (SELECT id FROM campaigns WHERE name = 'Camp S3 Engine')")
+	_, _ = database.Pool.Exec(ctx, "DELETE FROM campaigns WHERE name = 'Camp S3 Engine'")
+
 	var cID, bID, numID int64
 	err = database.Pool.QueryRow(ctx,
 		`INSERT INTO campaigns (name, status, button_mode, body, elements, created_by, started_at)
@@ -274,6 +278,12 @@ func TestLockEngine_StopsEngineAndReason(t *testing.T) {
 	if err != nil {
 		t.Fatalf("setup number gagal: %v", err)
 	}
+
+	t.Cleanup(func() {
+		_, _ = database.Pool.Exec(context.Background(), "DELETE FROM campaign_numbers WHERE campaign_id = $1", cID)
+		_, _ = database.Pool.Exec(context.Background(), "DELETE FROM number_batches WHERE id = $1", bID)
+		_, _ = database.Pool.Exec(context.Background(), "DELETE FROM campaigns WHERE id = $1", cID)
+	})
 
 	// Settings reader untuk engine
 	settingsReader := wa.NewDBSettingsReader(database)
