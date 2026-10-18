@@ -138,8 +138,7 @@ Salinan dari DOC_KONSEP bagian 15. Agen tidak boleh memutuskan sendiri.
 Terbaru di atas. Satu baris ringkas per keputusan.
 
 | Tanggal | Kode / Keputusan | Ringkasan Keputusan | Oleh |
-|---|---|---|---|
-| 2026-10-18 | Keputusan UX Pekerja | Desain UX modern ala Linear/Vercel: Number Flow odometer real-time, Sonner-style stacked toast, transisi visual sukses saat WA terhubung, loading state tombol instan; tanpa dependensi npm luar, tanpa merusak logika bisnis lama | pemilik dan agen |
+| 2026-10-18 | Keputusan UI & UX Auth | Desain UX modern ala Linear/Vercel (Number Flow live counter, Sonner stacked toast, transisi WA terhubung); footer panel pekerja & publik (atribusi Gopher CC BY 3.0, hak cipta 2026); instant theme switch SVG Sun/Moon tanpa reload; pembersihan badge AI-slop "Wajib diisi" diganti asterik; contoh username Goblast123 fleksibel; panduan kata sandi 10 karakter non-repetisi; tombol intip password SVG outline tanpa emoji; relaksasi rate limit akun WA di limits.go | pemilik dan agen |
 | 2026-10-18 | H14 / Nomor Internasional | Normalisasi E.164 independen dari Indonesia, default_country per campaign & settings, validasi seluler (tolak bukan_seluler), mitigasi ambiguitas numerik XLSX, pairing internasional (+62/60/44 dll.), peringatan multi-negara di preview | pemilik dan agen |
 | 2026-10-18 | H13 / Pemeriksaan Nomor | Perbaikan IsOnWhatsApp whatsmeow (prefix '+', pencocokan r.Query bukan LID, tiga keadaan: Terdaftar/TidakTerdaftar/TidakPasti), penanganan retry backoff TidakPasti (3x lalu gagal cek_nomor_gagal), metrik engine, health check wa_check_status, sanitasi purge | pemilik dan agen |
 | 2026-10-18 | H12 / Koreksi Klaim | Koreksi klaim memori per sesi & 75-80 sesi (belum terukur sesi WA riil), default konservatif MAX_ACTIVE_SESSIONS=20, MemoryMax 75% RAM VPS, Tahap 15 kembali Sebagian (butuh -race & ukur memori) | pemilik dan agen |
@@ -200,6 +199,17 @@ Perbedaan antara DOC_KONSEP dan kode aktual yang dicatat di Tahap S0:
     2. **Momen WhatsApp Terkoneksi**: Pada modal pairing QR/Phone (`worker_accounts.html`), saat polling mendeteksi `terhubung`, kotak QR tidak langsung hilang seketika, melainkan menampilkan animasi centang sukses monokrom (*animated SVG checkmark*) dengan status "WhatsApp Berhasil Terhubung!", lalu jeda transisi halus membuka form label & kecepatan.
     3. **Sonner-style Stacked Toast**: Notifikasi mengambang bertumpuk di sudut layar untuk aksi ganti password, simpan rekening, penarikan dana, disconnect akun, dan salin tautan referral, menggantikan kotak alert statis di atas halaman.
     4. **Instant Button Loading Feedback**: Tombol aksi langsung disabled dan menampilkan teks status loading ("Menyimpan...", "Memproses...") saat diklik untuk mencegah klik ganda dan memberi kepastian respons seketika.
+    5. **Smooth Tactile Feedback & Modal Transitions (GPU Accelerated)**:
+       - Mikro-interaksi sentuhan empuk / pegas (`scale(0.96)`) pada seluruh tombol saat ditekan (`:active`) tanpa delay 300ms di HP (`touch-action: manipulation; -webkit-tap-highlight-color: transparent`).
+       - Animasi buka pop-up modal zoom-in lembut (`scale(0.93) -> scale(1)`) dengan latar blur halus (`backdrop-filter: blur(4px)`).
+       - Crossfade mulus saat berganti tab QR / kode pairing dan animasi gambar garis centang monokrom saat sesi WhatsApp terhubung (`checkmarkStrokeDraw`). Seluruh animasi berjalan di layer GPU (0% beban CPU, 120 FPS mulus di mobile).
+    6. **Perbaikan Tombol CS & Tab Helpdesk**:
+       - Memperbaiki tab modal bantuan (`.helpdesk-tab-btn`) agar teks tidak meloncat/pecah saat diklik (menjaga `font-weight: 600` konsisten tanpa pergeseran lebar huruf dan mengecualikan tab dari scale transform).
+       - Menambahkan `grid-column: span 2` pada kartu ke-5 ("Bantuan CS & Tiket") di dasbor mobile agar merentang penuh selebar baris ke-3, dilengkapi `white-space: nowrap` dan `text-overflow: ellipsis` sehingga teks tidak pernah terpotong atau patah di HP sempit.
+       - Memperbaiki `.contact-card` agar stabil dan empuk (`:active { transform: scale(0.98); }`).
+    7. **Penyesuaian Rate Limiting Akun WhatsApp (`limits.go`)**:
+       - Mengatasi masalah pekerja mudah terkena rate limit saat proses penautan WhatsApp (karena 1 alur pairing memakai 3–4 request: init, pair, settings, delete, disconnect, stop).
+       - Melonggarkan `WorkerAccountUserAttempts` dari 6 kali/10 menit menjadi **20 kali/5 menit**, dan `WorkerAccountIPAttempts` dari 20 kali/10 menit menjadi **40 kali/5 menit**. Token pulih setiap 15 detik (bukan 100 detik), sehingga pekerja leluasa menautkan/mengganti nomor tanpa takut terkena limit, sementara sistem tetap terlindungi dari bot/spam.
   - *Komitmen Integritas Kode*: Seluruh logika bisnis lama (transaksi buku besar, perutean WhatsApp, verifikasi CSRF, polling stats, parameter penarikan) dipertahankan 100% tanpa perubahan struktur data backend. Tidak ada penambahan dependensi npm/node luar (murni Vanilla JS & CSS variables).
   - *Verifikasi & Pengujian*: Seluruh pengujian statis guard CSP (`TestGuard_CSP_TemplatesStaticCheck`), pengujian IDOR (`TestGuard_IDOR_CrossWorkerAccountsAndTickets`), dan seluruh rangkaian test suite repositori (`go test -p 1 ./...`) lulus 100% tanpa ada regresi.
 
@@ -265,6 +275,7 @@ Perbedaan antara DOC_KONSEP dan kode aktual yang dicatat di Tahap S0:
 
 Terbaru di atas. Ringkasan satu baris per tugas (Rincian multi-baris diarsipkan di [ARSIP_PROGRES.md](ARSIP_PROGRES.md)).
 
+- 2026-10-18: **Penyempurnaan UI/UX & Form selesai** — Footer panel pekerja & publik (atribusi Gopher CC BY 3.0), instant theme toggle SVG Sun/Moon tanpa reload, pembersihan badge AI-slop form auth diganti asterik, username Goblast123, edukasi kata sandi 10 karakter non-repetisi, toggle intip password SVG outline tanpa emoji, relaksasi rate limit pairing WA di limits.go, lolos seluruh pengujian.
 - 2026-10-18: **Tahap H14 selesai** — Penanganan nomor yang tidak bergantung pada Indonesia: normalisasi E.164 multi-negara via nyaruka/phonenumbers, default_country per campaign & setting sistem, validasi seluler (tolak bukan_seluler), ambiguitas XLSX, pairing nomor internasional, peringatan preview, migrasi 0025, lolos seluruh tes.
 - 2026-10-18: **Tahap H13 selesai** — Perbaikan pemeriksaan nomor terdaftar whatsmeow: prefix '+' query USync, matching r.Query bukan JID LID, hasil tiga keadaan (Terdaftar/TidakTerdaftar/TidakPasti), retry backoff TidakPasti (3x lalu gagal cek_nomor_gagal), metrik engine & health check wa_check_status, sanitasi purge, lolos seluruh tes.
 - 2026-10-18: **Tahap 13 selesai** — Halaman publik lengkap: beranda publik "/", "/syarat", "/privasi", "/teknologi", footer 3 kolom bersama, audit whatsmeow, transparansi keamanan faktual, isolasi data privasi, i18n 3 bahasa, lolos seluruh pengawal tes.

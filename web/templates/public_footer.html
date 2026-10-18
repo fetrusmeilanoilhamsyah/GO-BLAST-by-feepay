@@ -135,6 +135,9 @@
     </div>
 
     <div class="pub-footer-bottom">
+      <div style="font-size: 12px; color: var(--color-muted);">
+        &copy; 2026 GO BLAST by feepay. Hak cipta dilindungi.
+      </div>
       <div class="pub-footer-controls">
         {{ if .Lang }}
         <form method="POST" action="/language" class="pub-footer-form">
@@ -149,7 +152,7 @@
         </form>
         {{ end }}
 
-        <form method="POST" action="/theme" class="pub-footer-form">
+        <form method="POST" action="/theme" class="pub-footer-form" id="pub-theme-form">
           <input type="hidden" name="csrf_token" value="{{ .CSRFToken }}">
           <label for="pub-theme-sel" style="font-size: 12px; color: var(--color-muted);">{{ call .T "theme.label" }}</label>
           <select id="pub-theme-sel" name="theme" class="pub-footer-select">

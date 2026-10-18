@@ -178,13 +178,13 @@ var (
 	WorkerFinancialAttempts = 10
 	WorkerFinancialWindow   = 10 * time.Minute
 
-	// WorkerAccountUserAttempts batas inisialisasi / tambah / pair akun WA per pekerja per 10 menit (6).
-	WorkerAccountUserAttempts = 6
-	WorkerAccountUserWindow   = 10 * time.Minute
+	// WorkerAccountUserAttempts batas inisialisasi / tambah / pair akun WA per pekerja per 5 menit (20).
+	WorkerAccountUserAttempts = 20
+	WorkerAccountUserWindow   = 5 * time.Minute
 
-	// WorkerAccountIPAttempts batas inisialisasi / tambah / pair akun WA per IP per 10 menit (20).
-	WorkerAccountIPAttempts = 20
-	WorkerAccountIPWindow   = 10 * time.Minute
+	// WorkerAccountIPAttempts batas inisialisasi / tambah / pair akun WA per IP per 5 menit (40).
+	WorkerAccountIPAttempts = 40
+	WorkerAccountIPWindow   = 5 * time.Minute
 
 	// WorkerWorkCtrlAttempts batas start/stop kerja per pekerja per menit (30).
 	WorkerWorkCtrlAttempts = 30
