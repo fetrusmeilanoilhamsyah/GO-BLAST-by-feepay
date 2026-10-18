@@ -650,6 +650,8 @@ func TestTahap13_PublicFooterPresence(t *testing.T) {
 		"/syarat",
 		"/privasi",
 		"/teknologi",
+		"/login",
+		"/register",
 	}
 
 	for _, path := range publicPaths {
@@ -666,6 +668,10 @@ func TestTahap13_PublicFooterPresence(t *testing.T) {
 				srv.handlePrivasi(rr, req)
 			case "/teknologi":
 				srv.handleTeknologi(rr, req)
+			case "/login":
+				srv.handleLogin(rr, req)
+			case "/register":
+				srv.handleRegister(rr, req)
 			}
 
 			if rr.Code != http.StatusOK {

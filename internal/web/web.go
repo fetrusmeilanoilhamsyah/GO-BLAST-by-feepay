@@ -416,6 +416,8 @@ func NewServer(database *db.DB, env string, waMgr *wa.Manager, workCtrl WorkCont
 		"syarat.html":    true,
 		"privasi.html":   true,
 		"teknologi.html": true,
+		"login.html":     true,
+		"register.html":  true,
 	}
 
 	workerPages := map[string]bool{
