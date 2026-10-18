@@ -36,6 +36,10 @@
                 </ol>
             </div>
 
+            <div style="margin-bottom: 12px; display: flex; justify-content: center;">
+                <img src="/static/img/gopher-thief.png" alt="Maskot Scan QR" style="height: 64px; width: auto; object-fit: contain;">
+            </div>
+
             <div id="qr-container" style="display: inline-block; padding: 16px; background-color: var(--color-surface); border: 1px solid var(--color-border); border-radius: 8px;">
                 {{if .QRImageB64}}
                 <img id="qr-img" src="data:image/png;base64,{{.QRImageB64}}" alt="QR Code WhatsApp" style="width: 256px; height: 256px; display: block;" />
