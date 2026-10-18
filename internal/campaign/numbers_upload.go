@@ -41,30 +41,32 @@ type UploadStats struct {
 	DupInFile        int               `json:"dup_in_file"`
 	DupInCampaign    int               `json:"dup_in_campaign"`
 	Invalid          int               `json:"invalid"`
+	NotMobile        int               `json:"not_mobile"`
 	Ambiguous        int               `json:"ambiguous"`
 	CountryCodes     map[string]int    `json:"country_codes"`
 	VariableWarnings []VariableWarning `json:"variable_warnings,omitempty"`
 }
 
 type PreviewData struct {
-	ID         string      `json:"id"`
-	CampaignID int64       `json:"campaign_id"`
-	Filename   string      `json:"filename"`
-	Stats      UploadStats `json:"stats"`
-	CreatedAt  time.Time   `json:"created_at"`
+	ID             string      `json:"id"`
+	CampaignID     int64       `json:"campaign_id"`
+	Filename       string      `json:"filename"`
+	Stats          UploadStats `json:"stats"`
+	DefaultCountry string      `json:"default_country"`
+	CreatedAt      time.Time   `json:"created_at"`
 }
 
 type RejectedRow struct {
 	RawNumber string
-	Reason    string // "dup_in_file", "dup_in_campaign", "invalid", "ambigu"
+	Reason    string // "dup_in_file", "dup_in_campaign", "tidak_valid", "bukan_seluler", "ambigu"
 }
 
 // ProcessPreview reads the raw uploaded data, normalizes it, checks DB for duplicates,
 // generates a preview ID, and saves the rejected list to a CSV file.
-func ProcessPreview(ctx context.Context, db *pgxpool.Pool, campaignID int64, rawData []byte, filename string, defaultCC string) (PreviewData, error) {
-	var status, buttonMode, body string
+func ProcessPreview(ctx context.Context, db *pgxpool.Pool, campaignID int64, rawData []byte, filename string, defaultRegion ...string) (PreviewData, error) {
+	var status, buttonMode, body, defaultCountry string
 	var archivedAt *time.Time
-	err := db.QueryRow(ctx, "SELECT status, button_mode, body, archived_at FROM campaigns WHERE id = $1", campaignID).Scan(&status, &buttonMode, &body, &archivedAt)
+	err := db.QueryRow(ctx, "SELECT status, button_mode, body, archived_at, default_country FROM campaigns WHERE id = $1", campaignID).Scan(&status, &buttonMode, &body, &archivedAt, &defaultCountry)
 	if err != nil {
 		return PreviewData{}, fmt.Errorf("campaign tidak ditemukan: %w", err)
 	}
@@ -73,6 +75,13 @@ func ProcessPreview(ctx context.Context, db *pgxpool.Pool, campaignID int64, raw
 	}
 	if status != "draf" && status != "berjalan" {
 		return PreviewData{}, errors.New("nomor hanya bisa ditambahkan ke campaign draf atau berjalan")
+	}
+
+	if len(defaultRegion) > 0 && defaultRegion[0] != "" {
+		defaultCountry = defaultRegion[0]
+	}
+	if defaultCountry == "" {
+		defaultCountry = "ID"
 	}
 
 	// Read and parse
@@ -110,8 +119,13 @@ func ProcessPreview(ctx context.Context, db *pgxpool.Pool, campaignID int64, raw
 	var rejected []RejectedRow
 
 	for _, item := range rawNums {
-		e164, status, ccStr := numbers.Normalize(item.Raw, defaultCC, item.IsNumericXLSX)
+		e164, status, ccStr := numbers.Normalize(item.Raw, defaultCountry, item.IsNumericXLSX)
 
+		if status == "bukan_seluler" {
+			stats.NotMobile++
+			rejected = append(rejected, RejectedRow{item.Raw, "bukan_seluler"})
+			continue
+		}
 		if status == "tidak_valid" {
 			stats.Invalid++
 			rejected = append(rejected, RejectedRow{item.Raw, "tidak_valid"})
@@ -196,11 +210,12 @@ func ProcessPreview(ctx context.Context, db *pgxpool.Pool, campaignID int64, raw
 	}
 
 	preview := PreviewData{
-		ID:         previewID,
-		CampaignID: campaignID,
-		Filename:   filename,
-		Stats:      stats,
-		CreatedAt:  time.Now(),
+		ID:             previewID,
+		CampaignID:     campaignID,
+		Filename:       filename,
+		Stats:          stats,
+		DefaultCountry: defaultCountry,
+		CreatedAt:      time.Now(),
 	}
 
 	tmpDir := filepath.Join("data", "tmp")

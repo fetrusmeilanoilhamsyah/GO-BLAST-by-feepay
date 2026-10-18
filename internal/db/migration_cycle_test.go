@@ -46,14 +46,14 @@ func TestMigrationsUpAndDown(t *testing.T) {
 		t.Fatalf("gagal ambil DB version: %v", err)
 	}
 	t.Logf("Versi saat ini setelah Up: %d", currentVer)
-	if currentVer < 24 {
-		t.Fatalf("diharapkan versi >= 24 setelah up, didapat %d", currentVer)
+	if currentVer < 25 {
+		t.Fatalf("diharapkan versi >= 25 setelah up, didapat %d", currentVer)
 	}
 
 	// Putuskan koneksi lain yang mungkin menggantung sebelum DDL
 	_, _ = sqlDB.Exec(`SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = current_database() AND pid <> pg_backend_pid()`)
 
-	// 2. Down sampai ke migrasi 18 (menguji Down 0024, 0023, 0022, 0021, 0020, 0019)
+	// 2. Down sampai ke migrasi 18 (menguji Down 0025, 0024, 0023, 0022, 0021, 0020, 0019)
 	t.Log("Menjalankan goose.DownTo versi 18...")
 	if err := goose.DownTo(sqlDB, migrationsDir, 18); err != nil {
 		t.Fatalf("goose.DownTo(18) gagal: %v", err)
@@ -79,7 +79,7 @@ func TestMigrationsUpAndDown(t *testing.T) {
 		t.Fatalf("gagal ambil DB version setelah up lagi: %v", err)
 	}
 	t.Logf("Versi setelah Up lagi: %d", upAgainVer)
-	if upAgainVer < 24 {
-		t.Fatalf("diharapkan versi >= 24 setelah up lagi, didapat %d", upAgainVer)
+	if upAgainVer < 25 {
+		t.Fatalf("diharapkan versi >= 25 setelah up lagi, didapat %d", upAgainVer)
 	}
 }

@@ -679,8 +679,8 @@ func TestTahap13_PublicFooterPresence(t *testing.T) {
 				t.Errorf("Path %s tidak memuat pub-footer", path)
 			}
 
-			// 2. Kolom 1 (Tentang): ada tautan beranda, #faq, #kontak
-			if !strings.Contains(body, `href="/"`) || !strings.Contains(body, `href="/#faq"`) || !strings.Contains(body, `href="/#kontak"`) {
+			// 2. Kolom 1 (Tentang): ada tautan beranda/#tentang, #faq, #kontak
+			if (!strings.Contains(body, `href="/#tentang"`) && !strings.Contains(body, `href="/"`)) || !strings.Contains(body, `href="/#faq"`) || !strings.Contains(body, `href="/#kontak"`) {
 				t.Errorf("Path %s tidak memuat link kolom Tentang lengkap", path)
 			}
 
@@ -707,6 +707,19 @@ func TestTahap13_PublicFooterPresence(t *testing.T) {
 				t.Errorf("Path %s tidak memuat script ber-nonce untuk selector footer", path)
 			}
 		})
+	}
+
+	// Verifikasi target anchor id="tentang", id="faq", dan id="kontak" benar-benar ada di beranda
+	reqHome := httptest.NewRequest("GET", "/", nil)
+	rrHome := httptest.NewRecorder()
+	srv.handleIndex(rrHome, reqHome)
+	bodyHome := rrHome.Body.String()
+
+	anchorTargets := []string{`id="tentang"`, `id="faq"`, `id="kontak"`}
+	for _, target := range anchorTargets {
+		if !strings.Contains(bodyHome, target) {
+			t.Errorf("Beranda / wajib memuat target anchor %s agar tautan footer dapat berpindah/scroll dengan benar", target)
+		}
 	}
 }
 

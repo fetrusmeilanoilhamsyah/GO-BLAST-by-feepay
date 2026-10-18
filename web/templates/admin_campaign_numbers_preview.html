@@ -32,10 +32,36 @@
             <div style="font-size: 22px; font-weight: bold; color: var(--color-danger);">{{.Stats.Invalid}}</div>
         </div>
         <div style="background-color: var(--color-card); padding: 16px; border-radius: 8px; border: 1px solid var(--color-border); text-align: center;">
+            <div style="font-size: 12px; color: var(--color-muted); margin-bottom: 4px;">{{ call .T "numbers.not_mobile" }}</div>
+            <div style="font-size: 22px; font-weight: bold; color: var(--color-danger);">{{.Stats.NotMobile}}</div>
+        </div>
+        <div style="background-color: var(--color-card); padding: 16px; border-radius: 8px; border: 1px solid var(--color-border); text-align: center;">
             <div style="font-size: 12px; color: var(--color-muted); margin-bottom: 4px;">{{ call .T "numbers.ambiguous" }}</div>
             <div style="font-size: 22px; font-weight: bold; color: var(--color-muted);">{{.Stats.Ambiguous}}</div>
         </div>
     </div>
+
+    {{if .HasMultipleCountries}}
+    <div style="background-color: var(--color-surface-muted); border: 1px solid var(--color-warning); border-radius: 8px; padding: 14px 16px; margin-bottom: 20px;">
+        <div style="font-weight: bold; color: var(--color-warning); margin-bottom: 4px; font-size: 14px;">
+            {{ call .T "numbers.warn_multi_country_title" }}
+        </div>
+        <div style="font-size: 13px; color: var(--color-text);">
+            {{ call .T "numbers.warn_multi_country_desc" }}: {{.MultiCountrySummary}}
+        </div>
+    </div>
+    {{end}}
+
+    {{if .HasForeignCountry}}
+    <div style="background-color: var(--color-surface-muted); border: 1px solid var(--color-warning); border-radius: 8px; padding: 14px 16px; margin-bottom: 20px;">
+        <div style="font-weight: bold; color: var(--color-warning); margin-bottom: 4px; font-size: 14px;">
+            {{ call .T "numbers.warn_foreign_country_title" }}
+        </div>
+        <div style="font-size: 13px; color: var(--color-text);">
+            Terdapat {{.ForeignCount}} nomor dari luar negara default ({{.DefaultCountry}}). Pastikan ini disengaja.
+        </div>
+    </div>
+    {{end}}
 
     {{if .Stats.VariableWarnings}}
     <div style="background-color: var(--color-surface-muted); border: 1px solid var(--color-warning); border-radius: 8px; padding: 16px; margin-bottom: 24px;">

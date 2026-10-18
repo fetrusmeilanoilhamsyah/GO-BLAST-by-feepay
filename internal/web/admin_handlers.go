@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/nyaruka/phonenumbers"
 	"goblast/internal/auth"
 	"goblast/internal/backup"
 	"goblast/internal/campaign"
@@ -23,6 +24,7 @@ import (
 	"goblast/internal/engine"
 	"goblast/internal/i18n"
 	"goblast/internal/money"
+	"goblast/internal/numbers"
 	"goblast/internal/ratelimit"
 	"goblast/internal/timeutil"
 	"goblast/internal/withdraw"
@@ -358,6 +360,8 @@ type SettingsViewData struct {
 	RateIDRtoUSDT          *int64
 	RateIDRtoUSDTDisplay   string
 	RateIDRtoUSDTUpdatedAt string
+	DefaultCountry         string
+	CountryOptions         []numbers.CountryOption
 }
 
 func (s *Server) HandleAdminSettingsGET(w http.ResponseWriter, r *http.Request) {
@@ -501,7 +505,17 @@ func (s *Server) HandleAdminSettingsPOST(w http.ResponseWriter, r *http.Request)
 		kursUpdatedAt = time.Now().Format(time.RFC3339)
 	}
 
-	// Save the 4 settings with audit log
+	// 5. Validate default_country (ISO 3166-1 alpha-2, valid region)
+	defaultCountry := strings.ToUpper(strings.TrimSpace(r.FormValue("default_country")))
+	if defaultCountry == "" {
+		defaultCountry = "ID"
+	}
+	if !phonenumbers.GetSupportedRegions()[defaultCountry] {
+		s.renderSettingsError(w, r, "Negara bawaan tidak valid")
+		return
+	}
+
+	// Save settings with audit log
 	ip := getIP(r)
 	updates := []struct {
 		key   string
@@ -512,6 +526,7 @@ func (s *Server) HandleAdminSettingsPOST(w http.ResponseWriter, r *http.Request)
 		{"rate_idr_to_usdt", rateIDRtoUSDT},
 		{"rate_idr_to_usdt_updated_at", kursUpdatedAt},
 		{"max_accounts_per_worker", maxAccounts},
+		{"default_country", defaultCountry},
 	}
 
 	for _, up := range updates {
@@ -605,7 +620,7 @@ func (s *Server) updateSettingWithAudit(ctx context.Context, adminID int64, key 
 func (s *Server) readSettingsFromDB(ctx context.Context) (*SettingsViewData, error) {
 	data := &SettingsViewData{}
 
-	rows, err := s.DB.Pool.Query(ctx, "SELECT key, value::text FROM settings WHERE key IN ('rate_wage', 'rate_referral', 'rate_idr_to_usdt', 'rate_idr_to_usdt_updated_at', 'max_accounts_per_worker')")
+	rows, err := s.DB.Pool.Query(ctx, "SELECT key, value::text FROM settings WHERE key IN ('rate_wage', 'rate_referral', 'rate_idr_to_usdt', 'rate_idr_to_usdt_updated_at', 'max_accounts_per_worker', 'default_country')")
 	if err != nil {
 		return nil, err
 	}
@@ -661,8 +676,20 @@ func (s *Server) readSettingsFromDB(ctx context.Context) (*SettingsViewData, err
 			} else {
 				data.RateIDRtoUSDTUpdatedAt = strings.Trim(valStr, `"`)
 			}
+		case "default_country":
+			var c string
+			if err := json.Unmarshal([]byte(valStr), &c); err == nil && c != "" {
+				data.DefaultCountry = c
+			} else {
+				data.DefaultCountry = strings.Trim(valStr, `"`)
+			}
 		}
 	}
+
+	if data.DefaultCountry == "" {
+		data.DefaultCountry = "ID"
+	}
+	data.CountryOptions = numbers.SupportedCountryOptions()
 
 	if data.RateIDRtoUSDT != nil {
 		data.RateIDRtoUSDTDisplay = money.FormatIDR(*data.RateIDRtoUSDT)

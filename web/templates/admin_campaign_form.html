@@ -37,6 +37,16 @@
                 </div>
 
                 <div class="field">
+                    <label>{{ call .T "campaign.field_default_country" }}</label>
+                    <select name="default_country" id="defaultCountrySelect" class="input">
+                        {{range .CountryOptions}}
+                        <option value="{{.RegionCode}}" {{if eq $.Campaign.DefaultCountry .RegionCode}}selected{{end}}>{{.Label}}</option>
+                        {{end}}
+                    </select>
+                    <small style="color: var(--color-muted); display: block; margin-top: 4px; font-size: 12px;">{{ call .T "campaign.default_country_help" }}</small>
+                </div>
+
+                <div class="field">
                     <label>{{ call .T "campaign.field_body" }}</label>
                     <textarea name="body" rows="5" maxlength="1000" class="input" required>{{.Campaign.Body}}</textarea>
                 </div>

@@ -8,12 +8,13 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/nyaruka/phonenumbers"
 	"goblast/internal/campaign"
-	"goblast/internal/config"
 	"goblast/internal/i18n"
 )
 
@@ -130,9 +131,7 @@ func (s *Server) HandleAdminCampaignNumbersPreview(w http.ResponseWriter, r *htt
 		filename = "pasted.txt"
 	}
 
-	defaultCC := config.DefaultCountryCode
-
-	preview, err := campaign.ProcessPreview(r.Context(), s.DB.Pool, campaignID, rawData, filename, defaultCC)
+	preview, err := campaign.ProcessPreview(r.Context(), s.DB.Pool, campaignID, rawData, filename)
 	if err != nil {
 		slog.Error("Gagal memproses preview nomor kampanye", "err", err, "campaign_id", campaignID)
 		http.Error(w, "Error memproses file: format atau isi tidak valid", http.StatusBadRequest)
@@ -146,31 +145,62 @@ func (s *Server) HandleAdminCampaignNumbersPreview(w http.ResponseWriter, r *htt
 		lang = u.Language
 	}
 
-	hasRejected := (preview.Stats.DupInFile + preview.Stats.DupInCampaign + preview.Stats.Invalid + preview.Stats.Ambiguous) > 0
+	hasMultipleCountries := len(preview.Stats.CountryCodes) > 1
+	var multiCountrySummary string
+	if hasMultipleCountries {
+		var parts []string
+		for cc, count := range preview.Stats.CountryCodes {
+			parts = append(parts, fmt.Sprintf("+%s (%d)", cc, count))
+		}
+		sort.Strings(parts)
+		multiCountrySummary = strings.Join(parts, ", ")
+	}
+
+	defaultCCInt := phonenumbers.GetCountryCodeForRegion(preview.DefaultCountry)
+	defaultCCStr := fmt.Sprintf("%d", defaultCCInt)
+	foreignCount := 0
+	for cc, count := range preview.Stats.CountryCodes {
+		if cc != defaultCCStr {
+			foreignCount += count
+		}
+	}
+	hasForeignCountry := foreignCount > 0
+
+	hasRejected := (preview.Stats.DupInFile + preview.Stats.DupInCampaign + preview.Stats.Invalid + preview.Stats.NotMobile + preview.Stats.Ambiguous) > 0
 
 	previewData := struct {
-		ActiveNav   string
-		Lang        string
-		Title       string
-		Theme       string
-		CSRFToken   string
-		CampaignID  int64
-		PreviewID   string
-		Stats       campaign.UploadStats
-		HasRejected bool
-		Nonce       string
-		T           func(string) string
+		ActiveNav            string
+		Lang                 string
+		Title                string
+		Theme                string
+		CSRFToken            string
+		CampaignID           int64
+		PreviewID            string
+		Stats                campaign.UploadStats
+		HasRejected          bool
+		HasMultipleCountries bool
+		MultiCountrySummary  string
+		HasForeignCountry    bool
+		ForeignCount         int
+		DefaultCountry       string
+		Nonce                string
+		T                    func(string) string
 	}{
-		ActiveNav:   "campaigns",
-		Lang:        lang,
-		Title:       i18n.T(lang, "numbers.preview_title"),
-		Theme:       getTheme(r),
-		CSRFToken:   csrfToken,
-		CampaignID:  campaignID,
-		PreviewID:   preview.ID,
-		Stats:       preview.Stats,
-		HasRejected: hasRejected,
-		Nonce:       getNonce(r),
+		ActiveNav:            "campaigns",
+		Lang:                 lang,
+		Title:                i18n.T(lang, "numbers.preview_title"),
+		Theme:                getTheme(r),
+		CSRFToken:            csrfToken,
+		CampaignID:           campaignID,
+		PreviewID:            preview.ID,
+		Stats:                preview.Stats,
+		HasRejected:          hasRejected,
+		HasMultipleCountries: hasMultipleCountries,
+		MultiCountrySummary:  multiCountrySummary,
+		HasForeignCountry:    hasForeignCountry,
+		ForeignCount:         foreignCount,
+		DefaultCountry:       preview.DefaultCountry,
+		Nonce:                getNonce(r),
 		T: func(key string) string {
 			return i18n.T(lang, key)
 		},

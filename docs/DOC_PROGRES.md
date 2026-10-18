@@ -10,7 +10,7 @@ Nomor tahap mengacu ke tabel "Daftar Tahap" di bawah.
 ## Posisi sekarang
 
 - **Fase**: 1 (MVP) & Fase 2 (Tahap 18 selesai dimajukan)
-- **Terakhir dikerjakan**: Tahap H13 — Perbaikan pemeriksaan nomor terdaftar whatsmeow dan hasil tiga keadaan (bukti bug via tes gagal, prefix '+' pada query USync E.164, pencocokan respons via r.Query bukan JID LID, hasil tiga keadaan Terdaftar/TidakTerdaftar/TidakPasti, backoff & retry untuk TidakPasti hingga 3 kali lalu gagal dengan 'cek_nomor_gagal', metrik engine & health check wa_check_status, sanitasi purge, logging bertopeng aman, lolos 100% tes).
+- **Terakhir dikerjakan**: Tahap H14 — Penanganan nomor yang tidak bergantung pada Indonesia (normalisasi E.164 multi-negara via nyaruka/phonenumbers, default_country per campaign dan di pengaturan sistem, validasi tipe seluler dengan penolakan fixed-line sebagai bukan_seluler, penanganan ambiguitas numerik XLSX, alur pairing pekerja dengan kode negara internasional, peringatan multi-negara & nomor asing pada preview upload, migrasi 0025 siklus Up/Down teruji, 100% tes lulus).
 - **Sedang dikerjakan**: Menunggu arahan tahap berikutnya dari pemilik proyek.
 - **Blocker**: Tidak ada (menunggu pengukuran memori per sesi riil dan pengujian `go test -race` oleh pemilik di lingkungan dengan gcc/WSL).
 
@@ -103,6 +103,9 @@ Daftar resmi. Agen hanya boleh mengubah kolom Status, dan hanya untuk tahap yang
 | H9 | Backup aman dan pemulihan | Selesai |
 | H10 | Uji beban dan kekacauan | Selesai |
 | H11 | Dokumentasi dan kesiapan produksi | Selesai |
+| H12 | Koreksi klaim yang tidak terbukti | Selesai |
+| H13 | Perbaikan pemeriksaan nomor terdaftar whatsmeow | Selesai |
+| H14 | Penanganan nomor yang tidak bergantung pada Indonesia | Selesai |
 | 13 | Halaman publik | Selesai |
 | 14 | Penarikan manual | Belum |
 | 15 | Review keamanan dan uji beban | Sebagian |
@@ -136,6 +139,7 @@ Terbaru di atas. Satu baris ringkas per keputusan.
 
 | Tanggal | Kode / Keputusan | Ringkasan Keputusan | Oleh |
 |---|---|---|---|
+| 2026-10-18 | H14 / Nomor Internasional | Normalisasi E.164 independen dari Indonesia, default_country per campaign & settings, validasi seluler (tolak bukan_seluler), mitigasi ambiguitas numerik XLSX, pairing internasional (+62/60/44 dll.), peringatan multi-negara di preview | pemilik dan agen |
 | 2026-10-18 | H13 / Pemeriksaan Nomor | Perbaikan IsOnWhatsApp whatsmeow (prefix '+', pencocokan r.Query bukan LID, tiga keadaan: Terdaftar/TidakTerdaftar/TidakPasti), penanganan retry backoff TidakPasti (3x lalu gagal cek_nomor_gagal), metrik engine, health check wa_check_status, sanitasi purge | pemilik dan agen |
 | 2026-10-18 | H12 / Koreksi Klaim | Koreksi klaim memori per sesi & 75-80 sesi (belum terukur sesi WA riil), default konservatif MAX_ACTIVE_SESSIONS=20, MemoryMax 75% RAM VPS, Tahap 15 kembali Sebagian (butuh -race & ukur memori) | pemilik dan agen |
 | 2026-10-18 | H11 / Dokumentasi & Kesiapan | Selaraskan seluruh dokumen dengan kode aktual, 2 guard test otomatis (katalog DB & env parity), DOC_SECURITY_DEPLOY komprehensif, checklist go-live 21 butir | pemilik dan agen |
@@ -188,6 +192,27 @@ Perbedaan antara DOC_KONSEP dan kode aktual yang dicatat di Tahap S0:
 
 ## Catatan temuan
 
+- **2026-10-18 (Tahap H14 — Penanganan Nomor yang Tidak Bergantung pada Indonesia)**:
+  - Pembuktian Bug Fail-First: Ditulis `internal/numbers/numbers_h14_test.go` (`TestH14_ProveCurrentBugs`) yang membuktikan dua bug kritis:
+    1. Nomor telepon rumah (fixed line) berstatus `ok` karena pustaka hanya memanggil `IsValidNumber` tanpa memeriksa `GetNumberType` (`MOBILE` / `FIXED_LINE_OR_MOBILE`).
+    2. Kode negara di-hardcode ke Indonesia (`defaultCC = "62"`), memotong awalan `0` nasional secara sepihak dan menambahkan `62`. Nomor seluler UK (`07911123456`) gagal di-parse sebagai nomor UK (`status = tidak_valid`) ketika defaultRegion disetel ke "GB".
+    Subtes awal membuktikan kegagalan implementasi lama sebelum perbaikan.
+  - Perbaikan & Implementasi:
+    1. Migrasi 0025 (`db/migrations/0025_campaign_default_country.sql`): Menambahkan kolom `default_country VARCHAR(4) NOT NULL DEFAULT 'ID'` pada tabel `campaigns` dan entri kunci `'default_country'` bernilai `'"ID"'::jsonb` pada tabel `settings`. Diverifikasi siklus migrasi Up, DownTo(18), dan Up kembali via `migration_cycle_test.go`.
+    2. `internal/numbers/numbers.go`: Menambahkan fungsi `SupportedCountryOptions()` dan perbaikan `Normalize(raw, defaultRegion, isNumericXLSX)`:
+       - Menerima `defaultRegion` (ISO alpha-2, toleransi numerik).
+       - Awalan `+` dan `00` diproses sebagai nomor internasional.
+       - Format nasional diuraikan dengan `phonenumbers.Parse(clean, region)`.
+       - Menolak nomor non-seluler (`bukan_seluler`).
+       - Menolak sel numerik XLSX tanpa awalan 0 sebagai `ambigu`, kecuali diawali kode panggilan negara default.
+    3. `internal/campaign`: Struct `Campaign` memiliki `DefaultCountry`. Fungsi `ValidateTemplate` menerima `defaultRegion` (bukan fallback 62). `ProcessPreview` membaca `default_country` dari campaign, memilah `bukan_seluler` ke `stats.NotMobile`, dan menghitung metrik per negara.
+    4. `internal/web`:
+       - `admin_handlers.go`: Pengaturan sistem mendukung pilihan dropdown `default_country`, divalidasi region yang didukung, dan dicatat pada audit log.
+       - `campaign_handlers.go`: Form tambah/edit campaign menyediakan dropdown negara default; saat tambah baru mengambil default dari setting sistem, saat edit mengambil dari campaign.
+       - `campaign_numbers.go`: Halaman preview menampilkan kartu `Bukan Seluler` (`stats.NotMobile`), serta peringatan multi-negara dan nomor luar negara default.
+       - `wa_handlers.go`: Menghapus penulisan ulang '62' otomatis. Menolak input pairing berawalan 0 tunggal dengan pesan `"tulis dengan kode negara, misalnya +62..."`. Memvalidasi format internasional via `numbers.Normalize`.
+       - Template dan i18n (`id.json`, `en.json`, `zh.json`) disinkronkan lengkap dengan catatan penutur asli untuk bahasa asing.
+    5. Seluruh pengujian lulus 100%.
 - **2026-10-18 (Tahap H13 — Perbaikan Pemeriksaan Nomor Terdaftar WhatsApp)**:
   - Pembuktian Bug Fail-First: Ditulis `internal/wa/manager_h13_test.go` (`TestH13_Manager_IsOnWhatsApp_Bugs_Proof`) yang membuktikan tiga kelemahan fatal pada implementasi lama:
     1. `whatsmeow.Client.IsOnWhatsApp` menuntut nomor diawali tanda `+` (`go.mau.fi/whatsmeow/user.go:174`). Nomor di DB disimpan polos tanpa `+` (`numbers.go:81-82`), menyebabkan kueri USync gagal/diabaikan server.
@@ -229,6 +254,7 @@ Perbedaan antara DOC_KONSEP dan kode aktual yang dicatat di Tahap S0:
 
 Terbaru di atas. Ringkasan satu baris per tugas (Rincian multi-baris diarsipkan di [ARSIP_PROGRES.md](ARSIP_PROGRES.md)).
 
+- 2026-10-18: **Tahap H14 selesai** — Penanganan nomor yang tidak bergantung pada Indonesia: normalisasi E.164 multi-negara via nyaruka/phonenumbers, default_country per campaign & setting sistem, validasi seluler (tolak bukan_seluler), ambiguitas XLSX, pairing nomor internasional, peringatan preview, migrasi 0025, lolos seluruh tes.
 - 2026-10-18: **Tahap H13 selesai** — Perbaikan pemeriksaan nomor terdaftar whatsmeow: prefix '+' query USync, matching r.Query bukan JID LID, hasil tiga keadaan (Terdaftar/TidakTerdaftar/TidakPasti), retry backoff TidakPasti (3x lalu gagal cek_nomor_gagal), metrik engine & health check wa_check_status, sanitasi purge, lolos seluruh tes.
 - 2026-10-18: **Tahap 13 selesai** — Halaman publik lengkap: beranda publik "/", "/syarat", "/privasi", "/teknologi", footer 3 kolom bersama, audit whatsmeow, transparansi keamanan faktual, isolasi data privasi, i18n 3 bahasa, lolos seluruh pengawal tes.
 - 2026-10-18: **Tahap H12 selesai** — Koreksi klaim yang tidak terbukti: hapus klaim empiris sesi/memori, default konservatif MAX_ACTIVE_SESSIONS=20, MemoryMax 75% RAM VPS, Tahap 15 Sebagian (butuh -race & ukur memori), prosedur pengukuran pemilik.

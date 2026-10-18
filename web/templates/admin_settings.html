@@ -82,6 +82,20 @@
             </div>
         </div>
 
+        <!-- 5. Negara Default Sistem -->
+        <div class="card" style="margin: 0;">
+            <h2 style="font-size: 16px; font-weight: 700; margin-top: 0; margin-bottom: 6px; color: var(--color-text);">{{ call .T "admin.default_country" }} <span class="badge badge-warning" style="font-size: 11px;">{{ call .T "admin.required_label" }}</span></h2>
+            <p style="font-size: 12px; color: var(--color-muted); margin-bottom: 16px;">{{ call .T "admin.default_country_desc" }}</p>
+            <div class="field">
+                <label for="default_country">{{ call .T "admin.default_country" }}</label>
+                <select id="default_country" name="default_country" class="input" required>
+                    {{range .Settings.CountryOptions}}
+                    <option value="{{.RegionCode}}" {{if eq $.Settings.DefaultCountry .RegionCode}}selected{{end}}>{{.Label}}</option>
+                    {{end}}
+                </select>
+            </div>
+        </div>
+
         <div>
             <button type="submit" class="btn btn-primary" style="padding: 12px 24px; font-size: 15px;">
                 {{ call .T "admin.settings_save_btn" }}
@@ -98,6 +112,8 @@ function fillRecommendedSettings() {
     document.getElementById('rate_idr_to_usdt').value = '15000';
     document.getElementById('rate_referral_idr').value = '5';
     document.getElementById('max_accounts_per_worker').value = '5';
+    var dc = document.getElementById('default_country');
+    if (dc) dc.value = 'ID';
 }
 
 document.addEventListener('DOMContentLoaded', function() {

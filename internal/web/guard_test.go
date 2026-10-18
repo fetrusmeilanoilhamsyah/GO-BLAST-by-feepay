@@ -20,6 +20,7 @@ import (
 	"goblast/internal/campaign"
 	"goblast/internal/db"
 	"goblast/internal/i18n"
+	"goblast/internal/numbers"
 	"goblast/internal/testutil"
 )
 
@@ -137,15 +138,16 @@ func TestCampaignFormTombolAsliDisabled(t *testing.T) {
 	}
 
 	data := struct {
-		ActiveNav   string
-		Lang        string
-		Title       string
-		Theme       string
-		CSRFToken   string
-		Campaign    campaign.Campaign
-		DefaultMode string
-		Nonce       string
-		T           func(string) string
+		ActiveNav      string
+		Lang           string
+		Title          string
+		Theme          string
+		CSRFToken      string
+		Campaign       campaign.Campaign
+		DefaultMode    string
+		Nonce          string
+		CountryOptions []numbers.CountryOption
+		T              func(string) string
 	}{
 		ActiveNav: "campaigns",
 		Lang:      "id",
@@ -158,8 +160,9 @@ func TestCampaignFormTombolAsliDisabled(t *testing.T) {
 			},
 			ButtonMode: campaign.ModeKartuLink,
 		},
-		DefaultMode: campaign.ModeKartuLink,
-		Nonce:       "test-nonce",
+		DefaultMode:    campaign.ModeKartuLink,
+		Nonce:          "test-nonce",
+		CountryOptions: numbers.SupportedCountryOptions(),
 		T: func(key string) string {
 			return i18n.T("id", key)
 		},

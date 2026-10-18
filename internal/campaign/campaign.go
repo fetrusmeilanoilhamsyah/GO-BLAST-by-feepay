@@ -29,13 +29,14 @@ type Campaign struct {
 	Body       string     `json:"body"`
 	ImagePath  string     `json:"image_path"`
 	Elements   Elements   `json:"elements"`
-	CreatedBy  int64      `json:"created_by"`
-	CreatedAt  time.Time  `json:"created_at"`
-	StartedAt    *time.Time     `json:"started_at"`
-	FinishedAt   *time.Time     `json:"finished_at"`
-	ArchivedAt   *time.Time     `json:"archived_at"`
-	PurgedAt     *time.Time     `json:"purged_at"`
-	PurgeSummary map[string]int `json:"purge_summary"`
+	CreatedBy      int64          `json:"created_by"`
+	CreatedAt      time.Time      `json:"created_at"`
+	StartedAt      *time.Time     `json:"started_at"`
+	FinishedAt     *time.Time     `json:"finished_at"`
+	ArchivedAt     *time.Time     `json:"archived_at"`
+	PurgedAt       *time.Time     `json:"purged_at"`
+	PurgeSummary   map[string]int `json:"purge_summary"`
+	DefaultCountry string         `json:"default_country"`
 }
 
 func (c Campaign) IsPurged() bool {
@@ -79,7 +80,7 @@ type Message struct {
 	Preview   *Preview // Diisi untuk mode kartu_link jika terdapat tautan
 }
 
-func ValidateTemplate(body string, mode string, elements Elements, defaultCC ...string) error {
+func ValidateTemplate(body string, mode string, elements Elements, defaultRegion ...string) error {
 	if mode != ModeKartuLink && mode != ModeTombolAsli {
 		return errors.New("mode tidak valid")
 	}
@@ -116,11 +117,11 @@ func ValidateTemplate(body string, mode string, elements Elements, defaultCC ...
 		if elements.PhoneNumber == "" {
 			return errors.New("nomor telepon harus diisi jika aktif")
 		}
-		cc := "62"
-		if len(defaultCC) > 0 && defaultCC[0] != "" {
-			cc = defaultCC[0]
+		region := "ID"
+		if len(defaultRegion) > 0 && defaultRegion[0] != "" {
+			region = defaultRegion[0]
 		}
-		_, status, _ := numbers.Normalize(elements.PhoneNumber, cc)
+		_, status, _ := numbers.Normalize(elements.PhoneNumber, region)
 		if status != "ok" {
 			return errors.New("nomor telepon tidak valid")
 		}

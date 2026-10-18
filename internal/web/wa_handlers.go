@@ -11,6 +11,7 @@ import (
 
 	"goblast/internal/campaign"
 	"goblast/internal/i18n"
+	"goblast/internal/numbers"
 )
 
 type WAAccountView struct {
@@ -406,21 +407,49 @@ func (s *Server) HandleWorkerAccountPairPOST(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	phone := strings.TrimSpace(r.FormValue("phone"))
-	phone = strings.ReplaceAll(phone, "+", "")
-	phone = strings.ReplaceAll(phone, "-", "")
-	phone = strings.ReplaceAll(phone, " ", "")
-	if strings.HasPrefix(phone, "0") {
-		phone = "62" + phone[1:]
-	}
-
-	if phone == "" {
+	rawPhone := strings.TrimSpace(r.FormValue("phone"))
+	if rawPhone == "" {
 		if isJSON {
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": "Nomor HP wajib diisi"})
 			return
 		}
 		http.Redirect(w, r, fmt.Sprintf("/worker/accounts?open=%d&error=%s", id, urlQueryEscape("Nomor HP wajib diisi")), http.StatusSeeOther)
+		return
+	}
+
+	cleanPhone := strings.ReplaceAll(rawPhone, " ", "")
+	cleanPhone = strings.ReplaceAll(cleanPhone, "-", "")
+	if strings.HasPrefix(cleanPhone, "0") && !strings.HasPrefix(cleanPhone, "00") {
+		msg := "tulis dengan kode negara, misalnya +62..."
+		if isJSON {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": msg})
+			return
+		}
+		http.Redirect(w, r, fmt.Sprintf("/worker/accounts?open=%d&error=%s", id, urlQueryEscape(msg)), http.StatusSeeOther)
+		return
+	}
+
+	phone, status, _ := numbers.Normalize(rawPhone, "")
+	if status == "bukan_seluler" {
+		msg := "Nomor harus berupa nomor seluler WhatsApp"
+		if isJSON {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": msg})
+			return
+		}
+		http.Redirect(w, r, fmt.Sprintf("/worker/accounts?open=%d&error=%s", id, urlQueryEscape(msg)), http.StatusSeeOther)
+		return
+	}
+	if status != "ok" {
+		msg := "Nomor telepon tidak valid"
+		if isJSON {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": msg})
+			return
+		}
+		http.Redirect(w, r, fmt.Sprintf("/worker/accounts?open=%d&error=%s", id, urlQueryEscape(msg)), http.StatusSeeOther)
 		return
 	}
 

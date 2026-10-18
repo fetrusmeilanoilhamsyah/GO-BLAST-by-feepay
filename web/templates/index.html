@@ -9,6 +9,7 @@
   background-color: var(--color-bg-hero);
   padding: 48px 16px 40px;
   text-align: center;
+  scroll-margin-top: 24px;
 }
 .pub-brand {
   font-size: 28px;
@@ -38,6 +39,7 @@
 .pub-section {
   padding: 40px 0;
   border-top: 1px solid var(--color-border);
+  scroll-margin-top: 24px;
 }
 .pub-section-title {
   font-size: 18px;
@@ -159,7 +161,7 @@
 }
 </style>
 
-<div class="pub-hero">
+<div id="tentang" class="pub-hero">
   <div class="pub-wrap">
     <p class="pub-brand">GO BLAST <span class="pub-brand-sub">by feepay</span></p>
     <p class="pub-hero-desc">{{ call .T "public.hero_desc" }}</p>
@@ -232,7 +234,7 @@
   </div>
 
   {{/* FAQ */}}
-  <div class="pub-section">
+  <div id="faq" class="pub-section">
     <h2 class="pub-section-title">{{ call .T "public.faq_title" }}</h2>
 
     <details class="pub-faq-item">
@@ -286,10 +288,10 @@
     </details>
   </div>
 
-  {{/* Kontak — hanya jika terisi */}}
-  {{ if or .CSWhatsAppURL .CSTelegramURL .ChannelTelegramURL }}
-  <div class="pub-section">
+  {{/* Kontak */}}
+  <div id="kontak" class="pub-section">
     <h2 class="pub-section-title">{{ call .T "public.contact_title" }}</h2>
+    {{ if or .CSWhatsAppURL .CSTelegramURL .ChannelTelegramURL }}
     <div class="pub-contact-links">
       {{ if .CSWhatsAppURL }}
       <a href="{{ .CSWhatsAppURL }}" class="btn btn-secondary" target="_blank" rel="noopener noreferrer">{{ call .T "public.contact_wa" }}</a>
@@ -301,8 +303,10 @@
       <a href="{{ .ChannelTelegramURL }}" class="btn btn-secondary" target="_blank" rel="noopener noreferrer">{{ call .T "public.contact_channel" }}</a>
       {{ end }}
     </div>
+    {{ else }}
+    <p style="font-size: 14px; color: var(--color-muted); margin: 0;">{{ call .T "public.faq_contact_desc" }}</p>
+    {{ end }}
   </div>
-  {{ end }}
 
 </div>{{/* end pub-wrap */}}
 {{ end }}

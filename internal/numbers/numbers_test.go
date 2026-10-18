@@ -84,7 +84,7 @@ func TestNormalizeFixed(t *testing.T) {
 
 		// 4. Tanpa awalan
 		{"Tanpa awalan, CC default valid", "6281234567890", "62", "6281234567890", "ok"},
-		{"Tanpa awalan, kehilangan 0 (jadi Japan)", "81234567890", "62", "81234567890", "ok"},
+		{"Tanpa awalan, kehilangan 0 (nasional ID)", "81234567890", "ID", "6281234567890", "ok"},
 		{"Tanpa awalan, CC beda (jadi US)", "14155552671", "62", "14155552671", "ok"},
 		{"Tanpa awalan, CC default valid spasi", "62 812 3456 7890", "62", "6281234567890", "ok"},
 

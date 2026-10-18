@@ -54,7 +54,7 @@ func TestNumbersUpload(t *testing.T) {
 		_, _ = pool.Exec(ctx, "DELETE FROM users WHERE id = $1", userID)
 	})
 
-	csvData := []byte("nomor\n081234567890\n081234567890\n081234567891\nabc\n81234567891\n")
+	csvData := []byte("nomor\n081234567890\n081234567890\n081234567891\nabc\n+818012345678\n")
 
 	// Test preview C1
 	preview, err := ProcessPreview(context.Background(), pool, c1, csvData, "test.csv", "62")

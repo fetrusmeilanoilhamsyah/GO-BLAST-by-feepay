@@ -75,7 +75,7 @@ Menyimpan kode pemulihan darurat satu kali pakai untuk admin ber-TOTP.
 
 ### 2.4 `settings`
 Tabel kunci-nilai konfigurasi global sistem.
-- `key` VARCHAR(100) PRIMARY KEY.
+- `key` VARCHAR(100) PRIMARY KEY. Termasuk `default_country` (JSON string, default `"ID"`, migrasi 0025).
 - `value` JSONB NOT NULL.
 - `updated_at` TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP.
 
@@ -87,6 +87,7 @@ Kampanye pesan siaran WhatsApp yang dibuat oleh admin.
 - `button_mode` VARCHAR(50) NOT NULL DEFAULT 'kartu_link' CHECK (`button_mode IN ('tombol_asli', 'kartu_link')`).
 - `body` TEXT NOT NULL.
 - `elements` JSONB NOT NULL DEFAULT '{}'.
+- `default_country` VARCHAR(4) NOT NULL DEFAULT 'ID': Kode negara default (ISO 3166-1 alpha-2) untuk menafsirkan nomor lokal (migrasi 0025 untuk H14).
 - `archived_at` TIMESTAMPTZ NULL: Waktu pengarsipan kampanye.
 - `purged_at` TIMESTAMPTZ NULL: Waktu pembersihan nomor kampanye (migrasi 0023 untuk H8).
 - `purge_summary` JSONB NULL: Ringkasan statistik nomor saat kampanye dibersihkan (migrasi 0023 untuk H8).

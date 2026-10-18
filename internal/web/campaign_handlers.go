@@ -18,9 +18,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/nyaruka/phonenumbers"
 	"goblast/internal/campaign"
 	"goblast/internal/config"
 	"goblast/internal/i18n"
+	"goblast/internal/numbers"
 )
 
 func (s *Server) HandleAdminCampaigns(w http.ResponseWriter, r *http.Request) {
@@ -103,6 +105,15 @@ func (s *Server) HandleAdminCampaignNewGET(w http.ResponseWriter, r *http.Reques
 		}
 	}
 
+	defaultCountry := "ID"
+	var countryVal string
+	if err := s.DB.Pool.QueryRow(r.Context(), "SELECT value FROM settings WHERE key = 'default_country'").Scan(&countryVal); err == nil {
+		var val string
+		if json.Unmarshal([]byte(countryVal), &val) == nil && val != "" {
+			defaultCountry = strings.ToUpper(strings.TrimSpace(val))
+		}
+	}
+
 	lang := "id"
 	if u, ok := currentUser(r); ok && u.Language != "" {
 		lang = u.Language
@@ -111,15 +122,16 @@ func (s *Server) HandleAdminCampaignNewGET(w http.ResponseWriter, r *http.Reques
 	csrfToken := getCSRF(r)
 
 	data := struct {
-		Lang        string
-		Title       string
-		Theme       string
-		CSRFToken   string
-		ActiveNav   string
-		Campaign    campaign.Campaign
-		DefaultMode string
-		Nonce       string
-		T           func(string) string
+		Lang           string
+		Title          string
+		Theme          string
+		CSRFToken      string
+		ActiveNav      string
+		Campaign       campaign.Campaign
+		DefaultMode    string
+		CountryOptions []numbers.CountryOption
+		Nonce          string
+		T              func(string) string
 	}{
 		Lang:      lang,
 		Title:     "Buat Campaign Baru - GO BLAST",
@@ -130,10 +142,12 @@ func (s *Server) HandleAdminCampaignNewGET(w http.ResponseWriter, r *http.Reques
 			Elements: campaign.Elements{
 				CSActive: false,
 			},
-			ButtonMode: defaultMode,
+			ButtonMode:     defaultMode,
+			DefaultCountry: defaultCountry,
 		},
-		DefaultMode: defaultMode,
-		Nonce:       getNonce(r),
+		DefaultMode:    defaultMode,
+		CountryOptions: numbers.SupportedCountryOptions(),
+		Nonce:          getNonce(r),
 		T: func(key string) string {
 			return i18n.T(lang, key)
 		},
@@ -182,7 +196,16 @@ func (s *Server) HandleAdminCampaignNewPOST(w http.ResponseWriter, r *http.Reque
 		PromoURL:      r.FormValue("promo_url"),
 	}
 
-	if err := campaign.ValidateTemplate(body, mode, elements); err != nil {
+	defaultCountry := strings.ToUpper(strings.TrimSpace(r.FormValue("default_country")))
+	if defaultCountry == "" {
+		defaultCountry = "ID"
+	}
+	if phonenumbers.GetCountryCodeForRegion(defaultCountry) == 0 {
+		http.Error(w, "Kode negara default tidak valid", http.StatusBadRequest)
+		return
+	}
+
+	if err := campaign.ValidateTemplate(body, mode, elements, defaultCountry); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -214,9 +237,9 @@ func (s *Server) HandleAdminCampaignNewPOST(w http.ResponseWriter, r *http.Reque
 	userID := user.ID
 
 	_, err = s.DB.Pool.Exec(r.Context(), `
-		INSERT INTO campaigns (name, status, button_mode, body, image_path, elements, created_by)
-		VALUES ($1, 'draf', $2, $3, $4, $5, $6)
-	`, name, mode, body, imagePath, string(elementsJSON), userID)
+		INSERT INTO campaigns (name, status, button_mode, body, image_path, elements, created_by, default_country)
+		VALUES ($1, 'draf', $2, $3, $4, $5, $6, $7)
+	`, name, mode, body, imagePath, string(elementsJSON), userID, defaultCountry)
 
 	if err != nil {
 		slog.Error("Gagal menyimpan kampanye baru", "err", err)
@@ -235,8 +258,8 @@ func (s *Server) HandleAdminCampaignEditGET(w http.ResponseWriter, r *http.Reque
 	var elJSON string
 	var imgPath *string
 	var archivedAt *time.Time
-	err := s.DB.Pool.QueryRow(r.Context(), "SELECT id, name, status, button_mode, body, image_path, elements, archived_at FROM campaigns WHERE id = $1", id).Scan(
-		&c.ID, &c.Name, &c.Status, &c.ButtonMode, &c.Body, &imgPath, &elJSON, &archivedAt)
+	err := s.DB.Pool.QueryRow(r.Context(), "SELECT id, name, status, button_mode, body, image_path, elements, archived_at, default_country FROM campaigns WHERE id = $1", id).Scan(
+		&c.ID, &c.Name, &c.Status, &c.ButtonMode, &c.Body, &imgPath, &elJSON, &archivedAt, &c.DefaultCountry)
 
 	if err != nil {
 		http.NotFound(w, r)
@@ -267,22 +290,24 @@ func (s *Server) HandleAdminCampaignEditGET(w http.ResponseWriter, r *http.Reque
 	csrfToken := getCSRF(r)
 
 	data := struct {
-		Lang      string
-		Title     string
-		Theme     string
-		CSRFToken string
-		ActiveNav string
-		Campaign  campaign.Campaign
-		Nonce     string
-		T         func(string) string
+		Lang           string
+		Title          string
+		Theme          string
+		CSRFToken      string
+		ActiveNav      string
+		Campaign       campaign.Campaign
+		CountryOptions []numbers.CountryOption
+		Nonce          string
+		T              func(string) string
 	}{
-		Lang:      lang,
-		Title:     "Edit Campaign - GO BLAST",
-		Theme:     getTheme(r),
-		CSRFToken: csrfToken,
-		ActiveNav: "campaigns",
-		Campaign:  c,
-		Nonce:     getNonce(r),
+		Lang:           lang,
+		Title:          "Edit Campaign - GO BLAST",
+		Theme:          getTheme(r),
+		CSRFToken:      csrfToken,
+		ActiveNav:      "campaigns",
+		Campaign:       c,
+		CountryOptions: numbers.SupportedCountryOptions(),
+		Nonce:          getNonce(r),
 		T: func(key string) string {
 			return i18n.T(lang, key)
 		},
@@ -353,7 +378,16 @@ func (s *Server) HandleAdminCampaignEditPOST(w http.ResponseWriter, r *http.Requ
 		PromoURL:      r.FormValue("promo_url"),
 	}
 
-	if err := campaign.ValidateTemplate(body, mode, elements); err != nil {
+	defaultCountry := strings.ToUpper(strings.TrimSpace(r.FormValue("default_country")))
+	if defaultCountry == "" {
+		defaultCountry = "ID"
+	}
+	if phonenumbers.GetCountryCodeForRegion(defaultCountry) == 0 {
+		http.Error(w, "Kode negara default tidak valid", http.StatusBadRequest)
+		return
+	}
+
+	if err := campaign.ValidateTemplate(body, mode, elements, defaultCountry); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -390,9 +424,9 @@ func (s *Server) HandleAdminCampaignEditPOST(w http.ResponseWriter, r *http.Requ
 
 	_, err = s.DB.Pool.Exec(r.Context(), `
 		UPDATE campaigns 
-		SET name = $1, button_mode = $2, body = $3, image_path = $4, elements = $5
-		WHERE id = $6
-	`, name, mode, body, imagePath, string(elementsJSON), id)
+		SET name = $1, button_mode = $2, body = $3, image_path = $4, elements = $5, default_country = $6
+		WHERE id = $7
+	`, name, mode, body, imagePath, string(elementsJSON), defaultCountry, id)
 
 	if err != nil {
 		slog.Error("Gagal memperbarui kampanye", "err", err, "id", id)
@@ -439,7 +473,11 @@ func (s *Server) HandleAdminCampaignPreview(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	if err := campaign.ValidateTemplate(body, mode, elements); err != nil {
+	defaultCountry := strings.ToUpper(strings.TrimSpace(r.FormValue("default_country")))
+	if defaultCountry == "" {
+		defaultCountry = "ID"
+	}
+	if err := campaign.ValidateTemplate(body, mode, elements, defaultCountry); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -556,9 +594,9 @@ func (s *Server) HandleAdminCampaignDetail(w http.ResponseWriter, r *http.Reques
 	var elJSON string
 	var imgPath *string
 	err = s.DB.Pool.QueryRow(r.Context(), `
-		SELECT id, name, status, button_mode, body, image_path, elements, created_at, started_at, finished_at, archived_at, purged_at, purge_summary 
+		SELECT id, name, status, button_mode, body, image_path, elements, created_at, started_at, finished_at, archived_at, purged_at, purge_summary, default_country 
 		FROM campaigns WHERE id = $1
-	`, id).Scan(&c.ID, &c.Name, &c.Status, &c.ButtonMode, &c.Body, &imgPath, &elJSON, &c.CreatedAt, &c.StartedAt, &c.FinishedAt, &c.ArchivedAt, &c.PurgedAt, &c.PurgeSummary)
+	`, id).Scan(&c.ID, &c.Name, &c.Status, &c.ButtonMode, &c.Body, &imgPath, &elJSON, &c.CreatedAt, &c.StartedAt, &c.FinishedAt, &c.ArchivedAt, &c.PurgedAt, &c.PurgeSummary, &c.DefaultCountry)
 
 	if err != nil {
 		http.NotFound(w, r)

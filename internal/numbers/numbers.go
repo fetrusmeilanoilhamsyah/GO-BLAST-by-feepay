@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/nyaruka/phonenumbers"
@@ -25,18 +27,59 @@ type Item struct {
 	IsNumericXLSX bool
 }
 
-// Normalize parses and normalizes a phone number to E.164 format without the '+' sign.
-// Returns normalized string, status ("ok", "tidak_valid", "ambigu"), and country code string.
-// If isNumericXLSX is true (from XLSX numeric cell or read from Excel without leading 0),
-// and the number does not start with defaultCC, status is reported as "ambigu".
-func Normalize(raw string, defaultCC string, isNumericXLSX ...bool) (string, string, string) {
+// CountryOption merepresentasikan pilihan kode wilayah ISO 3166 dan kode telepon untuk dropdown.
+type CountryOption struct {
+	RegionCode  string `json:"region_code"`
+	CountryCode int    `json:"country_code"`
+	Label       string `json:"label"`
+}
+
+func (c CountryOption) Region() string   { return c.RegionCode }
+func (c CountryOption) CallingCode() int { return c.CountryCode }
+func (c CountryOption) Name() string     { return c.RegionCode }
+
+// SupportedCountryOptions mengembalikan daftar wilayah yang didukung dari phonenumbers.GetSupportedRegions
+// terurut secara alfabetis berdasarkan kode wilayah (contoh "ID (+62)").
+func SupportedCountryOptions() []CountryOption {
+	regions := phonenumbers.GetSupportedRegions()
+	opts := make([]CountryOption, 0, len(regions))
+	for reg := range regions {
+		if reg == "" || reg == "001" {
+			continue
+		}
+		cc := phonenumbers.GetCountryCodeForRegion(reg)
+		if cc <= 0 {
+			continue
+		}
+		opts = append(opts, CountryOption{
+			RegionCode:  reg,
+			CountryCode: cc,
+			Label:       fmt.Sprintf("%s (+%d)", reg, cc),
+		})
+	}
+	sort.Slice(opts, func(i, j int) bool {
+		return opts[i].RegionCode < opts[j].RegionCode
+	})
+	return opts
+}
+
+// Normalize menormalisasi nomor telepon ke format E.164 (tanpa tanda '+').
+// Menerima parameter defaultRegion (kode wilayah ISO 3166-1 alpha-2, misal 'ID', 'GB', 'US').
+// Mengembalikan (formattedE164, status, countryCodeStr).
+// Status yang mungkin:
+// - "ok": nomor seluler valid
+// - "bukan_seluler": nomor telepon rumah (fixed line) atau tipe non-seluler lainnya
+// - "ambigu": nomor numerik XLSX tanpa awalan 0 dan tanpa kode negara bawaan
+// - "tidak_valid": format tidak dapat dipahami atau tidak valid secara aturan ITU
+func Normalize(raw string, defaultRegion string, isNumericXLSX ...bool) (string, string, string) {
 	// a. Buang spasi, tanda hubung, titik, dan kurung
 	clean := strings.NewReplacer(" ", "", "-", "", ".", "", "(", "", ")", "").Replace(raw)
+	clean = strings.TrimSpace(clean)
 	if clean == "" {
 		return "", "tidak_valid", ""
 	}
 
-	// Check if there are invalid characters (only + and digits are allowed)
+	// Hanya karakter '+' di awal dan angka '0'-'9' yang diizinkan
 	for i, r := range clean {
 		if i == 0 && r == '+' {
 			continue
@@ -46,6 +89,23 @@ func Normalize(raw string, defaultCC string, isNumericXLSX ...bool) (string, str
 		}
 	}
 
+	// Penentuan region ISO 3166 default (default "ID")
+	region := strings.ToUpper(strings.TrimSpace(defaultRegion))
+	if region == "" {
+		region = "ID"
+	}
+	// Toleransi jika pemanggil lama mengirimkan kode telepon angka (misal "62"):
+	if ccInt, err := strconv.Atoi(region); err == nil && ccInt > 0 {
+		if reg := phonenumbers.GetRegionCodeForCountryCode(ccInt); reg != "" && reg != "001" {
+			region = reg
+		}
+	}
+
+	defaultCCInt := phonenumbers.GetCountryCodeForRegion(region)
+	defaultCC := fmt.Sprintf("%d", defaultCCInt)
+
+	// Pemeriksaan sel numerik XLSX tanpa 0 awal (Tahap H14 Butir 2):
+	// Tetap "ambigu" kecuali jika diawali kode telepon negara bawaan
 	if len(isNumericXLSX) > 0 && isNumericXLSX[0] {
 		digitsOnly := strings.TrimPrefix(clean, "+")
 		if !strings.HasPrefix(digitsOnly, defaultCC) {
@@ -53,29 +113,39 @@ func Normalize(raw string, defaultCC string, isNumericXLSX ...bool) (string, str
 		}
 	}
 
-	var toParse string
+	var num *phonenumbers.PhoneNumber
+	var parseErr error
 
-	// b. Awalan + atau 00: dianggap internasional
 	if strings.HasPrefix(clean, "+") {
-		toParse = clean
+		// Format internasional dengan '+'
+		num, parseErr = phonenumbers.Parse(clean, "")
 	} else if strings.HasPrefix(clean, "00") {
-		toParse = "+" + clean[2:]
-	} else if strings.HasPrefix(clean, "0") {
-		// c. Awalan 0 tunggal (bukan 00): buang 0, tambahkan kode negara default
-		toParse = "+" + defaultCC + clean[1:]
+		// Format internasional dengan awalan '00'
+		num, parseErr = phonenumbers.Parse("+"+clean[2:], "")
 	} else {
-		// d. Hanya angka tanpa awalan
-		toParse = "+" + clean
+		// Coba parse sebagai nomor nasional untuk region yang dipilih
+		numNat, errNat := phonenumbers.Parse(clean, region)
+		if errNat == nil && phonenumbers.IsValidNumber(numNat) {
+			num = numNat
+		} else {
+			// Jika tidak valid secara nasional, coba sebagai nomor internasional tanpa tanda '+'
+			numIntl, errIntl := phonenumbers.Parse("+"+clean, "")
+			if errIntl == nil && phonenumbers.IsValidNumber(numIntl) {
+				num = numIntl
+			} else {
+				return "", "tidak_valid", ""
+			}
+		}
 	}
 
-	num, err := phonenumbers.Parse(toParse, "")
-	if err != nil {
+	if parseErr != nil || num == nil || !phonenumbers.IsValidNumber(num) {
 		return "", "tidak_valid", ""
 	}
 
-	// e. Nomor valid hanya jika phonenumbers.IsValidNumber
-	if !phonenumbers.IsValidNumber(num) {
-		return "", "tidak_valid", ""
+	// Pemeriksaan jenis nomor: hanya nomor seluler (MOBILE) atau FIXED_LINE_OR_MOBILE (Tahap H14 Butir 3)
+	numType := phonenumbers.GetNumberType(num)
+	if numType != phonenumbers.MOBILE && numType != phonenumbers.FIXED_LINE_OR_MOBILE {
+		return "", "bukan_seluler", fmt.Sprintf("%d", num.GetCountryCode())
 	}
 
 	formatted := phonenumbers.Format(num, phonenumbers.E164)
