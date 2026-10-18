@@ -1,26 +1,17 @@
 {{ define "header" }}
 <style nonce="{{ .Nonce }}">
 .pub-topbar{background-color:var(--color-bg);border-bottom:1px solid var(--color-border);padding:8px 16px}
-.pub-topbar-inner{display:flex;align-items:center;justify-content:space-between;gap:12px;max-width:960px;margin:0 auto}
-.pub-topbar-nav{display:flex;gap:16px;align-items:center}
-.pub-topbar-nav a{font-size:13px;font-weight:600;color:var(--color-muted);text-decoration:none}
-.pub-topbar-nav a:hover{color:var(--color-text);text-decoration:underline}
-.pub-topbar-controls{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.pub-topbar-inner{display:flex;align-items:center;justify-content:flex-end;max-width:960px;margin:0 auto}
+.pub-topbar-controls{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
 .pub-ctrl-form{display:inline-flex;align-items:center;gap:5px;margin:0}
 .pub-ctrl-label{font-size:12px;color:var(--color-muted);font-weight:500}
 .pub-ctrl-select{font-size:12px;padding:4px 8px;border:1px solid var(--color-border);border-radius:6px;background-color:var(--color-input-bg);color:var(--color-input-text);cursor:pointer}
 @media(max-width:600px){
   .pub-topbar-inner{justify-content:center}
-  .pub-topbar-nav{display:none}
 }
 </style>
 <header class="pub-topbar">
-  <div class="pub-topbar-inner">
-    <div class="pub-topbar-nav">
-      <a href="/#tentang">{{ call .T "public.about_link" }}</a>
-      <a href="/#faq">{{ call .T "public.faq_title" }}</a>
-      <a href="/#kontak">{{ call .T "public.contact_title" }}</a>
-    </div>
+  <div class="pub-wrap pub-topbar-inner">
     <div class="pub-topbar-controls">
       {{ if .Lang }}
       <form method="POST" action="/language" class="pub-ctrl-form">
