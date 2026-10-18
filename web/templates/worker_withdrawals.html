@@ -371,8 +371,9 @@
                             </tr>
                             {{else}}
                             <tr>
-                                <td colspan="6" style="text-align: center; padding: 28px; color: var(--color-muted);">
-                                    {{ call $.T "worker.withdraw_no_history" }}
+                                <td colspan="6" style="text-align: center; padding: 36px 16px; color: var(--color-muted);">
+                                    <img src="/static/img/gopher-chill.png" alt="Gopher Santai" style="height: 76px; width: auto; object-fit: contain; margin-bottom: 10px; display: inline-block;">
+                                    <div style="font-size: 13px;">{{ call $.T "worker.withdraw_no_history" }}</div>
                                 </td>
                             </tr>
                             {{end}}

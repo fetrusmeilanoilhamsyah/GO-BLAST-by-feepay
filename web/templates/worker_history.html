@@ -35,7 +35,8 @@
                     {{else}}
                     <tr>
                         <td colspan="4" style="text-align: center; padding: 36px 16px; color: var(--color-muted); font-size: 14px;">
-                            {{ call $.T "worker.history_no_data" }}
+                            <img src="/static/img/gopher-chill.png" alt="Gopher Santai" style="height: 76px; width: auto; object-fit: contain; margin-bottom: 10px; display: inline-block;">
+                            <div style="font-size: 13px;">{{ call $.T "worker.history_no_data" }}</div>
                         </td>
                     </tr>
                     {{end}}
