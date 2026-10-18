@@ -416,8 +416,9 @@
                         {{end}}
                     </div>
                     {{else}}
-                    <div class="account-card-item" style="padding: 24px 16px; text-align: center; color: var(--color-muted); font-size: 13px;">
-                        {{ call $.T "worker.withdraw_no_history" }}
+                    <div class="account-card-item" style="padding: 32px 16px; text-align: center; color: var(--color-muted); font-size: 13px;">
+                        <img src="/static/img/gopher-chill.png" alt="Gopher Santai" style="height: 72px; width: auto; object-fit: contain; margin-bottom: 8px; display: inline-block;">
+                        <div>{{ call $.T "worker.withdraw_no_history" }}</div>
                     </div>
                     {{end}}
                 </div>

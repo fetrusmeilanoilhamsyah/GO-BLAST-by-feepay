@@ -66,7 +66,8 @@
             </div>
             {{else}}
             <div class="account-card-item" style="padding: 32px 16px; text-align: center; color: var(--color-muted); font-size: 14px;">
-                {{ call $.T "worker.history_no_data" }}
+                <img src="/static/img/gopher-chill.png" alt="Gopher Santai" style="height: 72px; width: auto; object-fit: contain; margin-bottom: 8px; display: inline-block;">
+                <div>{{ call $.T "worker.history_no_data" }}</div>
             </div>
             {{end}}
         </div>

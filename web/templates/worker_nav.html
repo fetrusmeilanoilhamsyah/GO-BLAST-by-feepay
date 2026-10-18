@@ -1117,24 +1117,18 @@ function dismissSystemLockModal() {
 {{define "worker_footer"}}
 <footer class="worker-footer">
     <div class="worker-footer-container">
-        <div class="worker-footer-brand" style="display: flex; align-items: center;">
-            <img src="/static/img/gopher-flash.png" alt="Logo" style="height: 18px; width: auto; object-fit: contain; margin-right: 6px;">
-            <span style="font-weight: 700; color: var(--color-text);">GO BLAST</span>&nbsp;<small style="color: var(--color-muted); font-size: 11px;">by feepay</small>
-            <span style="margin: 0 10px; color: var(--color-border);">&bull;</span>
-            <span class="worker-footer-copy">Gopher oleh Ren&eacute;e French (CC BY 3.0)</span>
-            <span style="margin: 0 10px; color: var(--color-border);">&bull;</span>
+        <div class="worker-footer-brand" style="display: flex; align-items: center; gap: 6px;">
+            <img src="/static/img/gopher-flash.png" alt="Logo" style="height: 18px; width: auto; object-fit: contain;">
+            <span style="font-weight: 700; color: var(--color-text);">GO BLAST</span>
+            <small style="color: var(--color-muted); font-size: 11px;">by feepay</small>
+            <span style="margin: 0 6px; color: var(--color-border);">&bull;</span>
             <span class="worker-footer-copy">&copy; 2026 Hak cipta dilindungi.</span>
         </div>
         <div class="worker-footer-links">
-            <a href="/worker">Beranda</a>
-            <a href="/worker/accounts">Perangkat WA</a>
-            <a href="/worker/history">Riwayat</a>
-            <a href="/worker/withdrawals">Penarikan</a>
-            <a href="/worker/referral">Referral</a>
             <a href="#helpdesk" id="btn-worker-footer-cs">Bantuan CS</a>
-            <a href="/syarat" target="_blank">Ketentuan</a>
-            <a href="/privasi" target="_blank">Privasi</a>
-            <a href="/teknologi" target="_blank">Arsitektur</a>
+            <a href="/syarat" target="_blank">Syarat &amp; Ketentuan</a>
+            <a href="/privasi" target="_blank">Kebijakan Privasi</a>
+            <a href="/teknologi" target="_blank">Teknologi</a>
         </div>
     </div>
 </footer>
