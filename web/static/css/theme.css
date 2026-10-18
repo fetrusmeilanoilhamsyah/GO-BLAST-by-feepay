@@ -1130,29 +1130,44 @@ textarea.input {
   }
 }
 
-/* Topbar Notification Bell dengan Maskot di Belakang Icon */
-.notif-bell-btn {
+/* Topbar Notification Button dengan Maskot Gopher & Teks Notif */
+.notif-topbar-btn {
   position: relative;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 10px 3px 10px;
+  gap: 2px;
+  min-width: 44px;
+  height: 40px;
+  border-radius: 8px;
+  box-sizing: border-box;
   overflow: visible;
 }
 
-.notif-bell-bg {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  height: 25px;
-  width: 25px;
+.notif-topbar-btn .notif-icon-img {
+  height: 20px;
+  width: auto;
   object-fit: contain;
-  opacity: 0.65;
-  pointer-events: none;
-  z-index: 0;
-  transition: opacity 0.15s ease, transform 0.15s ease;
+  transition: transform 0.15s ease;
 }
 
-.notif-bell-btn:hover .notif-bell-bg {
-  opacity: 1;
-  transform: translate(-50%, -50%) scale(1.15);
+.notif-topbar-btn:hover .notif-icon-img {
+  transform: translateY(-1px) scale(1.12);
+}
+
+.notif-btn-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--color-text);
+  line-height: 1;
+  letter-spacing: 0.02em;
+}
+
+.notif-topbar-btn .notif-badge {
+  top: 1px;
+  right: 2px;
 }
 
 /* Helpdesk & Support Modal */

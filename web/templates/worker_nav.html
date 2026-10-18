@@ -47,13 +47,10 @@
             </svg>
         </button>
 
-        <button type="button" class="worker-topbar-btn notif-bell-btn" id="notif-bell-btn" aria-label="Notifikasi" style="position: relative; padding: 7px 10px; overflow: visible;">
-            <img src="/static/img/gopher-working.png" class="notif-bell-bg" alt="" aria-hidden="true">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="position: relative; z-index: 1;">
-                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
-                <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
-            </svg>
-            <span id="notif-badge" class="notif-badge" style="z-index: 2;">0</span>
+        <button type="button" class="worker-topbar-btn notif-topbar-btn" id="notif-bell-btn" aria-label="Notifikasi" title="Notifikasi">
+            <img src="/static/img/gopher-working.png" class="notif-icon-img" alt="Notifikasi">
+            <span class="notif-btn-label">Notif</span>
+            <span id="notif-badge" class="notif-badge">0</span>
         </button>
 
         <button type="button" class="worker-topbar-btn" id="btn-worker-drawer-right" aria-label="{{ call .T "worker.account_info" }}" style="padding: 5px 8px;">
