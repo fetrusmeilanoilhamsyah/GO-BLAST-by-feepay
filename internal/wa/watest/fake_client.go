@@ -3,6 +3,7 @@ package watest
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 
 	"goblast/internal/wa"
@@ -24,15 +25,22 @@ type FakeClient struct {
 	LogoutCalled     bool
 	DisconnectCalled bool
 	ConnectCalled    bool
+
+	// Field simulasi pemeriksaan status nomor WhatsApp (Tahap H13)
+	IsOnWhatsAppFunc   func(ctx context.Context, phones []string) ([]types.IsOnWhatsAppResponse, error)
+	IsOnWhatsAppEmpty  bool
+	IsOnWhatsAppError  error
+	UnregisteredPhones map[string]bool
 }
 
 var _ wa.WAClient = (*FakeClient)(nil)
 
 func NewFakeClient() *FakeClient {
 	return &FakeClient{
-		connected: true,
-		loggedIn:  true,
-		qrChan:    make(chan whatsmeow.QRChannelItem, 10),
+		connected:          true,
+		loggedIn:           true,
+		qrChan:             make(chan whatsmeow.QRChannelItem, 10),
+		UnregisteredPhones: make(map[string]bool),
 	}
 }
 
@@ -84,13 +92,47 @@ func (f *FakeClient) Logout(_ context.Context) error {
 	return nil
 }
 
-func (f *FakeClient) IsOnWhatsApp(_ context.Context, phones []string) ([]types.IsOnWhatsAppResponse, error) {
-	results := make([]types.IsOnWhatsAppResponse, len(phones))
-	for i, p := range phones {
-		results[i] = types.IsOnWhatsAppResponse{
-			JID:  types.NewJID(p, types.DefaultUserServer),
-			IsIn: true,
+func (f *FakeClient) IsOnWhatsApp(ctx context.Context, phones []string) ([]types.IsOnWhatsAppResponse, error) {
+	f.mu.Lock()
+	fn := f.IsOnWhatsAppFunc
+	empty := f.IsOnWhatsAppEmpty
+	err := f.IsOnWhatsAppError
+	unreg := f.UnregisteredPhones
+	f.mu.Unlock()
+
+	if err != nil {
+		return nil, err
+	}
+	if empty {
+		return []types.IsOnWhatsAppResponse{}, nil
+	}
+	if fn != nil {
+		return fn(ctx, phones)
+	}
+
+	results := make([]types.IsOnWhatsAppResponse, 0, len(phones))
+	for _, p := range phones {
+		// Pustaka whatsmeow mensyaratkan format internasional diawali tanda '+'
+		// (go.mau.fi/whatsmeow/user.go baris 174-175: "The phone numbers should be in international format, including the '+' prefix.")
+		if !strings.HasPrefix(p, "+") || len(p) <= 1 {
+			// Nomor tanpa format yang benar tidak dikenali oleh WhatsApp server (hasil kosong / dilewati)
+			continue
 		}
+
+		clean := strings.TrimPrefix(p, "+")
+		isIn := true
+		if unreg != nil && (unreg[p] || unreg[clean]) {
+			isIn = false
+		}
+
+		// Balasan asli whatsmeow (user.go:217-219):
+		// info.Query: input query tanpa suffix @c.us (misal "+628123456789")
+		// info.JID: normalisasi JID user (nomor tanpa tanda '+', server s.whatsapp.net)
+		results = append(results, types.IsOnWhatsAppResponse{
+			Query: p,
+			JID:   types.NewJID(clean, types.DefaultUserServer),
+			IsIn:  isIn,
+		})
 	}
 	return results, nil
 }

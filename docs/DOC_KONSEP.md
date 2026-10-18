@@ -70,8 +70,8 @@ Setiap nomor customer punya satu status:
 - `tersedia`: belum dikirim, menunggu dibagikan.
 - `dikirim`: sedang dipegang satu sesi pekerja (dikunci atomik via `ClaimNextNumber`, tidak bisa dipegang sesi lain).
 - `terkirim`: sukses dikirim (diakui server WhatsApp via `server_ack`). Final dan kekal (immutable). Dibayar ke buku besar.
-- `tidak_terdaftar`: nomor terbukti tidak punya WhatsApp dari pemeriksaan checker kontak. Final dan kekal. Tidak dibayar.
-- `gagal`: gagal final setelah mencapai batas percobaan, nomor tidak valid, nomor beracun (panic), atau gangguan di tengah kirim dengan hasil tidak pasti (Keputusan A1). Tidak dibayar.
+- `tidak_terdaftar`: nomor terbukti pasti tidak punya WhatsApp dari konfirmasi eksplisit server WhatsApp (`IsIn == false`). Final dan kekal (immutable). Tidak dibayar. Hasil pemeriksaan yang tidak pasti (gangguan jaringan, respons kosong/parsial) TIDAK BOLEH ditandai sebagai tidak_terdaftar.
+- `gagal`: gagal final setelah mencapai batas percobaan, nomor tidak valid, nomor beracun (panic), kegagalan pemeriksaan nomor berulang kali (`cek_nomor_gagal`), atau gangguan di tengah kirim dengan hasil tidak pasti (Keputusan A1). Tidak dibayar.
 
 **Aturan Kepemilikan dan Integritas Status 'dikirim' (Tahap H3, Keputusan A1 & H1):**
 1. **Kepemilikan Mutlak:** Hanya goroutine pekerja yang berhasil mengklaim nomor yang berhak mengubah status nomor dari `dikirim` menjadi status akhir. Pihak luar (admin via Stop, manajer WA via disconnect, restart server) TIDAK BOLEH memodifikasi baris `dikirim` secara ad-hoc atau melepasnya massal.
@@ -79,6 +79,7 @@ Setiap nomor customer punya satu status:
 3. **Hasil Tidak Pasti (Keputusan A1):** Jika terjadi timeout server WhatsApp, koneksi putus di tengah pengiriman, crash, atau restart server, nomor TIDAK BOLEH dikembalikan ke `tersedia` secara otomatis karena berisiko pesan ganda ke customer. Nomor dinyatakan `gagal` dengan `last_error = 'hasil_tidak_pasti'`.
 4. **Antrekan Ulang Manual (Keputusan H1):** Nomor yang gagal dengan `last_error = 'hasil_tidak_pasti'` hanya dapat dikembalikan ke antrean `tersedia` secara sadar oleh admin melalui tombol khusus "Antrekan ulang nomor hasil tidak pasti" setelah membaca peringatan risiko pesan ganda. Saat diantrekan ulang oleh admin, `attempts` di-reset ke 0.
 5. **Nomor Beracun (Poison Pill):** Jika terjadi panic saat memproses sebuah nomor, goroutine menangkap panic dan memfinalisasi status nomor menjadi `gagal` (`last_error = 'galat_internal'`) serta menaikkan `safe.PanicCount()`.
+6. **Pemeriksaan Nomor Tiga Keadaan (Tahap H13):** Pemeriksaan nomor menghasilkan salah satu dari tiga keadaan: `Terdaftar`, `TidakTerdaftar`, atau `TidakPasti`. Keadaan `TidakPasti` (respons server kosong, galat jaringan, timeout USync) TIDAK mengubah status menjadi `tidak_terdaftar`, melainkan mengembalikan nomor ke antrean `tersedia` dengan jeda backoff singkat. Jika setelah batas maksimal percobaan (`attempts >= 3`) tetap `TidakPasti`, nomor ditandai `gagal` dengan `last_error = 'cek_nomor_gagal'`.
 
 Aturan keras: dalam satu campaign, satu nomor tidak boleh berstatus `terkirim` dua kali, apa pun yang terjadi. Ini ditegakkan di level database, bukan hanya di kode aplikasi.
 

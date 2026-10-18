@@ -13,7 +13,7 @@
 // 'dikirim'       -> 'tersedia'        Worker goroutine pemilik     Hanya jika ClassPastiBelumTerkirim (sesi belum connect / putus sebelum kirim)
 //                                                                   Attempts di-rollback: attempts = GREATEST(attempts - 1, 0)
 //                                                                   claimed_account_id = NULL, claimed_at = NULL
-// 'dikirim'       -> 'tidak_terdaftar' Worker goroutine pemilik     Nomor terbukti tidak terdaftar di WA (checker.IsOnWhatsApp == false)
+// 'dikirim'       -> 'tidak_terdaftar' Worker goroutine pemilik     Nomor terbukti pasti tidak terdaftar di WA (server merespons entri cocok dengan IsIn == false)
 //                                                                   sent_at = now(), tanpa upah
 // 'dikirim'       -> 'gagal'           Worker goroutine pemilik     Gagal final: attempts >= maxAttempts, ClassNomorTidakValid,
 //                                                                   ClassTidakPasti (Keputusan A1), atau panic (nomor beracun)
@@ -81,7 +81,7 @@ type SettingsReader interface {
 
 // WhatsAppChecker antarmuka untuk mengecek status pendaftaran WhatsApp suatu nomor.
 type WhatsAppChecker interface {
-	IsOnWhatsApp(ctx context.Context, accountID int64, phone string) (bool, error)
+	IsOnWhatsApp(ctx context.Context, accountID int64, phone string) wa.CheckResult
 }
 
 // ErrEngineLocked dikembalikan saat engine dikunci via lock_engine atau mode pemeliharaan.
@@ -1122,11 +1122,17 @@ func (e *Engine) runWorker(ctx context.Context, accountID, workerID int64) {
 		}
 		consecutiveBuildFailures = 0
 
-		// 5. Cek terdaftar di WhatsApp sebelum kirim
+		// 5. Cek terdaftar di WhatsApp sebelum kirim (Tahap H13)
 		if e.checker != nil {
-			isOnWA, checkErr := e.checker.IsOnWhatsApp(ctx, accountID, claimed.PhoneE164)
-			if checkErr == nil && !isOnWA {
-				// Tidak terdaftar di WhatsApp: status final tidak_terdaftar, tanpa upah
+			checkRes := e.checker.IsOnWhatsApp(ctx, accountID, claimed.PhoneE164)
+			e.metrics.IncCheckResult(checkRes)
+
+			switch checkRes {
+			case wa.CheckResultTerdaftar:
+				// Lanjut ke pengiriman pesan di langkah 6
+
+			case wa.CheckResultTidakTerdaftar:
+				// Balasan server pasti tidak terdaftar (entri cocok dan IsIn == false): status final tidak_terdaftar, tanpa upah
 				statusCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 				_, _ = e.db.Pool.Exec(statusCtx,
 					`UPDATE campaign_numbers SET status = 'tidak_terdaftar', sent_at = now()
@@ -1142,6 +1148,44 @@ func (e *Engine) runWorker(ctx context.Context, accountID, workerID int64) {
 				case <-ctx.Done():
 					return
 				case <-time.After(delay):
+					continue
+				}
+
+			case wa.CheckResultTidakPasti:
+				// Hasil tidak pasti (hasil kosong, tidak ada entri cocok, atau galat jaringan):
+				// nomor tidak dikirim dan TIDAK ditandai tidak_terdaftar.
+				// Perlakukan seperti PastiBelumTerkirim (nomor kembali tersedia, backoff akun)
+				// dengan batas percobaan yang sudah ada, dan setelah batas itu nomor menjadi gagal
+				// dengan last_error 'cek_nomor_gagal'.
+				maxAttempts := config.MaxAttempts
+				if maxAttempts <= 0 {
+					maxAttempts = DefaultMaxAttempts
+				}
+				statusCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+				if claimed.Attempts >= maxAttempts {
+					_, _ = e.db.Pool.Exec(statusCtx,
+						`UPDATE campaign_numbers SET status = 'gagal', sent_at = now(), last_error = 'cek_nomor_gagal'
+						 WHERE id = $1 AND status = 'dikirim' AND claimed_account_id = $2`,
+						claimed.ID, accountID,
+					)
+				} else {
+					_, _ = e.db.Pool.Exec(statusCtx,
+						`UPDATE campaign_numbers SET status = 'tersedia', claimed_account_id = NULL, claimed_at = NULL, last_error = 'cek_nomor_gagal'
+						 WHERE id = $1 AND status = 'dikirim' AND claimed_account_id = $2`,
+						claimed.ID, accountID,
+					)
+				}
+				cancel()
+				currentNumberID = 0
+
+				e.metrics.BackoffCount.Add(1)
+				backoffWait := time.Duration(float64(2*time.Second) * (0.8 + 0.4*rand.Float64()))
+				select {
+				case <-ctx.Done():
+					return
+				case <-e.drainChan:
+					return
+				case <-time.After(backoffWait):
 					continue
 				}
 			}

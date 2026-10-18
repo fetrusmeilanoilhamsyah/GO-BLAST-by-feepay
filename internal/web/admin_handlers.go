@@ -2230,6 +2230,27 @@ func (s *Server) RunHealthChecks(ctx context.Context) []HealthCheckItem {
 		}
 	}
 
+	// 12. Pemeriksaan Nomor WhatsApp (Tahap H13)
+	var consecutiveUnreg uint64
+	if s.Engine != nil {
+		consecutiveUnreg = s.Engine.ConsecutiveTidakTerdaftar()
+	}
+	if consecutiveUnreg >= 20 {
+		results = append(results, HealthCheckItem{
+			Key:     "wa_check_status",
+			Name:    "Pemeriksaan Nomor WhatsApp",
+			Status:  "peringatan",
+			Message: fmt.Sprintf("Terdeteksi %d hasil tidak terdaftar berturut-turut di seluruh engine tanpa nomor terdaftar. Disarankan untuk memeriksa format nomor dan kondisi sesi WhatsApp.", consecutiveUnreg),
+		})
+	} else {
+		results = append(results, HealthCheckItem{
+			Key:     "wa_check_status",
+			Name:    "Pemeriksaan Nomor WhatsApp",
+			Status:  "ok",
+			Message: fmt.Sprintf("Normal (%d tidak terdaftar berturut-turut, batas peringatan: 20)", consecutiveUnreg),
+		})
+	}
+
 	return results
 }
 

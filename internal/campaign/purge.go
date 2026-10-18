@@ -137,7 +137,7 @@ func Purge(ctx context.Context, pool *pgxpool.Pool, campaignID int64, deleteImag
 		    recipient_name = NULL,
 		    custom_data = NULL,
 		    last_error = CASE 
-		        WHEN last_error IN ('hasil_tidak_pasti', 'terkirim_tidak_tercatat', 'galat_internal') THEN last_error
+		        WHEN last_error IN ('hasil_tidak_pasti', 'terkirim_tidak_tercatat', 'galat_internal', 'cek_nomor_gagal') THEN last_error
 		        ELSE 'lainnya'
 		    END
 		WHERE campaign_id = $1 AND status = 'gagal'

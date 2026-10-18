@@ -4,6 +4,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"goblast/internal/wa"
 )
 
 // LatencyBucket merepresentasikan pembagian latensi sederhana.
@@ -76,7 +78,7 @@ func (b *SendLatencyBucket) Snapshot() map[string]uint64 {
 
 // Metrics mengumpulkan seluruh metrik pengiriman atomik tanpa dependensi luar.
 type Metrics struct {
-	ClaimedCount    atomic.Uint64
+	ClaimedCount        atomic.Uint64
 	SentCount           atomic.Uint64
 	SentCountCardLink   atomic.Uint64
 	SentCountNativeFlow atomic.Uint64
@@ -98,6 +100,12 @@ type Metrics struct {
 	ClassNomorTidakValid    atomic.Uint64
 	ClassMasalahAkun        atomic.Uint64
 
+	// Penghitung pemeriksaan nomor WhatsApp (Tahap H13)
+	CheckTerdaftarCount            atomic.Uint64
+	CheckTidakTerdaftarCount        atomic.Uint64
+	CheckTidakPastiCount           atomic.Uint64
+	ConsecutiveTidakTerdaftarCount atomic.Uint64
+
 	ClaimLatency  LatencyBucket
 	RecordLatency LatencyBucket
 	SendLatency   SendLatencyBucket
@@ -118,23 +126,38 @@ func (m *Metrics) IncClass(c ResultClass) {
 	}
 }
 
+func (m *Metrics) IncCheckResult(res wa.CheckResult) {
+	switch res {
+	case wa.CheckResultTerdaftar:
+		m.CheckTerdaftarCount.Add(1)
+		m.ConsecutiveTidakTerdaftarCount.Store(0)
+	case wa.CheckResultTidakTerdaftar:
+		m.CheckTidakTerdaftarCount.Add(1)
+		m.ConsecutiveTidakTerdaftarCount.Add(1)
+	case wa.CheckResultTidakPasti:
+		m.CheckTidakPastiCount.Add(1)
+	}
+}
+
 // EngineStats adalah representasi snapshot data metrik JSON untuk admin.
 type EngineStats struct {
-	ActiveWorkers             int               `json:"active_workers"`
-	ClaimedCount              uint64            `json:"claimed_count"`
-	SentCount                 uint64            `json:"sent_count"`
-	SentCountCardLink         uint64            `json:"sent_count_card_link"`
-	SentCountNativeFlow       uint64            `json:"sent_count_native_flow"`
-	GagalCount                uint64            `json:"gagal_count"`
-	PanicCount                uint64            `json:"panic_count"`
-	LostClaimsCount           uint64            `json:"lost_claims_count"`
-	BackoffCount              uint64            `json:"backoff_count"`
-	ReferralPaidCount         uint64            `json:"referral_paid_count"`
-	ReferralSkippedFraudCount uint64            `json:"referral_skipped_fraud_count"`
-	ClassCounts               map[string]uint64 `json:"class_counts"`
-	ClaimLatency              map[string]uint64 `json:"claim_latency"`
-	RecordLatency             map[string]uint64 `json:"record_latency"`
-	SendLatency               map[string]uint64 `json:"send_latency"`
+	ActiveWorkers                  int               `json:"active_workers"`
+	ClaimedCount                   uint64            `json:"claimed_count"`
+	SentCount                      uint64            `json:"sent_count"`
+	SentCountCardLink              uint64            `json:"sent_count_card_link"`
+	SentCountNativeFlow            uint64            `json:"sent_count_native_flow"`
+	GagalCount                     uint64            `json:"gagal_count"`
+	PanicCount                     uint64            `json:"panic_count"`
+	LostClaimsCount                uint64            `json:"lost_claims_count"`
+	BackoffCount                   uint64            `json:"backoff_count"`
+	ReferralPaidCount              uint64            `json:"referral_paid_count"`
+	ReferralSkippedFraudCount      uint64            `json:"referral_skipped_fraud_count"`
+	CheckCounts                    map[string]uint64 `json:"check_counts"`
+	ConsecutiveTidakTerdaftarCount uint64            `json:"consecutive_tidak_terdaftar_count"`
+	ClassCounts                    map[string]uint64 `json:"class_counts"`
+	ClaimLatency                   map[string]uint64 `json:"claim_latency"`
+	RecordLatency                  map[string]uint64 `json:"record_latency"`
+	SendLatency                    map[string]uint64 `json:"send_latency"`
 }
 
 // Stats mengembalikan salinan data metrik engine saat ini.
@@ -155,6 +178,12 @@ func (e *Engine) Stats() EngineStats {
 		BackoffCount:              e.metrics.BackoffCount.Load(),
 		ReferralPaidCount:         e.metrics.ReferralPaidCount.Load(),
 		ReferralSkippedFraudCount: e.metrics.ReferralSkippedFraudCount.Load(),
+		CheckCounts: map[string]uint64{
+			"terdaftar":       e.metrics.CheckTerdaftarCount.Load(),
+			"tidak_terdaftar": e.metrics.CheckTidakTerdaftarCount.Load(),
+			"tidak_pasti":     e.metrics.CheckTidakPastiCount.Load(),
+		},
+		ConsecutiveTidakTerdaftarCount: e.metrics.ConsecutiveTidakTerdaftarCount.Load(),
 		ClassCounts: map[string]uint64{
 			"terkirim":             e.metrics.ClassTerkirim.Load(),
 			"pasti_belum_terkirim": e.metrics.ClassPastiBelumTerkirim.Load(),
@@ -166,6 +195,16 @@ func (e *Engine) Stats() EngineStats {
 		RecordLatency: e.metrics.RecordLatency.Snapshot(),
 		SendLatency:   e.metrics.SendLatency.Snapshot(),
 	}
+}
+
+// ConsecutiveTidakTerdaftar mengembalikan jumlah hasil tidak_terdaftar berturut-turut tanpa nomor terdaftar di seluruh engine.
+func (e *Engine) ConsecutiveTidakTerdaftar() uint64 {
+	return e.metrics.ConsecutiveTidakTerdaftarCount.Load()
+}
+
+// Metrics mengembalikan pointer ke metrik internal engine.
+func (e *Engine) Metrics() *Metrics {
+	return &e.metrics
 }
 
 // Ensure thread safety for metrics map initialization

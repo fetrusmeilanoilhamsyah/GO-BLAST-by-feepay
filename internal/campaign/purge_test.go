@@ -202,7 +202,7 @@ func TestPurge_AnonymizeCustomerData(t *testing.T) {
 			if lastErr == nil {
 				t.Errorf("Nomor ID %d (status gagal): last_error tidak boleh NULL", id)
 			} else {
-				if *lastErr != "hasil_tidak_pasti" && *lastErr != "galat_internal" && *lastErr != "lainnya" {
+				if *lastErr != "hasil_tidak_pasti" && *lastErr != "galat_internal" && *lastErr != "cek_nomor_gagal" && *lastErr != "lainnya" {
 					t.Errorf("Nomor ID %d (status gagal): last_error tidak disanitasi: %s", id, *lastErr)
 				}
 			}
@@ -233,6 +233,65 @@ func TestPurge_AnonymizeCustomerData(t *testing.T) {
 	}
 	if pSummary["terkirim"] != 2 || pSummary["gagal"] != 3 || pSummary["tidak_terdaftar"] != 1 || pSummary["tersedia"] != 2 {
 		t.Errorf("Ringkasan purge_summary tidak cocok: %+v", pSummary)
+	}
+}
+
+// TestPurge_CekNomorGagalSanitization memverifikasi bahwa kode kesalahan 'cek_nomor_gagal' (Tahap H13)
+// diakui dan dipertahankan oleh sanitasi last_error saat purge campaign.
+func TestPurge_CekNomorGagalSanitization(t *testing.T) {
+	pool := testutil.TestDB(t)
+	ctx := context.Background()
+
+	adminID, err := createTestUser(ctx, pool, "admin_purge_ceknomor", "admin")
+	if err != nil {
+		t.Fatalf("Failed to create admin: %v", err)
+	}
+
+	var campID int64
+	err = pool.QueryRow(ctx, `
+		INSERT INTO campaigns (name, status, button_mode, body, elements, created_by, archived_at)
+		VALUES ('Archived Campaign CekNomor', 'selesai', 'kartu_link', 'Pesan', '{}', $1, now() - INTERVAL '10 days')
+		RETURNING id
+	`, adminID).Scan(&campID)
+	if err != nil {
+		t.Fatalf("Failed to insert campaign: %v", err)
+	}
+
+	var batchID int64
+	_ = pool.QueryRow(ctx, `
+		INSERT INTO number_batches (campaign_id, filename, uploaded_by)
+		VALUES ($1, 'test_ceknomor.csv', $2) RETURNING id
+	`, campID, adminID).Scan(&batchID)
+
+	var nID int64
+	err = pool.QueryRow(ctx, `
+		INSERT INTO campaign_numbers (
+			campaign_id, batch_id, phone_e164, country_code,
+			recipient_name, status, last_error
+		) VALUES (
+			$1, $2, '628999999999', 'ID',
+			'Penerima Uji', 'gagal', 'cek_nomor_gagal'
+		) RETURNING id
+	`, campID, batchID).Scan(&nID)
+	if err != nil {
+		t.Fatalf("Failed to insert campaign number: %v", err)
+	}
+
+	res, err := campaign.Purge(ctx, pool, campID, false)
+	if err != nil {
+		t.Fatalf("Purge failed: %v", err)
+	}
+	if res.GagalAnon != 1 {
+		t.Fatalf("expected GagalAnon = 1, got %d", res.GagalAnon)
+	}
+
+	var lastErr string
+	err = pool.QueryRow(ctx, "SELECT last_error FROM campaign_numbers WHERE id = $1", nID).Scan(&lastErr)
+	if err != nil {
+		t.Fatalf("Failed to query sanitized last_error: %v", err)
+	}
+	if lastErr != "cek_nomor_gagal" {
+		t.Fatalf("expected last_error 'cek_nomor_gagal' to be preserved, got %q", lastErr)
 	}
 }
 

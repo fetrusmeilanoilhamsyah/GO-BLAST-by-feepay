@@ -10,8 +10,8 @@ Nomor tahap mengacu ke tabel "Daftar Tahap" di bawah.
 ## Posisi sekarang
 
 - **Fase**: 1 (MVP) & Fase 2 (Tahap 18 selesai dimajukan)
-- **Terakhir dikerjakan**: Tahap 13 — Halaman Publik Lengkap (beranda publik `/`, `/syarat`, `/privasi`, `/teknologi`, footer 3-kolom bersama, perbaikan bug label tema, tautan transparansi di login & daftar, penanganan Turnstile non-prod & verifikasi hostname, cache agregat 60 detik aman dari DB outage, i18n 3 bahasa, lolos seluruh tes pengawal CSP, emoji, warna, dan ukuran < 50 KB).
-- **Sedang dikerjakan**: Menunggu arahan tahap berikutnya dari pemilik (Tahap 14: Penarikan manual atau pengujian lingkungan VPS).
+- **Terakhir dikerjakan**: Tahap H13 — Perbaikan pemeriksaan nomor terdaftar whatsmeow dan hasil tiga keadaan (bukti bug via tes gagal, prefix '+' pada query USync E.164, pencocokan respons via r.Query bukan JID LID, hasil tiga keadaan Terdaftar/TidakTerdaftar/TidakPasti, backoff & retry untuk TidakPasti hingga 3 kali lalu gagal dengan 'cek_nomor_gagal', metrik engine & health check wa_check_status, sanitasi purge, logging bertopeng aman, lolos 100% tes).
+- **Sedang dikerjakan**: Menunggu arahan tahap berikutnya dari pemilik proyek.
 - **Blocker**: Tidak ada (menunggu pengukuran memori per sesi riil dan pengujian `go test -race` oleh pemilik di lingkungan dengan gcc/WSL).
 
 ---
@@ -136,6 +136,7 @@ Terbaru di atas. Satu baris ringkas per keputusan.
 
 | Tanggal | Kode / Keputusan | Ringkasan Keputusan | Oleh |
 |---|---|---|---|
+| 2026-10-18 | H13 / Pemeriksaan Nomor | Perbaikan IsOnWhatsApp whatsmeow (prefix '+', pencocokan r.Query bukan LID, tiga keadaan: Terdaftar/TidakTerdaftar/TidakPasti), penanganan retry backoff TidakPasti (3x lalu gagal cek_nomor_gagal), metrik engine, health check wa_check_status, sanitasi purge | pemilik dan agen |
 | 2026-10-18 | H12 / Koreksi Klaim | Koreksi klaim memori per sesi & 75-80 sesi (belum terukur sesi WA riil), default konservatif MAX_ACTIVE_SESSIONS=20, MemoryMax 75% RAM VPS, Tahap 15 kembali Sebagian (butuh -race & ukur memori) | pemilik dan agen |
 | 2026-10-18 | H11 / Dokumentasi & Kesiapan | Selaraskan seluruh dokumen dengan kode aktual, 2 guard test otomatis (katalog DB & env parity), DOC_SECURITY_DEPLOY komprehensif, checklist go-live 21 butir | pemilik dan agen |
 | 2026-10-18 | H10 / Penyetelan Parameter | Uji beban 11 skenario L1–L11 (tanpa sesi WA), DB_MAX_CONNS 25–30, DB_MIN_CONNS 5, whatsmeow pool 10; memori per sesi & -race belum terukur | pemilik dan agen |
@@ -187,8 +188,20 @@ Perbedaan antara DOC_KONSEP dan kode aktual yang dicatat di Tahap S0:
 
 ## Catatan temuan
 
-Hasil uji dan hal penting yang ditemukan saat bekerja (Rincian lengkap Tahap 0 s.d. H10 telah diarsipkan di [ARSIP_PROGRES.md](ARSIP_PROGRES.md)).
-
+- **2026-10-18 (Tahap H13 — Perbaikan Pemeriksaan Nomor Terdaftar WhatsApp)**:
+  - Pembuktian Bug Fail-First: Ditulis `internal/wa/manager_h13_test.go` (`TestH13_Manager_IsOnWhatsApp_Bugs_Proof`) yang membuktikan tiga kelemahan fatal pada implementasi lama:
+    1. `whatsmeow.Client.IsOnWhatsApp` menuntut nomor diawali tanda `+` (`go.mau.fi/whatsmeow/user.go:174`). Nomor di DB disimpan polos tanpa `+` (`numbers.go:81-82`), menyebabkan kueri USync gagal/diabaikan server.
+    2. Pencocokan respons membandingkan `r.JID.User == phone`. Padahal dalam mode LID (`addressing_mode: lid`), `r.JID.User` berisi LID (bukan nomor telepon), sehingga pencocokan selalu bernilai false. Pencocokan yang benar wajib membaca `strings.TrimPrefix(r.Query, "+")`.
+    3. Respons kosong dari server, galat jaringan, atau nomor tidak ditemukan dalam respons USync sebelumnya diperlakukan sebagai `(false, nil)`, yang oleh engine langsung ditandai secara final dan keliru sebagai `tidak_terdaftar`.
+    Ketiga subtes membuktikan kegagalan 100% pada implementasi lama sebelum perbaikan.
+  - Perbaikan & Implementasi:
+    1. `internal/wa/manager.go`: Menambahkan tipe enum hasil tiga keadaan `CheckResult`: `CheckResultTerdaftar`, `CheckResultTidakTerdaftar`, dan `CheckResultTidakPasti`. Menambahkan awalan `+` khusus saat memanggil `cli.IsOnWhatsApp` tanpa mengubah format E.164 polos di DB. Pencocokan respons menggunakan `r.Query`. Menambahkan pencatatan debug log aman bertopeng nomor satu kali per sesi akun via `checkLogged atomic.Bool`.
+    2. `internal/engine/engine.go`: Memperbarui `workerLoop` dan interface `WhatsAppChecker`. Jika hasil `CheckResultTidakPasti` (respons kosong/galat jaringan/timeout), nomor TIDAK ditandai `tidak_terdaftar`, melainkan dikembalikan ke status `tersedia` dengan backoff singkat hingga batas percobaan (`attempts >= 3`). Jika telah mencapai batas, barulah difinalisasi menjadi `gagal` dengan `last_error = 'cek_nomor_gagal'`. Status `tidak_terdaftar` hanya diberikan jika server WhatsApp pasti mengonfirmasi `IsIn == false`.
+    3. `internal/engine/metrics.go`: Menambahkan penghitung metrik atomik `CheckTerdaftarCount`, `CheckTidakTerdaftarCount`, `CheckTidakPastiCount`, dan `ConsecutiveTidakTerdaftarCount` pada `EngineStats`, diekspos di endpoint `/admin/api/metrics`.
+    4. `internal/campaign/purge.go`: Menambahkan `'cek_nomor_gagal'` ke dalam daftar kategori `last_error` yang diizinkan pada saat pembersihan anonimisasi nomor.
+    5. `internal/web/admin_handlers.go`: Menambahkan indikator pemeriksaan kesehatan `wa_check_status` pada `/admin/maintenance` yang berubah menjadi status `peringatan` (kuning) jika terdeteksi 20 nomor tidak terdaftar berturut-turut tanpa nomor terdaftar.
+    6. `locales/*.json`: Menambahkan kunci i18n pemeriksaan nomor WhatsApp (ditandai penutur asli untuk en dan zh).
+    7. Seluruh pengujian (`manager_h13_test.go`, `engine_h13_test.go`, `admin_h13_test.go`, `purge_test.go`) lulus 100%.
 - **2026-10-18 (Tahap H12 — Koreksi Klaim yang Tidak Terbukti)**:
   - Guard Test Pembuktian Awal: Ditulis `internal/config/h12_unproven_claims_test.go` (`TestH12_ProveUnprovenClaims`). Pada pengujian awal, tes berhasil membuktikan kegagalan di 4 area: klaim `(diukur empiris di H10: 75-80 sesi aman)` & `MAX_ACTIVE_SESSIONS=50` di `.env.example`, klaim 75–80 sesi & subbab empiris di `DOC_KONSEP.md`, klaim hasil ukur empiris & nilai 50 di `DOC_SECURITY_DEPLOY.md`, serta status Tahap 15 "Selesai" dan keputusan #6 tertutup di `DOC_PROGRES.md`.
   - Catatan Koreksi Tanpa Pembelaan:
@@ -216,6 +229,7 @@ Hasil uji dan hal penting yang ditemukan saat bekerja (Rincian lengkap Tahap 0 s
 
 Terbaru di atas. Ringkasan satu baris per tugas (Rincian multi-baris diarsipkan di [ARSIP_PROGRES.md](ARSIP_PROGRES.md)).
 
+- 2026-10-18: **Tahap H13 selesai** — Perbaikan pemeriksaan nomor terdaftar whatsmeow: prefix '+' query USync, matching r.Query bukan JID LID, hasil tiga keadaan (Terdaftar/TidakTerdaftar/TidakPasti), retry backoff TidakPasti (3x lalu gagal cek_nomor_gagal), metrik engine & health check wa_check_status, sanitasi purge, lolos seluruh tes.
 - 2026-10-18: **Tahap 13 selesai** — Halaman publik lengkap: beranda publik "/", "/syarat", "/privasi", "/teknologi", footer 3 kolom bersama, audit whatsmeow, transparansi keamanan faktual, isolasi data privasi, i18n 3 bahasa, lolos seluruh pengawal tes.
 - 2026-10-18: **Tahap H12 selesai** — Koreksi klaim yang tidak terbukti: hapus klaim empiris sesi/memori, default konservatif MAX_ACTIVE_SESSIONS=20, MemoryMax 75% RAM VPS, Tahap 15 Sebagian (butuh -race & ukur memori), prosedur pengukuran pemilik.
 - 2026-10-18: **Tahap H11 selesai** — Dokumentasi selaras dengan kode, 2 automated guard test (DOC_SKEMA & env), perapian DOC_SECURITY_DEPLOY, DOC_PROGRES, checklist go-live 21 butir.

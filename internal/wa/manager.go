@@ -60,6 +60,7 @@ type Session struct {
 	lastQR         string
 	lastQRImageB64 string
 	pairingFn      func(phone string) (string, error)
+	checkLogged    atomic.Bool // Tahap H13: catat log periksa nomor sekali per sesi
 }
 
 // GetStatus mengambil status sesi yang dilindungi sess.mu.
@@ -880,29 +881,71 @@ func (m *Manager) Delete(ctx context.Context, accountID, callerWorkerID int64) e
 	return nil
 }
 
+// CheckResult merepresentasikan status verifikasi pendaftaran nomor WhatsApp (Tahap H13).
+type CheckResult string
+
+const (
+	CheckResultTerdaftar     CheckResult = "terdaftar"
+	CheckResultTidakTerdaftar CheckResult = "tidak_terdaftar"
+	CheckResultTidakPasti    CheckResult = "tidak_pasti"
+)
+
 // IsOnWhatsApp memeriksa apakah nomor terdaftar di WhatsApp via client.
-func (m *Manager) IsOnWhatsApp(ctx context.Context, accountID int64, phone string) (bool, error) {
+// Mengembalikan CheckResult (Terdaftar, TidakTerdaftar, atau TidakPasti).
+func (m *Manager) IsOnWhatsApp(ctx context.Context, accountID int64, phone string) CheckResult {
 	sess := m.GetSession(accountID)
 	if sess == nil {
-		return false, ErrSessionNotActive
+		return CheckResultTidakPasti
 	}
 	sess.mu.RLock()
 	cli := sess.Client
 	sess.mu.RUnlock()
 	if cli == nil {
-		return false, ErrSessionNotActive
+		return CheckResultTidakPasti
 	}
 
-	results, err := cli.IsOnWhatsApp(ctx, []string{phone})
-	if err != nil {
-		return false, err
+	// Normalisasi query: pustaka whatsmeow meminta format internasional dengan awalan '+'
+	// (go.mau.fi/whatsmeow/user.go baris 174-175). Format phone_e164 di DB disimpan tanpa '+',
+	// sehingga prefix '+' ditambahkan saat penyusunan query tanpa mengubah format di database.
+	queryPhone := phone
+	if !strings.HasPrefix(queryPhone, "+") {
+		queryPhone = "+" + queryPhone
 	}
+	cleanTarget := strings.TrimPrefix(queryPhone, "+")
+
+	results, err := cli.IsOnWhatsApp(ctx, []string{queryPhone})
+	if err != nil {
+		slog.Debug("wa: galat saat periksa nomor whatsapp", "account_id", accountID, "phone", maskPhone(cleanTarget), "err", err)
+		return CheckResultTidakPasti
+	}
+
+	// Catat log debug sekali per akun per sesi untuk diagnostik format query dan balasan (Tahap H13 Butir 5)
+	if sess.checkLogged.CompareAndSwap(false, true) {
+		var respItems []string
+		for _, r := range results {
+			respItems = append(respItems, fmt.Sprintf("Query:%s,IsIn:%v,Server:%s", maskPhone(r.Query), r.IsIn, r.JID.Server))
+		}
+		slog.Debug("wa: contoh hasil pemeriksaan nomor whatsapp",
+			"account_id", accountID,
+			"query", maskPhone(queryPhone),
+			"result_count", len(results),
+			"results", strings.Join(respItems, "; "),
+		)
+	}
+
+	// Cari entri balasan yang cocok lewat r.Query (bukan membandingkan JID.User mentah karena JID bisa berupa LID)
 	for _, r := range results {
-		if r.JID.User == phone {
-			return r.IsIn, nil
+		cleanQuery := strings.TrimPrefix(r.Query, "+")
+		if cleanQuery == cleanTarget || r.Query == queryPhone || (r.Query == "" && r.JID.User == cleanTarget) {
+			if r.IsIn {
+				return CheckResultTerdaftar
+			}
+			return CheckResultTidakTerdaftar
 		}
 	}
-	return false, nil
+
+	// Jika balasan kosong atau tidak ada entri yang cocok: TidakPasti
+	return CheckResultTidakPasti
 }
 
 // DisconnectAll memutus seluruh sesi WhatsApp aktif tanpa logout (dipakai saat shutdown).
