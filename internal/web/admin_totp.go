@@ -446,7 +446,15 @@ func (s *Server) RequireStepUp(next http.HandlerFunc) http.HandlerFunc {
 				})
 				return
 			}
-			http.Redirect(w, r, "/admin/stepup?redirect="+url.QueryEscape(r.RequestURI), http.StatusSeeOther)
+			redirectTarget := r.RequestURI
+			if r.Method == http.MethodPost {
+				if ref := r.Header.Get("Referer"); ref != "" {
+					if u, err := url.Parse(ref); err == nil && u.Path != "" {
+						redirectTarget = u.RequestURI()
+					}
+				}
+			}
+			http.Redirect(w, r, "/admin/stepup?redirect="+url.QueryEscape(redirectTarget), http.StatusSeeOther)
 			return
 		}
 

@@ -902,6 +902,18 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	handle("POST /admin/storage/clean-orphans", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.RequireStepUp(s.HandleAdminStorageCleanOrphansPOST), "admin"))))
 	handle("POST /admin/storage/clean-retention", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.RequireStepUp(s.HandleAdminStorageCleanRetentionPOST), "admin"))))
 	handle("POST /admin/storage/vacuum", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.RequireStepUp(s.HandleAdminStorageVacuumPOST), "admin"))))
+	handle("GET /admin/storage/vacuum", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/admin/storage", http.StatusSeeOther)
+	}, "admin"))))
+	handle("GET /admin/storage/clean-tmp", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/admin/storage", http.StatusSeeOther)
+	}, "admin"))))
+	handle("GET /admin/storage/clean-orphans", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/admin/storage", http.StatusSeeOther)
+	}, "admin"))))
+	handle("GET /admin/storage/clean-retention", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/admin/storage", http.StatusSeeOther)
+	}, "admin"))))
 
 	// Tahap H9: Backup Aman dan Pemulihan
 	handle("GET /admin/backups", s.RateLimitAdminMiddleware(s.CSRFMiddleware(s.RequireRole(s.HandleAdminBackupsGET, "admin"))))
