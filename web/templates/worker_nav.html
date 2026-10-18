@@ -75,6 +75,13 @@
             Tandai semua dibaca
         </button>
     </div>
+    <div style="padding: 10px 16px; background-color: var(--color-surface-muted); border-bottom: 1px solid var(--color-border); display: flex; align-items: center; gap: 10px;">
+        <img src="/static/img/gopher-working.png" alt="Status Sistem" style="height: 38px; width: 38px; object-fit: contain; border-radius: 50%; background-color: var(--color-card); border: 1px solid var(--color-border); padding: 2px;">
+        <div>
+            <div style="font-size: 12px; font-weight: 700; color: var(--color-text);">Sistem Operasional</div>
+            <div style="font-size: 11px; color: var(--color-muted);">Pemberitahuan akun &amp; status blast</div>
+        </div>
+    </div>
     <div id="notif-list" style="padding: 0;">
         <div style="padding: 24px; text-align: center; color: var(--color-muted); font-size: 13px;">Memuat notifikasi...</div>
     </div>
@@ -383,11 +390,8 @@
 
 <!-- TOMBOL MENGAMBANG (FAB) BANTUAN & CS -->
 <button type="button" class="worker-help-fab" id="btn-helpdesk-fab" aria-label="Bantuan dan Layanan CS" title="Pusat Bantuan & CS">
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <circle cx="12" cy="12" r="10"></circle>
-        <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
-        <line x1="12" y1="17" x2="12.01" y2="17"></line>
-    </svg>
+    <img src="/static/img/gopher-team.png" alt="Maskot CS" style="height: 28px; width: auto; object-fit: contain;">
+    <span style="font-weight: 700; font-size: 13px; color: var(--color-text); letter-spacing: 0.02em;">CS</span>
 </button>
 
 <!-- OVERLAY BACKDROP MODAL BANTUAN -->
@@ -395,17 +399,16 @@
 
 <!-- MODAL POPUP BANTUAN CS & FAQ -->
 <div id="helpdesk-modal" class="helpdesk-modal" role="dialog" aria-modal="true" aria-labelledby="helpdesk-title">
-    <div class="helpdesk-modal-header">
-        <div>
-            <div id="helpdesk-title" style="font-weight: 700; font-size: 15px; color: var(--color-text);">Pusat Bantuan & Layanan</div>
-            <div style="font-size: 12px; color: var(--color-muted); margin-top: 2px;">Jawaban instan, kontak resmi, atau kirim laporan</div>
-        </div>
-        <button type="button" class="worker-drawer-close" id="btn-helpdesk-close" aria-label="Tutup Bantuan">
+    <div class="helpdesk-modal-header" style="flex-direction: column; align-items: center; text-align: center; position: relative; padding: 18px 20px 14px; background-color: var(--color-surface-muted);">
+        <button type="button" class="worker-drawer-close" id="btn-helpdesk-close" aria-label="Tutup Bantuan" style="position: absolute; top: 12px; right: 12px;">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <line x1="18" y1="6" x2="6" y2="18"></line>
                 <line x1="6" y1="6" x2="18" y2="18"></line>
             </svg>
         </button>
+        <img src="/static/img/gopher-team.png" alt="Tim Layanan GO BLAST" style="height: 75px; width: auto; object-fit: contain; margin-bottom: 8px;">
+        <div id="helpdesk-title" style="font-weight: 700; font-size: 16px; color: var(--color-text);">Pusat Bantuan &amp; Layanan CS</div>
+        <div style="font-size: 12px; color: var(--color-muted); margin-top: 2px;">Tim support GO BLAST siap membantu kendala Anda</div>
     </div>
 
     <div class="helpdesk-tab-nav">
@@ -683,7 +686,11 @@ function loadNotifications() {
             var list = document.getElementById('notif-list');
             if (!list) return;
             if (!data.notifications || data.notifications.length === 0) {
-                list.innerHTML = '<div style="padding: 24px; text-align: center; color: var(--color-muted); font-size: 13px;">Tidak ada notifikasi</div>';
+                list.innerHTML = '<div style="padding: 28px 16px; text-align: center; color: var(--color-muted); font-size: 13px;">' +
+                    '<img src="/static/img/gopher-working.png" alt="Sistem Bekerja" style="height: 72px; width: auto; object-fit: contain; margin-bottom: 8px; display: inline-block;">' +
+                    '<div style="font-weight: 600; color: var(--color-text); font-size: 13px;">Tidak ada notifikasi baru</div>' +
+                    '<div style="font-size: 11px; margin-top: 3px;">Sistem blast berjalan normal</div>' +
+                    '</div>';
                 return;
             }
             list.innerHTML = data.notifications.map(function(n) {

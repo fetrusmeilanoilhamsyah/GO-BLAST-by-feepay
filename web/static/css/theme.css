@@ -1126,23 +1126,30 @@ textarea.input {
   position: fixed;
   bottom: 24px;
   right: 24px;
-  width: 50px;
-  height: 50px;
-  border-radius: 50%;
-  background-color: var(--color-primary);
-  color: var(--color-on-primary);
-  border: 1px solid var(--color-border);
-  box-shadow: 0 4px 16px var(--color-shadow);
+  padding: 6px 14px 6px 8px;
+  height: 44px;
+  border-radius: 24px;
+  background-color: var(--color-card);
+  color: var(--color-text);
+  border: 1.5px solid var(--color-border);
+  box-shadow: 0 4px 18px var(--color-shadow);
   display: flex;
   align-items: center;
-  justify-content: center;
+  gap: 8px;
   cursor: pointer;
   z-index: 999;
-  transition: transform 0.15s ease, background-color 0.15s ease;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+  user-select: none;
 }
 
 .worker-help-fab:hover {
-  transform: scale(1.06);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 22px var(--color-shadow);
+  border-color: var(--color-primary);
+}
+
+.worker-help-fab:active {
+  transform: scale(0.96);
 }
 
 .helpdesk-modal {
