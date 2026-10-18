@@ -712,6 +712,9 @@ textarea.input {
     width: 100%;
     margin: 0;
     box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    min-height: calc(100vh - 60px);
   }
 
   .drawer-backdrop:not(.is-open) {
@@ -723,6 +726,8 @@ textarea.input {
 @media (max-width: 768px) {
   .worker-layout {
     min-height: 100vh;
+    display: flex;
+    flex-direction: column;
     background-color: var(--color-bg);
   }
 
@@ -732,6 +737,10 @@ textarea.input {
     width: 100%;
     margin: 0 auto;
     box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: calc(100vh - 56px);
   }
 }
 
@@ -1121,21 +1130,49 @@ textarea.input {
   }
 }
 
+/* Topbar Notification Bell dengan Maskot di Belakang Icon */
+.notif-bell-btn {
+  position: relative;
+  overflow: visible;
+}
+
+.notif-bell-bg {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  height: 25px;
+  width: 25px;
+  object-fit: contain;
+  opacity: 0.65;
+  pointer-events: none;
+  z-index: 0;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.notif-bell-btn:hover .notif-bell-bg {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1.15);
+}
+
 /* Helpdesk & Support Modal */
 .worker-help-fab {
   position: fixed;
   bottom: 24px;
   right: 24px;
-  padding: 6px 14px 6px 8px;
-  height: 44px;
-  border-radius: 24px;
+  padding: 8px 12px 6px 12px;
+  min-width: 60px;
+  height: auto;
+  border-radius: 16px;
   background-color: var(--color-card);
   color: var(--color-text);
   border: 1.5px solid var(--color-border);
   box-shadow: 0 4px 18px var(--color-shadow);
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 8px;
+  justify-content: center;
+  gap: 3px;
   cursor: pointer;
   z-index: 999;
   transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
@@ -1150,6 +1187,14 @@ textarea.input {
 
 .worker-help-fab:active {
   transform: scale(0.96);
+}
+
+.worker-help-fab-text {
+  font-weight: 700;
+  font-size: 11px;
+  color: var(--color-text);
+  letter-spacing: 0.01em;
+  line-height: 1.1;
 }
 
 .helpdesk-modal {
@@ -1569,17 +1614,29 @@ textarea.input {
 
 /* Worker Footer (Di dalam Panel Pekerja) */
 .worker-footer {
-  margin-top: 24px;
-  padding: 16px 0 20px;
+  margin-top: auto;
+  padding: 32px 0 24px;
   border-top: 1px solid var(--color-border);
   font-size: 12px;
   color: var(--color-muted);
+  width: 100%;
 }
 
 .worker-footer-container {
   display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  text-align: center;
+  width: 100%;
+}
+
+.worker-footer-top {
+  display: flex;
   align-items: center;
   justify-content: space-between;
+  width: 100%;
   flex-wrap: wrap;
   gap: 12px;
 }
@@ -1587,18 +1644,25 @@ textarea.input {
 .worker-footer-brand {
   display: flex;
   align-items: center;
+  gap: 6px;
+}
+
+.worker-footer-dot {
+  margin: 0 6px;
+  color: var(--color-border);
 }
 
 .worker-footer-links {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 16px;
   flex-wrap: wrap;
 }
 
 .worker-footer-links a {
   color: var(--color-muted);
   text-decoration: none;
+  font-size: 12px;
   transition: color 0.15s ease;
 }
 
@@ -1612,15 +1676,62 @@ textarea.input {
   font-size: 11px;
 }
 
+.worker-footer-mascots {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding: 8px 18px;
+  background-color: var(--color-surface-muted);
+  border: 1px solid var(--color-border);
+  border-radius: 30px;
+  margin: 2px 0;
+}
+
+.footer-mascot-img {
+  height: 30px;
+  width: auto;
+  object-fit: contain;
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.08));
+  cursor: pointer;
+}
+
+.footer-mascot-img:hover {
+  transform: translateY(-4px) scale(1.22);
+}
+
+.worker-footer-credit {
+  font-size: 11px;
+  color: var(--color-muted);
+  line-height: 1.5;
+  max-width: 650px;
+}
+
 @media (max-width: 640px) {
   .worker-footer {
-    margin-top: 20px;
-    padding: 14px 0 24px;
+    padding: 24px 0 20px;
   }
-  .worker-footer-container {
+
+  .worker-footer-top {
     flex-direction: column;
-    align-items: flex-start;
+    align-items: center;
     gap: 10px;
+  }
+
+  .worker-footer-links {
+    justify-content: center;
+    gap: 12px;
+  }
+
+  .worker-footer-mascots {
+    gap: 10px;
+    padding: 6px 12px;
+  }
+
+  .footer-mascot-img {
+    height: 26px;
   }
 }
 

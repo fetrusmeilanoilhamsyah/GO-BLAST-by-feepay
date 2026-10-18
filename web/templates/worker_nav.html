@@ -47,12 +47,13 @@
             </svg>
         </button>
 
-        <button type="button" class="worker-topbar-btn" id="notif-bell-btn" aria-label="Notifikasi" style="position: relative; padding: 7px 10px;">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+        <button type="button" class="worker-topbar-btn notif-bell-btn" id="notif-bell-btn" aria-label="Notifikasi" style="position: relative; padding: 7px 10px; overflow: visible;">
+            <img src="/static/img/gopher-working.png" class="notif-bell-bg" alt="" aria-hidden="true">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="position: relative; z-index: 1;">
                 <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
                 <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
             </svg>
-            <span id="notif-badge" class="notif-badge">0</span>
+            <span id="notif-badge" class="notif-badge" style="z-index: 2;">0</span>
         </button>
 
         <button type="button" class="worker-topbar-btn" id="btn-worker-drawer-right" aria-label="{{ call .T "worker.account_info" }}" style="padding: 5px 8px;">
@@ -388,10 +389,10 @@
     </div>
 </aside>
 
-<!-- TOMBOL MENGAMBANG (FAB) BANTUAN & CS -->
-<button type="button" class="worker-help-fab" id="btn-helpdesk-fab" aria-label="Bantuan dan Layanan CS" title="Pusat Bantuan & CS">
-    <img src="/static/img/gopher-team.png" alt="Maskot CS" style="height: 28px; width: auto; object-fit: contain;">
-    <span style="font-weight: 700; font-size: 13px; color: var(--color-text); letter-spacing: 0.02em;">CS</span>
+<!-- TOMBOL MENGAMBANG (FAB) BANTUAN -->
+<button type="button" class="worker-help-fab" id="btn-helpdesk-fab" aria-label="Pusat Bantuan" title="Pusat Bantuan">
+    <img src="/static/img/gopher-team.png" alt="Maskot Bantuan" style="height: 30px; width: auto; object-fit: contain;">
+    <span class="worker-help-fab-text">Bantuan</span>
 </button>
 
 <!-- OVERLAY BACKDROP MODAL BANTUAN -->
@@ -1124,18 +1125,39 @@ function dismissSystemLockModal() {
 {{define "worker_footer"}}
 <footer class="worker-footer">
     <div class="worker-footer-container">
-        <div class="worker-footer-brand" style="display: flex; align-items: center; gap: 6px;">
-            <img src="/static/img/gopher-flash.png" alt="Logo" style="height: 18px; width: auto; object-fit: contain;">
-            <span style="font-weight: 700; color: var(--color-text);">GO BLAST</span>
-            <small style="color: var(--color-muted); font-size: 11px;">by feepay</small>
-            <span style="margin: 0 6px; color: var(--color-border);">&bull;</span>
-            <span class="worker-footer-copy">&copy; 2026 Hak cipta dilindungi.</span>
+        <!-- BARIS ATAS: BRAND & LINK NAVIGASI -->
+        <div class="worker-footer-top">
+            <div class="worker-footer-brand">
+                <img src="/static/img/gopher-flash.png" alt="Logo" style="height: 18px; width: auto; object-fit: contain;">
+                <span style="font-weight: 700; color: var(--color-text);">GO BLAST</span>
+                <small style="color: var(--color-muted); font-size: 11px;">by feepay</small>
+                <span class="worker-footer-dot">&bull;</span>
+                <span class="worker-footer-copy">&copy; 2026 Hak cipta dilindungi.</span>
+            </div>
+            <div class="worker-footer-links">
+                <a href="#helpdesk" id="btn-worker-footer-cs">Bantuan</a>
+                <a href="/syarat" target="_blank">Syarat &amp; Ketentuan</a>
+                <a href="/privasi" target="_blank">Kebijakan Privasi</a>
+                <a href="/teknologi" target="_blank">Teknologi</a>
+            </div>
         </div>
-        <div class="worker-footer-links">
-            <a href="#helpdesk" id="btn-worker-footer-cs">Bantuan CS</a>
-            <a href="/syarat" target="_blank">Syarat &amp; Ketentuan</a>
-            <a href="/privasi" target="_blank">Kebijakan Privasi</a>
-            <a href="/teknologi" target="_blank">Teknologi</a>
+
+        <!-- BARIS TENGAH: PARADE SEMUA MASKOT GOPHER KECIL (RAME) -->
+        <div class="worker-footer-mascots" title="Koleksi Maskot Go">
+            <img src="/static/img/gopher-flash.png" alt="Gopher Kilat" title="Gopher Kilat" class="footer-mascot-img">
+            <img src="/static/img/gopher-thief.png" alt="Gopher Maling" title="Gopher Maling" class="footer-mascot-img">
+            <img src="/static/img/gopher-chill.png" alt="Gopher Santai" title="Gopher Santai" class="footer-mascot-img">
+            <img src="/static/img/gopher-team.png" alt="Gopher Tim Bantuan" title="Gopher Tim Bantuan" class="footer-mascot-img">
+            <img src="/static/img/gopher-working.png" alt="Gopher Konstruksi" title="Gopher Konstruksi" class="footer-mascot-img">
+            <img src="/static/img/gopher-surf.png" alt="Gopher Berselancar" title="Gopher Berselancar" class="footer-mascot-img">
+            <img src="/static/img/gopher-peek.png" alt="Gopher Mengintip" title="Gopher Mengintip" class="footer-mascot-img">
+            <img src="/static/img/gopher-astro.png" alt="Gopher Astronot" title="Gopher Astronot" class="footer-mascot-img">
+            <img src="/static/img/gopher-mic.png" alt="Gopher Vokalis" title="Gopher Vokalis" class="footer-mascot-img">
+        </div>
+
+        <!-- BARIS BAWAH: ATRIBUSI KREDIT RESMI CC BY 3.0 (JANGAN DIHAPUS) -->
+        <div class="worker-footer-credit">
+            Maskot Go dirancang oleh Renée French di bawah lisensi Creative Commons Attribution 3.0 (<a href="https://creativecommons.org/licenses/by/3.0/" target="_blank" rel="noopener noreferrer" style="color: var(--color-muted); text-decoration: underline;">CC BY 3.0</a>).
         </div>
     </div>
 </footer>
