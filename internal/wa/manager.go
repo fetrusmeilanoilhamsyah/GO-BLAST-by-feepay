@@ -1093,7 +1093,10 @@ func (m *Manager) CleanupStalePendingAccounts(ctx context.Context, workerID int6
 	rows, err := m.db.Pool.Query(ctx,
 		`SELECT id FROM wa_accounts
 		 WHERE worker_id = $1
-		   AND status IN ('menunggu_scan', 'antre')
+		   AND (
+		     status IN ('menunggu_scan', 'antre')
+		     OR (status = 'terputus' AND stop_reason = 'server restart')
+		   )
 		   AND wa_jid_hash IS NULL
 		   AND connected_at IS NULL`,
 		workerID,

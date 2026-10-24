@@ -8,6 +8,7 @@ import (
 	_ "image/png" // register PNG decoder
 	"log/slog"
 	"os"
+	"strings"
 	"sync"
 
 	"golang.org/x/image/draw"
@@ -40,7 +41,7 @@ func ResetThumbnailCache() {
 // Jika belum ada di cache, thumbnail digenerate sekali dan disimpan.
 // Error pembuatannya dicatat di log dan tidak diabaikan.
 func GetOrCreateThumbnail(imagePath string, targetW, quality int) ([]byte, error) {
-	if imagePath == "" {
+	if imagePath == "" || strings.HasPrefix(imagePath, "data:") {
 		return nil, nil
 	}
 
@@ -78,7 +79,7 @@ func GetOrCreateThumbnail(imagePath string, targetW, quality int) ([]byte, error
 // GenerateThumbnail membaca file gambar dari imagePath, mengubah ukurannya menjadi lebar targetW
 // (tinggi proporsional), dan mengembalikan bytes JPEG dengan kualitas quality (1-100).
 func GenerateThumbnail(imagePath string, targetW int, quality int) ([]byte, error) {
-	if imagePath == "" {
+	if imagePath == "" || strings.HasPrefix(imagePath, "data:") {
 		return nil, nil
 	}
 	f, err := os.Open(imagePath)

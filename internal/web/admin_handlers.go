@@ -490,20 +490,8 @@ func (s *Server) HandleAdminSettingsPOST(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Waktu perubahan kurs otomatis di rate_idr_to_usdt_updated_at
-	var oldKurs int64
-	var oldKursJSON string
-	_ = s.DB.Pool.QueryRow(r.Context(), "SELECT value::text FROM settings WHERE key = 'rate_idr_to_usdt'").Scan(&oldKursJSON)
-	_ = json.Unmarshal([]byte(oldKursJSON), &oldKurs)
-
-	var oldUpdatedAt string
-	_ = s.DB.Pool.QueryRow(r.Context(), "SELECT value::text FROM settings WHERE key = 'rate_idr_to_usdt_updated_at'").Scan(&oldUpdatedAt)
-	oldUpdatedAt = strings.Trim(oldUpdatedAt, `"`)
-
-	kursUpdatedAt := oldUpdatedAt
-	if oldKurs != rateIDRtoUSDT || kursUpdatedAt == "" {
-		kursUpdatedAt = time.Now().Format(time.RFC3339)
-	}
+	// Waktu pembaruan/konfirmasi kurs otomatis disegarkan setiap kali admin menyimpan pengaturan
+	kursUpdatedAt := time.Now().Format(time.RFC3339)
 
 	// 5. Validate default_country (ISO 3166-1 alpha-2, valid region)
 	defaultCountry := strings.ToUpper(strings.TrimSpace(r.FormValue("default_country")))

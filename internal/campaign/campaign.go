@@ -403,7 +403,7 @@ func Render(body string, imagePath string, elements Elements, mode string, recip
 			}
 
 			var thumb []byte
-			if imagePath != "" {
+			if imagePath != "" && !strings.HasPrefix(imagePath, "data:") {
 				var thumbErr error
 				thumb, thumbErr = GetOrCreateThumbnail(imagePath, DefaultThumbWidth, DefaultThumbQuality)
 				if thumbErr != nil {
