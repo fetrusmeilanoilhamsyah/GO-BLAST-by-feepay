@@ -193,16 +193,18 @@ Perbedaan antara DOC_KONSEP dan kode aktual yang dicatat di Tahap S0:
 
 ## Catatan temuan
 
-- **2026-10-24 (Audit Pra-Produksi & Perbaikan 3 Bug Kritis — Rilis v1.0.3)**:
+- **2026-10-24 (Audit Pra-Produksi & Perbaikan 4 Bug Kritis — Rilis v1.0.3–v1.0.4)**:
   - *Temuan Audit Log VPS (`journalctl -u goblast`), Katalog Database, & Kode*:
     1. **Bug #1 (`campaign.Render` & `GetOrCreateThumbnail` memanggil `os.Stat` pada Data URI base64 saat Preview Admin)**: Pada `HandleAdminCampaignPreview`, `tmpl.ImagePath` diisi string `data:image/jpeg;base64,...` (hingga ratusan KB) lalu dikirim ke `campaign.RenderForRecipient`. Di `campaign.go:406` dan `thumbnail.go:47`, `GetOrCreateThumbnail` memanggil `os.Stat(imagePath)` karena `imagePath != ""`, menghasilkan galat `file name too long` dan mencetak seluruh base64 ratusan KB ke `journalctl` (`level=ERROR msg="campaign: stat gambar thumbnail gagal"`).
     2. **Bug #2 (`HandleAdminSettingsPOST` tidak menyegarkan `rate_idr_to_usdt_updated_at` jika angka kurs tetap sama)**: Di `admin_handlers.go:504`, `rate_idr_to_usdt_updated_at` sebelumnya hanya diperbarui jika `oldKurs != rateIDRtoUSDT`. Akibatnya, jika keesokan harinya kurs USDT masih tetap `15000` dan admin menekan "Simpan Pengaturan" untuk mengonfirmasi ulang kurs, usia kurs tidak diperbarui dan pekerja tetap tertolak saat konversi IDR ke USDT (`KursMaxAgeHours = 24`).
     3. **Bug #3 (`CleanupStalePendingAccounts` belum mencakup baris sementara yang berubah menjadi `terputus` saat restart server)**: Saat server direstart ketika ada baris `menunggu_scan`/`antre` yang belum pernah tertaut (`wa_jid_hash IS NULL AND connected_at IS NULL`), `ReconcileOnBoot` mengubah statusnya menjadi `terputus` (`stop_reason = 'server restart'`). Sebelumnya `CleanupStalePendingAccounts` hanya memeriksa status `menunggu_scan` dan `antre`.
+    4. **Bug #4 (Konfirmasi "Bersihkan Data Nomor" selalu gagal jika nama campaign di database memiliki spasi di akhir)**: Pada `HandleAdminCampaignNewPOST` dan `HandleAdminCampaignEditPOST`, input `name` disimpan tanpa `strings.TrimSpace` (misal Campaign #5 di VPS tersimpan sebagai `'DB '` dengan panjang 3 karakter). Sementara di `HandleAdminCampaignPurgePOST`, `confirmName` di-trim (`strings.TrimSpace(r.FormValue("confirm_name"))` menjadi `'DB'`) lalu dibandingkan dengan `name` mentah (`'DB '`), sehingga `'DB' != 'DB '` selalu bernilai true dan menolak konfirmasi meskipun admin sudah mengetik `DB`.
   - *Perbaikan & Implementasi*:
     1. `internal/campaign/campaign.go` & `internal/campaign/thumbnail.go`: Melewati `GetOrCreateThumbnail` dan `GenerateThumbnail` jika `strings.HasPrefix(imagePath, "data:")`.
     2. `internal/web/admin_handlers.go`: Selalu memperbarui `kursUpdatedAt = time.Now().Format(time.RFC3339)` setiap kali admin menyimpan pengaturan di `HandleAdminSettingsPOST`, serta menyegarkan timestamp kurs di DB produksi VPS.
     3. `internal/wa/manager.go`: Memperluas kueri `CleanupStalePendingAccounts` agar turut menghapus baris `status = 'terputus' AND stop_reason = 'server restart'` yang belum pernah tertaut (`wa_jid_hash IS NULL AND connected_at IS NULL`).
-    4. Menjalankan `VACUUM FULL` pada tabel `whatsmeow_*` di PostgreSQL produksi untuk membebaskan ~14 MB halaman indeks kosong bekas sesi lama, serta mendeploy rilis `v1.0.3` via `goblastctl deploy`.
+    4. `internal/web/campaign_handlers.go`: Menambahkan `strings.TrimSpace` pada penyimpanan nama di `HandleAdminCampaignNewPOST`, `HandleAdminCampaignEditPOST`, dan pencocokan `strings.TrimSpace(name)` di `HandleAdminCampaignPurgePOST`, serta merapikan `btrim(name)` di tabel `campaigns` VPS.
+    5. Menjalankan `VACUUM FULL` pada tabel `whatsmeow_*` di PostgreSQL produksi untuk membebaskan ~14 MB halaman indeks kosong bekas sesi lama, serta mendeploy rilis `v1.0.4` via `goblastctl deploy`.
 
 - **2026-10-24 (Perbaikan Konkurensi QR, Hitung Mundur Penautan 2 Menit, & Pairing Nomor Internasional)**:
   - *Akar Masalah di Log VPS (`journalctl -u goblast` & Nginx)*:

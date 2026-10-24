@@ -168,7 +168,7 @@ func (s *Server) HandleAdminCampaignNewPOST(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	name := r.FormValue("name")
+	name := strings.TrimSpace(r.FormValue("name"))
 	if name == "" {
 		http.Error(w, "Nama campaign wajib diisi", http.StatusBadRequest)
 		return
@@ -350,7 +350,7 @@ func (s *Server) HandleAdminCampaignEditPOST(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	name := r.FormValue("name")
+	name := strings.TrimSpace(r.FormValue("name"))
 	if name == "" {
 		http.Error(w, "Nama campaign wajib diisi", http.StatusBadRequest)
 		return
@@ -1195,7 +1195,7 @@ func (s *Server) HandleAdminCampaignPurgePOST(w http.ResponseWriter, r *http.Req
 	}
 
 	confirmName := strings.TrimSpace(r.FormValue("confirm_name"))
-	if confirmName != name {
+	if confirmName == "" || confirmName != strings.TrimSpace(name) {
 		errMsg := i18n.T(lang, "campaign.err_purge_confirm_mismatch")
 		http.Redirect(w, r, fmt.Sprintf("/admin/campaigns/%d?err=%s", id, url.QueryEscape(errMsg)), http.StatusSeeOther)
 		return
