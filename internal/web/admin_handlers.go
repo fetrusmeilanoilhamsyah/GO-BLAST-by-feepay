@@ -1743,6 +1743,8 @@ func (s *Server) HandleAdminBroadcastTogglePOST(w http.ResponseWriter, r *http.R
 			      WHERE n.user_id = u.id AND n.kind = 'broadcast' AND n.ref_id = $3
 			  )
 		`, bTitle, bMessage, id)
+	} else {
+		_, _ = s.DB.Pool.Exec(r.Context(), `DELETE FROM notifications WHERE kind = 'broadcast' AND ref_id = $1`, id)
 	}
 
 	s.logAudit(&adminUser.ID, "toggle_broadcast", "broadcasts", strconv.FormatInt(id, 10), "Status broadcast di-toggle")
@@ -1768,6 +1770,7 @@ func (s *Server) HandleAdminBroadcastDeletePOST(w http.ResponseWriter, r *http.R
 		http.Redirect(w, r, "/admin/broadcasts?error=Gagal+menghapus+broadcast", http.StatusSeeOther)
 		return
 	}
+	_, _ = s.DB.Pool.Exec(r.Context(), `DELETE FROM notifications WHERE kind = 'broadcast' AND ref_id = $1`, id)
 
 	s.logAudit(&adminUser.ID, "delete_broadcast", "broadcasts", strconv.FormatInt(id, 10), "Broadcast dihapus")
 	http.Redirect(w, r, "/admin/broadcasts?success=Broadcast+berhasil+dihapus", http.StatusSeeOther)
