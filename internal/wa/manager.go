@@ -49,18 +49,85 @@ type Session struct {
 	mu              sync.RWMutex
 	AccountID       int64
 	Client          WAClient
-	Status          string // menunggu_scan | terhubung | berhenti | terputus | antre
+	Status          string // menunggu_scan | terhubung | berhenti | terputus | antre | kadaluarsa
 	WorkerID        int64
 	cancel          context.CancelFunc
 	deviceStore     *store.Device
 	disconnectTimer *time.Timer
+	scanTimer       *time.Timer
+	scanDeadline    time.Time
 
 	// qrChan dikirim dari goroutine event ke caller Connect saat QR tersedia.
 	qrChan         chan string
+	qrReady        chan struct{}
+	qrReadyOnce    sync.Once
+	qrExpired      atomic.Bool
 	lastQR         string
 	lastQRImageB64 string
 	pairingFn      func(phone string) (string, error)
 	checkLogged    atomic.Bool // Tahap H13: catat log periksa nomor sekali per sesi
+}
+
+func (s *Session) markQRReady() {
+	if s == nil || s.qrReady == nil {
+		return
+	}
+	s.qrReadyOnce.Do(func() {
+		close(s.qrReady)
+	})
+}
+
+func (s *Session) startScanTimer(d time.Duration, onTimeout func()) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.scanTimer != nil {
+		s.scanTimer.Stop()
+	}
+	s.scanDeadline = time.Now().Add(d)
+	s.scanTimer = time.AfterFunc(d, onTimeout)
+}
+
+func (s *Session) cancelScanTimer() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.scanTimer != nil {
+		s.scanTimer.Stop()
+		s.scanTimer = nil
+	}
+	s.scanDeadline = time.Time{}
+}
+
+// IsScanActive memeriksa apakah sesi menunggu_scan masih aktif dan belum kedaluwarsa.
+func (s *Session) IsScanActive() bool {
+	if s == nil || s.qrExpired.Load() {
+		return false
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.Status != "menunggu_scan" {
+		return false
+	}
+	if !s.scanDeadline.IsZero() && time.Now().After(s.scanDeadline) {
+		return false
+	}
+	return true
+}
+
+// RemainingScanSeconds mengembalikan sisa waktu tunggu scan/pairing dalam detik.
+func (s *Session) RemainingScanSeconds() int {
+	if s == nil || s.qrExpired.Load() {
+		return 0
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.Status != "menunggu_scan" || s.scanDeadline.IsZero() {
+		return 0
+	}
+	rem := int(time.Until(s.scanDeadline).Seconds())
+	if rem < 0 {
+		return 0
+	}
+	return rem
 }
 
 // GetStatus mengambil status sesi yang dilindungi sess.mu.
@@ -294,12 +361,24 @@ func (m *Manager) Connect(ctx context.Context, accountID, workerID int64) (<-cha
 	m.mu.Lock()
 	if existing, ok := m.sessions[accountID]; ok && existing != nil {
 		st := existing.GetStatus()
-		if st == "terhubung" || st == "menunggu_scan" {
+		if st == "terhubung" || (st == "menunggu_scan" && existing.IsScanActive()) {
 			qr := existing.qrChan
 			pair := existing.pairingFn
 			m.mu.Unlock()
 			return qr, pair, nil
 		}
+		// Bersihkan sesi lama yang sudah mati/kedaluwarsa sebelum membuat sesi baru
+		existing.cancelScanTimer()
+		existing.cancelDisconnectTimer()
+		existing.markQRReady()
+		existing.cancel()
+		existing.mu.RLock()
+		oldCli := existing.Client
+		existing.mu.RUnlock()
+		if oldCli != nil {
+			oldCli.Disconnect()
+		}
+		delete(m.sessions, accountID)
 	}
 
 	// Gabungkan sesi memori dengan DB
@@ -314,11 +393,14 @@ func (m *Manager) Connect(ctx context.Context, accountID, workerID int64) (<-cha
 
 	for id, s := range m.sessions {
 		st := s.GetStatus()
-		if st == "terhubung" || st == "menunggu_scan" {
+		if st == "terhubung" || (st == "menunggu_scan" && s.IsScanActive()) {
 			totalActiveIDs[id] = true
 			if s.WorkerID == workerID && id != accountID {
 				workerActiveIDs[id] = true
 			}
+		} else if st == "menunggu_scan" && !s.IsScanActive() {
+			delete(totalActiveIDs, id)
+			delete(workerActiveIDs, id)
 		}
 	}
 
@@ -346,12 +428,15 @@ func (m *Manager) Connect(ctx context.Context, accountID, workerID int64) (<-cha
 		WorkerID:  workerID,
 		cancel:    cancel,
 		qrChan:    make(chan string, 10),
+		qrReady:   make(chan struct{}),
 	}
 	m.sessions[accountID] = sess
 	m.mu.Unlock()
 
 	// Pekerjaan lambat dieksekusi di luar lock
 	cleanupOnErr := func() {
+		sess.cancelScanTimer()
+		sess.markQRReady()
 		m.mu.Lock()
 		delete(m.sessions, accountID)
 		m.mu.Unlock()
@@ -399,6 +484,29 @@ func (m *Manager) Connect(ctx context.Context, accountID, workerID int64) (<-cha
 		if client.IsLoggedIn() {
 			return "", errors.New("sudah terhubung, tidak perlu pairing")
 		}
+		// Pada *whatsmeow.Client nyata, tunggu hingga koneksi websocket & event QR pertama siap
+		// sesuai spesifikasi whatsmeow (pair-code.go) agar PairPhone tidak gagal 'websocket not connected'.
+		if _, isReal := client.(*whatsmeow.Client); isReal {
+			select {
+			case <-sess.qrReady:
+			case <-sessCtx.Done():
+				return "", errors.New("sesi telah berakhir")
+			case <-time.After(6 * time.Second):
+			}
+			if !client.IsConnected() {
+				_ = client.Connect()
+				for i := 0; i < 30 && !client.IsConnected(); i++ {
+					time.Sleep(100 * time.Millisecond)
+				}
+			}
+		}
+		scanDur := config.ScanTimeout
+		if scanDur <= 0 {
+			scanDur = 2 * time.Minute
+		}
+		sess.startScanTimer(scanDur, func() {
+			m.handleScanTimeout(accountID, workerID)
+		})
 		// Sesuai H4 butir 6: Pairing memakai context dengan timeout 30 detik
 		pairCtx, pairCancel := context.WithTimeout(context.Background(), config.PairingTimeout)
 		defer pairCancel()
@@ -434,11 +542,17 @@ func (m *Manager) Connect(ctx context.Context, accountID, workerID int64) (<-cha
 						sess.lastQR = qr.Code
 						sess.lastQRImageB64 = b64
 						sess.mu.Unlock()
+						sess.markQRReady()
 
 						select {
 						case sess.qrChan <- qr.Code:
 						default:
 						}
+					} else if qr.Event == "timeout" || qr.Event == "error" || strings.HasPrefix(qr.Event, "err") {
+						sess.qrExpired.Store(true)
+						sess.markQRReady()
+						m.handleScanTimeout(accountID, workerID)
+						return
 					}
 				}
 			})
@@ -451,12 +565,34 @@ func (m *Manager) Connect(ctx context.Context, accountID, workerID int64) (<-cha
 		return nil, nil, fmt.Errorf("gagal mulai koneksi: %w", err)
 	}
 
+	scanDur := config.ScanTimeout
+	if scanDur <= 0 {
+		scanDur = 2 * time.Minute
+	}
+	sess.startScanTimer(scanDur, func() {
+		m.handleScanTimeout(accountID, workerID)
+	})
+
 	return sess.qrChan, pairingFn, nil
 }
 
-// handleEvent meneruskan event dari whatsmeow ke antrean terbatas (non-blocking).
-// Jika antrean penuh, event dicatat dan dibuang tanpa memblokir thread whatsmeow.
+// handleEvent meneruskan event siklus hidup dari whatsmeow ke antrean terbatas (non-blocking).
+// Event sinkronisasi data (Contact, AppState, HistorySync, Message, dll.) diabaikan langsung
+// agar tidak membanjiri antrean ketika banyak pengguna melakukan pairing bersamaan.
 func (m *Manager) handleEvent(accountID, workerID int64, evt interface{}) {
+	switch evt.(type) {
+	case *events.Connected,
+		*events.Disconnected,
+		*events.LoggedOut,
+		*events.TemporaryBan,
+		*events.ConnectFailure,
+		*events.ClientOutdated,
+		*events.StreamReplaced,
+		*events.PairSuccess:
+	default:
+		return
+	}
+
 	idx := int(accountID % numEventWorkers)
 	if idx < 0 {
 		idx = -idx
@@ -488,6 +624,7 @@ func (m *Manager) processEvent(ctx context.Context, accountID, workerID int64, e
 		slog.Info("wa: terhubung", "account_id", accountID)
 		if sess != nil {
 			sess.SetStatus("terhubung")
+			sess.cancelScanTimer()
 			sess.cancelDisconnectTimer()
 		}
 		if m.db != nil && m.db.Pool != nil {
@@ -501,6 +638,7 @@ func (m *Manager) processEvent(ctx context.Context, accountID, workerID int64, e
 		slog.Info("wa: terputus", "account_id", accountID)
 		if sess != nil {
 			sess.SetStatus("terputus")
+			sess.cancelScanTimer()
 			sess.startDisconnectTimer(config.DisconnectTimeout, func() {
 				m.handleDisconnectTimeout(accountID, workerID)
 			})
@@ -518,6 +656,7 @@ func (m *Manager) processEvent(ctx context.Context, accountID, workerID int64, e
 		slog.Info("wa: logged out", "account_id", accountID, "on_connect", v.OnConnect, "reason", v.Reason)
 		if sess != nil {
 			sess.SetStatus("berhenti")
+			sess.cancelScanTimer()
 			sess.cancelDisconnectTimer()
 			sess.cancel()
 		}
@@ -538,6 +677,7 @@ func (m *Manager) processEvent(ctx context.Context, accountID, workerID int64, e
 		slog.Warn("wa: akun terkena temporary ban", "account_id", accountID, "code", v.Code, "expire", v.Expire)
 		if sess != nil {
 			sess.SetStatus("berhenti")
+			sess.cancelScanTimer()
 			sess.cancelDisconnectTimer()
 			sess.cancel()
 			if sess.Client != nil {
@@ -569,6 +709,7 @@ func (m *Manager) processEvent(ctx context.Context, accountID, workerID int64, e
 			slog.Warn("wa: connect failure temp banned", "account_id", accountID)
 			if sess != nil {
 				sess.SetStatus("berhenti")
+				sess.cancelScanTimer()
 				sess.cancelDisconnectTimer()
 				sess.cancel()
 				if sess.Client != nil {
@@ -595,6 +736,7 @@ func (m *Manager) processEvent(ctx context.Context, accountID, workerID int64, e
 			slog.Warn("wa: connect failure account restricted", "account_id", accountID, "reason", v.Reason)
 			if sess != nil {
 				sess.SetStatus("berhenti")
+				sess.cancelScanTimer()
 				sess.cancelDisconnectTimer()
 				sess.cancel()
 				if sess.Client != nil {
@@ -627,6 +769,7 @@ func (m *Manager) processEvent(ctx context.Context, accountID, workerID int64, e
 		slog.Warn("wa: stream replaced, akun dipakai di tempat lain", "account_id", accountID)
 		if sess != nil {
 			sess.SetStatus("berhenti")
+			sess.cancelScanTimer()
 			sess.cancelDisconnectTimer()
 			sess.cancel()
 			if sess.Client != nil {
@@ -647,6 +790,9 @@ func (m *Manager) processEvent(ctx context.Context, accountID, workerID int64, e
 		}
 
 	case *events.PairSuccess:
+		if sess != nil {
+			sess.cancelScanTimer()
+		}
 		jidUser := v.ID.User
 		slog.Info("wa: pair success", "account_id", accountID, "platform", v.Platform)
 		encKey := m.getEncryptionKey()
@@ -662,6 +808,7 @@ func (m *Manager) processEvent(ctx context.Context, accountID, workerID int64, e
 					slog.Warn("wa: penautan ditolak, nomor sudah aktif di akun lain", "account_id", accountID)
 					if sess != nil {
 						sess.SetStatus("berhenti")
+						sess.cancelScanTimer()
 						sess.cancelDisconnectTimer()
 						sess.cancel()
 						if sess.Client != nil {
@@ -690,6 +837,56 @@ func (m *Manager) processEvent(ctx context.Context, accountID, workerID int64, e
 	}
 }
 
+// handleScanTimeout membersihkan sesi dan baris sementara wa_accounts jika pengguna tidak memindai QR / pairing sampai batas waktu habis.
+func (m *Manager) handleScanTimeout(accountID, workerID int64) {
+	m.mu.Lock()
+	sess, ok := m.sessions[accountID]
+	if !ok || sess == nil || sess.GetStatus() != "menunggu_scan" {
+		m.mu.Unlock()
+		return
+	}
+	delete(m.sessions, accountID)
+	m.mu.Unlock()
+
+	sess.qrExpired.Store(true)
+	sess.SetStatus("kadaluarsa")
+	sess.cancelScanTimer()
+	sess.cancelDisconnectTimer()
+	sess.markQRReady()
+	sess.cancel()
+	sess.mu.RLock()
+	cli := sess.Client
+	dev := sess.deviceStore
+	sess.mu.RUnlock()
+	if cli != nil {
+		cli.Disconnect()
+	}
+
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(context.Background()), 10*time.Second)
+	defer cancel()
+
+	if dev != nil {
+		_ = dev.Delete(ctx)
+	}
+
+	if m.db != nil && m.db.Pool != nil {
+		res, err := m.db.Pool.Exec(ctx,
+			`DELETE FROM wa_accounts
+			 WHERE id = $1 AND status IN ('menunggu_scan', 'antre')
+			   AND wa_jid_hash IS NULL AND connected_at IS NULL
+			   AND NOT EXISTS (SELECT 1 FROM campaign_numbers WHERE claimed_account_id = $1)`,
+			accountID,
+		)
+		if err != nil || res.RowsAffected() == 0 {
+			_, _ = m.db.Pool.Exec(ctx,
+				`UPDATE wa_accounts SET status = 'terputus' WHERE id = $1 AND status = 'menunggu_scan'`,
+				accountID,
+			)
+		}
+	}
+	slog.Info("wa: batas waktu scan QR/pairing habis, sesi sementara dibersihkan", "account_id", accountID, "worker_id", workerID)
+}
+
 func (m *Manager) handleDisconnectTimeout(accountID, workerID int64) {
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(context.Background()), 10*time.Second)
 	defer cancel()
@@ -698,6 +895,7 @@ func (m *Manager) handleDisconnectTimeout(accountID, workerID int64) {
 	sess := m.GetSession(accountID)
 	if sess != nil {
 		sess.SetStatus("berhenti")
+		sess.cancelScanTimer()
 		sess.cancel()
 		if sess.Client != nil {
 			sess.Client.Disconnect()
@@ -761,6 +959,7 @@ func (m *Manager) Disconnect(ctx context.Context, accountID, callerWorkerID int6
 	m.mu.Unlock()
 	if ok && sess != nil {
 		sess.SetStatus("terputus")
+		sess.cancelScanTimer()
 		sess.cancelDisconnectTimer()
 		sess.cancel()
 		if sess.Client != nil {
@@ -783,6 +982,7 @@ func (m *Manager) DisconnectAccount(ctx context.Context, accountID int64) error 
 	m.mu.Unlock()
 	if ok && sess != nil {
 		sess.SetStatus("terputus")
+		sess.cancelScanTimer()
 		sess.cancelDisconnectTimer()
 		sess.cancel()
 		if sess.Client != nil {
@@ -814,6 +1014,7 @@ func (m *Manager) Stop(ctx context.Context, accountID, callerWorkerID int64, rea
 
 	if ok && sess != nil {
 		sess.SetStatus("berhenti")
+		sess.cancelScanTimer()
 		sess.cancelDisconnectTimer()
 		sess.cancel()
 		if sess.Client != nil {
@@ -851,6 +1052,7 @@ func (m *Manager) Delete(ctx context.Context, accountID, callerWorkerID int64) e
 
 	if ok && sess != nil {
 		sess.SetStatus("berhenti")
+		sess.cancelScanTimer()
 		sess.cancelDisconnectTimer()
 		sess.cancel()
 		if sess.Client != nil {
@@ -881,13 +1083,60 @@ func (m *Manager) Delete(ctx context.Context, accountID, callerWorkerID int64) e
 	return nil
 }
 
+// CleanupStalePendingAccounts menghapus baris wa_accounts milik workerID yang masih berstatus
+// menunggu_scan atau antre namun belum pernah tertaut (wa_jid_hash IS NULL AND connected_at IS NULL)
+// dan tidak memiliki sesi scan aktif di memori.
+func (m *Manager) CleanupStalePendingAccounts(ctx context.Context, workerID int64) {
+	if m.db == nil || m.db.Pool == nil || workerID <= 0 {
+		return
+	}
+	rows, err := m.db.Pool.Query(ctx,
+		`SELECT id FROM wa_accounts
+		 WHERE worker_id = $1
+		   AND status IN ('menunggu_scan', 'antre')
+		   AND wa_jid_hash IS NULL
+		   AND connected_at IS NULL`,
+		workerID,
+	)
+	if err != nil {
+		return
+	}
+	var candidateIDs []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err == nil {
+			candidateIDs = append(candidateIDs, id)
+		}
+	}
+	rows.Close()
+
+	for _, id := range candidateIDs {
+		sess := m.GetSession(id)
+		if sess != nil && sess.IsScanActive() {
+			continue
+		}
+		if sess != nil {
+			m.handleScanTimeout(id, workerID)
+			continue
+		}
+		_, _ = m.db.Pool.Exec(ctx,
+			`DELETE FROM wa_accounts
+			 WHERE id = $1 AND worker_id = $2
+			   AND status IN ('menunggu_scan', 'antre')
+			   AND wa_jid_hash IS NULL AND connected_at IS NULL
+			   AND NOT EXISTS (SELECT 1 FROM campaign_numbers WHERE claimed_account_id = $1)`,
+			id, workerID,
+		)
+	}
+}
+
 // CheckResult merepresentasikan status verifikasi pendaftaran nomor WhatsApp (Tahap H13).
 type CheckResult string
 
 const (
-	CheckResultTerdaftar     CheckResult = "terdaftar"
+	CheckResultTerdaftar      CheckResult = "terdaftar"
 	CheckResultTidakTerdaftar CheckResult = "tidak_terdaftar"
-	CheckResultTidakPasti    CheckResult = "tidak_pasti"
+	CheckResultTidakPasti     CheckResult = "tidak_pasti"
 )
 
 // IsOnWhatsApp memeriksa apakah nomor terdaftar di WhatsApp via client.
@@ -970,6 +1219,7 @@ func (m *Manager) DisconnectAll() {
 
 	for _, sess := range sessionsCopy {
 		sess.SetStatus("terputus")
+		sess.cancelScanTimer()
 		sess.cancelDisconnectTimer()
 		sess.cancel()
 		sess.mu.RLock()
@@ -1139,10 +1389,24 @@ func (m *Manager) GetStatusForAccount(ctx context.Context, accountID int64) (str
 	return status, nil
 }
 
-// GetQRCode mengambil QR terakhir untuk accountID sebagai string kode.
-func (m *Manager) GetQRCode(accountID int64) (string, bool) {
+// GetScanRemainingSeconds mengembalikan sisa detik batas waktu scan untuk accountID (0 jika tidak sedang menunggu scan).
+func (m *Manager) GetScanRemainingSeconds(accountID int64) int {
 	sess := m.GetSession(accountID)
 	if sess == nil {
+		return 0
+	}
+	return sess.RemainingScanSeconds()
+}
+
+// GetQRCode mengambil QR terakhir untuk accountID sebagai string kode.
+func (m *Manager) GetQRCode(accountID int64) (string, bool) {
+	return m.GetQRCodeWithTimeout(accountID, 2500*time.Millisecond)
+}
+
+// GetQRCodeWithTimeout mengambil QR terakhir untuk accountID dengan batas tunggu tertentu.
+func (m *Manager) GetQRCodeWithTimeout(accountID int64, timeout time.Duration) (string, bool) {
+	sess := m.GetSession(accountID)
+	if sess == nil || sess.qrExpired.Load() {
 		return "", false
 	}
 
@@ -1153,7 +1417,19 @@ func (m *Manager) GetQRCode(accountID int64) (string, bool) {
 		return code, true
 	}
 
+	if timeout <= 0 {
+		return "", false
+	}
+
 	select {
+	case <-sess.qrReady:
+		sess.mu.RLock()
+		code = sess.lastQR
+		sess.mu.RUnlock()
+		if code != "" {
+			return code, true
+		}
+		return "", false
 	case c := <-sess.qrChan:
 		sess.mu.Lock()
 		sess.lastQR = c
@@ -1163,16 +1439,25 @@ func (m *Manager) GetQRCode(accountID int64) (string, bool) {
 			}
 		}
 		sess.mu.Unlock()
+		sess.markQRReady()
 		return c, true
-	case <-time.After(2500 * time.Millisecond):
-		return "", false
+	case <-time.After(timeout):
+		sess.mu.RLock()
+		code = sess.lastQR
+		sess.mu.RUnlock()
+		return code, code != ""
 	}
 }
 
 // GetQRImageB64 mengambil base64 PNG dari QR code akun.
 func (m *Manager) GetQRImageB64(accountID int64) (string, bool) {
+	return m.GetQRImageB64WithTimeout(accountID, 2500*time.Millisecond)
+}
+
+// GetQRImageB64WithTimeout mengambil base64 PNG dari QR code akun dengan batas tunggu tertentu.
+func (m *Manager) GetQRImageB64WithTimeout(accountID int64, timeout time.Duration) (string, bool) {
 	sess := m.GetSession(accountID)
-	if sess == nil {
+	if sess == nil || sess.qrExpired.Load() {
 		return "", false
 	}
 
@@ -1183,7 +1468,7 @@ func (m *Manager) GetQRImageB64(accountID int64) (string, bool) {
 		return img, true
 	}
 
-	code, ok := m.GetQRCode(accountID)
+	code, ok := m.GetQRCodeWithTimeout(accountID, timeout)
 	if !ok || code == "" {
 		return "", false
 	}

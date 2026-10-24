@@ -267,12 +267,29 @@
             <!-- STEP 1: PILIH METODE (QR ATAU PAIRING) -->
             <div id="modal-step-link">
                 <!-- TAB SWITCHER -->
-                <div style="display: flex; gap: 8px; margin-bottom: 20px; background-color: var(--color-surface-muted); padding: 4px; border-radius: 6px;">
+                <div style="display: flex; gap: 8px; margin-bottom: 12px; background-color: var(--color-surface-muted); padding: 4px; border-radius: 6px;">
                     <button type="button" id="tab-btn-qr" style="flex: 1; padding: 8px 12px; border: none; border-radius: 4px; font-weight: bold; font-size: 13px; cursor: pointer; background-color: var(--color-primary); color: var(--color-on-primary);">
                         Pindai QR
                     </button>
                     <button type="button" id="tab-btn-code" style="flex: 1; padding: 8px 12px; border: none; border-radius: 4px; font-weight: bold; font-size: 13px; cursor: pointer; background: none; color: var(--color-text);">
                         Kode Pairing
+                    </button>
+                </div>
+
+                <!-- COUNTDOWN TIMER BANNER -->
+                <div id="modal-scan-timer-box" style="display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; margin-bottom: 14px; border-radius: 6px; background-color: var(--color-surface-muted); border: 1px solid var(--color-border); font-size: 12px; color: var(--color-muted);">
+                    <span>Batas waktu penautan sesi:</span>
+                    <strong id="modal-scan-timer-text" style="font-family: var(--font-mono, monospace); font-size: 13px; color: var(--color-text);">02:00</strong>
+                </div>
+
+                <!-- EXPIRED STATE BOX -->
+                <div id="modal-scan-expired-box" style="display: none; text-align: center; padding: 24px 16px; margin-bottom: 12px; border-radius: 8px; background-color: var(--color-surface-muted); border: 1px solid var(--color-border);">
+                    <div style="font-size: 15px; font-weight: 700; color: var(--color-danger); margin-bottom: 8px;">Waktu Penautan Habis</div>
+                    <p style="font-size: 13px; color: var(--color-muted); line-height: 1.5; margin: 0 0 16px 0;">
+                        Sesi penautan sementara telah ditutup otomatis karena tidak ada aktivitas pemindaian dalam batas waktu 2 menit.
+                    </p>
+                    <button type="button" id="btn-reload-scan-session" style="padding: 9px 18px; background-color: var(--color-primary); color: var(--color-on-primary); border: none; border-radius: 4px; font-weight: bold; font-size: 13px; cursor: pointer;">
+                        Muat Ulang Sesi Baru
                     </button>
                 </div>
 
@@ -309,7 +326,7 @@
                 <div id="tab-content-code" style="display: none;">
                     <div style="background-color: var(--color-surface-muted); border-radius: 6px; padding: 12px 16px; margin-bottom: 16px; font-size: 13px; line-height: 1.5;">
                         <ol style="margin: 0; padding-left: 18px;">
-                            <li>Masukkan nomor WhatsApp di bawah ini.</li>
+                            <li>Masukkan nomor WhatsApp dengan kode negara (misal <strong>+62...</strong>, <strong>+60...</strong>, <strong>+855...</strong>).</li>
                             <li>Buka WhatsApp di HP &gt; <strong>Perangkat Tertaut</strong> &gt; <strong>Tautkan dengan nomor telepon</strong>.</li>
                             <li>Ketik 8 karakter kode yang muncul ke WhatsApp Anda.</li>
                         </ol>
@@ -329,9 +346,9 @@
                     </div>
 
                     <form id="form-pair-phone">
-                        <label for="modal-input-phone" style="display: block; font-weight: bold; font-size: 13px; margin-bottom: 6px;">Nomor WhatsApp</label>
+                        <label for="modal-input-phone" style="display: block; font-weight: bold; font-size: 13px; margin-bottom: 6px;">Nomor WhatsApp (Kode Negara)</label>
                         <div style="display: flex; gap: 8px;">
-                            <input type="text" id="modal-input-phone" placeholder="cth: +62..., +60..., +44..." required style="flex: 1; padding: 8px 12px; border: 1px solid var(--color-border); border-radius: 4px; background-color: var(--color-input-bg); color: var(--color-input-text); box-sizing: border-box; font-size: 14px;">
+                            <input type="text" id="modal-input-phone" placeholder="cth: +62812..., +6012..., +855..." required style="flex: 1; padding: 8px 12px; border: 1px solid var(--color-border); border-radius: 4px; background-color: var(--color-input-bg); color: var(--color-input-text); box-sizing: border-box; font-size: 14px;">
                             <button type="submit" id="btn-get-code" style="padding: 8px 16px; background-color: var(--color-primary); color: var(--color-on-primary); border: none; border-radius: 4px; font-weight: bold; font-size: 13px; cursor: pointer;">
                                 Dapatkan Kode
                             </button>
@@ -400,11 +417,120 @@
 <script nonce="{{ .Nonce }}">
     const csrfToken = "{{.CSRFToken}}";
     let activeModalAccountID = 0;
+    let currentTargetAccountID = undefined;
     let pollInterval = null;
+    let scanCountdownInterval = null;
+    let scanRemainingSeconds = 120;
+    let isPollingStatus = false;
+    let isScanExpired = false;
     let currentModalTab = 'qr';
 
     let isModalForNewAccount = false;
     let isAccountConnectedSuccessfully = false;
+
+    function formatSecondsMMSS(totalSec) {
+        const sec = Math.max(0, Math.floor(totalSec));
+        const m = String(Math.floor(sec / 60)).padStart(2, '0');
+        const s = String(sec % 60).padStart(2, '0');
+        return m + ':' + s;
+    }
+
+    function updateCountdownDisplay() {
+        const el = document.getElementById('modal-scan-timer-text');
+        if (!el) return;
+        el.textContent = formatSecondsMMSS(scanRemainingSeconds);
+        if (scanRemainingSeconds <= 20) {
+            el.style.color = 'var(--color-danger)';
+        } else {
+            el.style.color = 'var(--color-text)';
+        }
+    }
+
+    function stopScanTimers() {
+        if (pollInterval) {
+            clearInterval(pollInterval);
+            pollInterval = null;
+        }
+        if (scanCountdownInterval) {
+            clearInterval(scanCountdownInterval);
+            scanCountdownInterval = null;
+        }
+        isPollingStatus = false;
+    }
+
+    function startScanCountdown(initialSeconds) {
+        if (scanCountdownInterval) {
+            clearInterval(scanCountdownInterval);
+            scanCountdownInterval = null;
+        }
+        scanRemainingSeconds = (typeof initialSeconds === 'number' && initialSeconds > 0) ? initialSeconds : 120;
+        isScanExpired = false;
+        updateCountdownDisplay();
+
+        scanCountdownInterval = setInterval(function() {
+            if (isAccountConnectedSuccessfully || isScanExpired) {
+                clearInterval(scanCountdownInterval);
+                scanCountdownInterval = null;
+                return;
+            }
+            scanRemainingSeconds -= 1;
+            updateCountdownDisplay();
+            if (scanRemainingSeconds <= 0) {
+                handleModalScanExpired();
+            }
+        }, 1000);
+    }
+
+    function syncScanCountdown(serverSeconds) {
+        if (typeof serverSeconds === 'number' && serverSeconds > 0) {
+            scanRemainingSeconds = serverSeconds;
+            updateCountdownDisplay();
+        }
+    }
+
+    async function handleModalScanExpired() {
+        if (isScanExpired || isAccountConnectedSuccessfully) return;
+        isScanExpired = true;
+        stopScanTimers();
+
+        const expiredID = activeModalAccountID;
+        if (isModalForNewAccount && expiredID) {
+            activeModalAccountID = 0;
+            try {
+                const formData = new FormData();
+                formData.append('csrf_token', csrfToken);
+                formData.append('format', 'json');
+                await fetch('/worker/accounts/' + expiredID + '/delete', {
+                    method: 'POST',
+                    body: formData,
+                    headers: { 'Accept': 'application/json' }
+                });
+            } catch (e) {}
+        }
+
+        const timerBox = document.getElementById('modal-scan-timer-box');
+        const expiredBox = document.getElementById('modal-scan-expired-box');
+        const contentQR = document.getElementById('tab-content-qr');
+        const contentCode = document.getElementById('tab-content-code');
+        const codeDisplay = document.getElementById('modal-code-display');
+
+        if (timerBox) timerBox.style.display = 'none';
+        if (contentQR) contentQR.style.display = 'none';
+        if (contentCode) contentCode.style.display = 'none';
+        if (codeDisplay) codeDisplay.style.display = 'none';
+        if (expiredBox) expiredBox.style.display = 'block';
+    }
+
+    function reloadScanSession() {
+        isScanExpired = false;
+        const timerBox = document.getElementById('modal-scan-timer-box');
+        const expiredBox = document.getElementById('modal-scan-expired-box');
+        if (expiredBox) expiredBox.style.display = 'none';
+        if (timerBox) timerBox.style.display = 'flex';
+        document.getElementById('modal-error').style.display = 'none';
+        switchModalTab(currentModalTab);
+        initAccountSession(currentTargetAccountID);
+    }
 
     function toggleRiskButton(checked) {
         const btn = document.getElementById('btn-proceed-pairing');
@@ -419,7 +545,7 @@
         }
         document.getElementById('modal-step-risk').style.display = 'none';
         document.getElementById('modal-step-link').style.display = 'block';
-        initAccountSession();
+        initAccountSession(currentTargetAccountID);
     }
 
     function checkModalSpeedWarning(val) {
@@ -428,14 +554,24 @@
     }
 
     function openAddAccountModal(targetID) {
+        currentTargetAccountID = targetID;
         isModalForNewAccount = !targetID;
         isAccountConnectedSuccessfully = false;
+        isScanExpired = false;
 
         const modal = document.getElementById('modal-add-account');
         modal.style.display = 'flex';
         document.getElementById('modal-step-settings').style.display = 'none';
+        document.getElementById('modal-step-connected').style.display = 'none';
         document.getElementById('modal-error').style.display = 'none';
         document.getElementById('btn-cancel-account').style.display = 'inline-block';
+
+        const timerBox = document.getElementById('modal-scan-timer-box');
+        const expiredBox = document.getElementById('modal-scan-expired-box');
+        const codeDisplay = document.getElementById('modal-code-display');
+        if (timerBox) timerBox.style.display = 'flex';
+        if (expiredBox) expiredBox.style.display = 'none';
+        if (codeDisplay) codeDisplay.style.display = 'none';
         
         let hasAgreedRisk = false;
         try {
@@ -463,10 +599,7 @@
     async function closeAddAccountModal() {
         const modal = document.getElementById('modal-add-account');
         modal.style.display = 'none';
-        if (pollInterval) {
-            clearInterval(pollInterval);
-            pollInterval = null;
-        }
+        stopScanTimers();
 
         // Jika pengguna membuka modal tambah akun baru lalu membatalkan/menutup sebelum terhubung,
         // bersihkan antrean sementara di server agar tidak menggantung di database.
@@ -498,6 +631,21 @@
         const contentQR = document.getElementById('tab-content-qr');
         const contentCode = document.getElementById('tab-content-code');
 
+        if (isScanExpired) {
+            if (tab === 'qr') {
+                tabQR.style.backgroundColor = 'var(--color-primary)';
+                tabQR.style.color = 'var(--color-on-primary)';
+                tabCode.style.background = 'none';
+                tabCode.style.color = 'var(--color-text)';
+            } else {
+                tabCode.style.backgroundColor = 'var(--color-primary)';
+                tabCode.style.color = 'var(--color-on-primary)';
+                tabQR.style.background = 'none';
+                tabQR.style.color = 'var(--color-text)';
+            }
+            return;
+        }
+
         if (tab === 'qr') {
             tabQR.style.backgroundColor = 'var(--color-primary)';
             tabQR.style.color = 'var(--color-on-primary)';
@@ -516,6 +664,7 @@
     }
 
     async function initAccountSession(targetID) {
+        stopScanTimers();
         const loadingBox = document.getElementById('modal-qr-loading');
         const img = document.getElementById('modal-qr-img');
         loadingBox.style.display = 'flex';
@@ -535,6 +684,7 @@
 
             if (!data.ok) {
                 showModalError(data.error || 'Gagal memulai sesi WhatsApp');
+                loadingBox.style.display = 'none';
                 return;
             }
 
@@ -550,6 +700,7 @@
                 loadingBox.style.display = 'none';
             }
 
+            startScanCountdown(data.expires_in || 120);
             startStatusPolling();
         } catch (err) {
             showModalError('Koneksi ke server gagal: ' + err.message);
@@ -559,18 +710,32 @@
     function startStatusPolling() {
         if (pollInterval) clearInterval(pollInterval);
         const pollFn = async () => {
-            if (!activeModalAccountID) return;
+            if (!activeModalAccountID || isPollingStatus || isScanExpired || isAccountConnectedSuccessfully) return;
+            isPollingStatus = true;
             try {
                 const res = await fetch('/worker/accounts/' + activeModalAccountID + '/status');
+                if (res.status === 404) {
+                    await handleModalScanExpired();
+                    return;
+                }
                 if (!res.ok) return;
                 const data = await res.json();
 
+                if (data.expires_in && data.expires_in > 0) {
+                    syncScanCountdown(data.expires_in);
+                }
+
                 if (data.status === 'terhubung') {
-                    clearInterval(pollInterval);
-                    pollInterval = null;
+                    stopScanTimers();
                     onAccountConnected(data);
+                } else if (data.status === 'kadaluarsa') {
+                    await handleModalScanExpired();
+                } else if (data.status === 'antre') {
+                    stopScanTimers();
+                    showModalError('Antrean sesi penuh atau batas akun tercapai.');
                 } else if (data.status === 'berhenti' || data.status === 'terputus') {
-                    showModalError('Sesi terputus: ' + (data.stop_reason || ''));
+                    stopScanTimers();
+                    showModalError('Sesi terputus: ' + (data.stop_reason || 'Silakan muat ulang sesi.'));
                 } else if (data.qr_image_b64) {
                     const img = document.getElementById('modal-qr-img');
                     const loadingBox = document.getElementById('modal-qr-loading');
@@ -580,17 +745,18 @@
                 }
             } catch (e) {
                 console.error(e);
+            } finally {
+                isPollingStatus = false;
             }
         };
 
-        // Jika gambar QR belum sempat terbawa di respon awal, langsung polling cepat 200ms
         setTimeout(pollFn, 200);
-        // Interval dipercepat ke 800ms agar update QR dan deteksi scan langsung responsif secepat kilat
-        pollInterval = setInterval(pollFn, 800);
+        pollInterval = setInterval(pollFn, 1000);
     }
 
     function onAccountConnected(data) {
         isAccountConnectedSuccessfully = true;
+        stopScanTimers();
         document.getElementById('modal-step-link').style.display = 'none';
         
         var stepConn = document.getElementById('modal-step-connected');
@@ -616,7 +782,7 @@
 
     async function submitPairPhone(e) {
         e.preventDefault();
-        if (!activeModalAccountID) return;
+        if (!activeModalAccountID || isScanExpired) return;
 
         const phone = document.getElementById('modal-input-phone').value.trim();
         const btn = document.getElementById('btn-get-code');
@@ -643,6 +809,10 @@
             if (!data.ok) {
                 showModalError(data.error || 'Gagal meminta kode pairing');
                 return;
+            }
+
+            if (data.expires_in && data.expires_in > 0) {
+                syncScanCountdown(data.expires_in);
             }
 
             document.getElementById('modal-code-display').style.display = 'block';
@@ -699,12 +869,18 @@
         if (!activeModalAccountID) return;
         if (!confirm('Batalkan dan hapus antrean akun ini?')) return;
 
+        stopScanTimers();
+        const accID = activeModalAccountID;
+        activeModalAccountID = 0;
+
         try {
             const formData = new FormData();
             formData.append('csrf_token', csrfToken);
-            await fetch('/worker/accounts/' + activeModalAccountID + '/delete', {
+            formData.append('format', 'json');
+            await fetch('/worker/accounts/' + accID + '/delete', {
                 method: 'POST',
-                body: formData
+                body: formData,
+                headers: { 'Accept': 'application/json' }
             });
             window.location.href = '/worker/accounts';
         } catch (e) {
@@ -717,6 +893,24 @@
         el.innerText = msg;
         el.style.display = 'block';
     }
+
+    window.addEventListener('pagehide', function() {
+        if (isModalForNewAccount && activeModalAccountID && !isAccountConnectedSuccessfully) {
+            const accID = activeModalAccountID;
+            activeModalAccountID = 0;
+            try {
+                const formData = new FormData();
+                formData.append('csrf_token', csrfToken);
+                formData.append('format', 'json');
+                fetch('/worker/accounts/' + accID + '/delete', {
+                    method: 'POST',
+                    body: formData,
+                    headers: { 'Accept': 'application/json' },
+                    keepalive: true
+                });
+            } catch (e) {}
+        }
+    });
 
     // Auto open modal jika ada parameter URL ?open=add atau ?open=id, dan event listener modal
     document.addEventListener('DOMContentLoaded', () => {
@@ -736,6 +930,9 @@
 
         var btnAdd = document.getElementById('btn-add-account');
         if (btnAdd) btnAdd.addEventListener('click', function() { openAddAccountModal(); });
+
+        var btnReloadScan = document.getElementById('btn-reload-scan-session');
+        if (btnReloadScan) btnReloadScan.addEventListener('click', reloadScanSession);
 
         document.querySelectorAll('.btn-open-account-modal').forEach(function(btn) {
             btn.addEventListener('click', function() {

@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"goblast/internal/campaign"
 	"goblast/internal/i18n"
@@ -29,6 +30,10 @@ func (s *Server) HandleWorkerAccounts(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		http.Redirect(w, r, "/login", http.StatusSeeOther)
 		return
+	}
+
+	if s.WaManager != nil {
+		s.WaManager.CleanupStalePendingAccounts(r.Context(), user.ID)
 	}
 
 	rows, err := s.DB.Pool.Query(r.Context(),
@@ -157,6 +162,8 @@ func (s *Server) HandleWorkerAccountInitPOST(w http.ResponseWriter, r *http.Requ
 				activeAccountID = id
 			}
 		}
+	} else if s.WaManager != nil {
+		s.WaManager.CleanupStalePendingAccounts(r.Context(), user.ID)
 	}
 
 	if activeAccountID == 0 {
@@ -192,14 +199,30 @@ func (s *Server) HandleWorkerAccountInitPOST(w http.ResponseWriter, r *http.Requ
 	}
 
 	var qrImageB64 string
+	var expiresIn int
 	if s.WaManager != nil && activeAccountID > 0 {
 		sess := s.WaManager.GetSession(activeAccountID)
-		if sess == nil {
-			_, _, _ = s.WaManager.Connect(r.Context(), activeAccountID, user.ID)
+		if sess == nil || !sess.IsScanActive() {
+			_, _, connErr := s.WaManager.Connect(r.Context(), activeAccountID, user.ID)
+			if connErr != nil {
+				_, _ = s.DB.Pool.Exec(r.Context(),
+					`DELETE FROM wa_accounts
+					 WHERE id = $1 AND worker_id = $2
+					   AND wa_jid_hash IS NULL AND connected_at IS NULL
+					   AND NOT EXISTS (SELECT 1 FROM campaign_numbers WHERE claimed_account_id = $1)`,
+					activeAccountID, user.ID,
+				)
+				json.NewEncoder(w).Encode(map[string]interface{}{
+					"ok":    false,
+					"error": connErr.Error(),
+				})
+				return
+			}
 		}
-		if b64, ok := s.WaManager.GetQRImageB64(activeAccountID); ok {
+		if b64, ok := s.WaManager.GetQRImageB64WithTimeout(activeAccountID, 800*time.Millisecond); ok {
 			qrImageB64 = b64
 		}
+		expiresIn = s.WaManager.GetScanRemainingSeconds(activeAccountID)
 	}
 
 	json.NewEncoder(w).Encode(map[string]interface{}{
@@ -208,6 +231,7 @@ func (s *Server) HandleWorkerAccountInitPOST(w http.ResponseWriter, r *http.Requ
 		"label":        label,
 		"speed":        speed,
 		"qr_image_b64": qrImageB64,
+		"expires_in":   expiresIn,
 	})
 }
 
@@ -418,8 +442,18 @@ func (s *Server) HandleWorkerAccountPairPOST(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	cleanPhone := strings.ReplaceAll(rawPhone, " ", "")
-	cleanPhone = strings.ReplaceAll(cleanPhone, "-", "")
+	cleanPhone := strings.Map(func(r rune) rune {
+		switch r {
+		case ' ', '-', '(', ')', '.', '\t', '\n', '\r',
+			'\u00a0', '\u200b', '\u200c', '\u200d', '\u200e', '\u200f',
+			'\u202a', '\u202b', '\u202c', '\u202d', '\u202e',
+			'\u2060', '\u2066', '\u2067', '\u2068', '\u2069', '\ufeff':
+			return -1
+		default:
+			return r
+		}
+	}, rawPhone)
+
 	if strings.HasPrefix(cleanPhone, "0") && !strings.HasPrefix(cleanPhone, "00") {
 		msg := "tulis dengan kode negara, misalnya +62..."
 		if isJSON {
@@ -431,7 +465,12 @@ func (s *Server) HandleWorkerAccountPairPOST(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	phone, status, _ := numbers.Normalize(rawPhone, "")
+	normInput := cleanPhone
+	if !strings.HasPrefix(normInput, "+") && !strings.HasPrefix(normInput, "00") {
+		normInput = "+" + normInput
+	}
+
+	phone, status, _ := numbers.Normalize(normInput, "")
 	if status == "bukan_seluler" {
 		msg := "Nomor harus berupa nomor seluler WhatsApp"
 		if isJSON {
@@ -463,23 +502,32 @@ func (s *Server) HandleWorkerAccountPairPOST(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	// Pastikan sesi aktif berjalan
+	// Pastikan sesi scan aktif berjalan
 	sess := s.WaManager.GetSession(id)
-	if sess == nil {
+	if sess == nil || !sess.IsScanActive() {
 		_, _, err = s.WaManager.Connect(r.Context(), id, user.ID)
 		if err != nil {
 			slog.Error("Gagal menghubungkan sesi WhatsApp", "err", err, "account_id", id, "user_id", user.ID)
+			errMsg := err.Error()
+			if errMsg == "" {
+				errMsg = "Gagal menghubungkan ke WhatsApp"
+			}
 			if isJSON {
 				w.Header().Set("Content-Type", "application/json")
-				_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": "Gagal menghubungkan ke WhatsApp"})
+				_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": errMsg})
 				return
 			}
-			http.Redirect(w, r, fmt.Sprintf("/worker/accounts?open=%d&error=%s", id, urlQueryEscape("Gagal menghubungkan ke WhatsApp")), http.StatusSeeOther)
+			http.Redirect(w, r, fmt.Sprintf("/worker/accounts?open=%d&error=%s", id, urlQueryEscape(errMsg)), http.StatusSeeOther)
 			return
 		}
 	}
 
 	code, err := s.WaManager.PairPhone(id, phone)
+	if err != nil && (strings.Contains(err.Error(), "not connected") || strings.Contains(err.Error(), "berakhir") || strings.Contains(err.Error(), "tidak ditemukan")) {
+		if _, _, reconnErr := s.WaManager.Connect(r.Context(), id, user.ID); reconnErr == nil {
+			code, err = s.WaManager.PairPhone(id, phone)
+		}
+	}
 	if err != nil {
 		slog.Error("Gagal pairing nomor WhatsApp", "err", err, "account_id", id, "user_id", user.ID)
 		if isJSON {
@@ -493,7 +541,11 @@ func (s *Server) HandleWorkerAccountPairPOST(w http.ResponseWriter, r *http.Requ
 
 	if isJSON {
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "pairing_code": code})
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"ok":           true,
+			"pairing_code": code,
+			"expires_in":   s.WaManager.GetScanRemainingSeconds(id),
+		})
 		return
 	}
 
@@ -611,14 +663,16 @@ func (s *Server) HandleWorkerAccountStatus(w http.ResponseWriter, r *http.Reques
 	}
 
 	var qrImageB64 string
+	var expiresIn int
 	if s.WaManager != nil {
 		if liveStatus, err := s.WaManager.GetStatusForAccount(r.Context(), id); err == nil && liveStatus != "" {
 			status = liveStatus
 		}
 		if status == "menunggu_scan" {
-			if b64, ok := s.WaManager.GetQRImageB64(id); ok {
+			if b64, ok := s.WaManager.GetQRImageB64WithTimeout(id, 150*time.Millisecond); ok {
 				qrImageB64 = b64
 			}
+			expiresIn = s.WaManager.GetScanRemainingSeconds(id)
 		}
 	}
 
@@ -628,6 +682,7 @@ func (s *Server) HandleWorkerAccountStatus(w http.ResponseWriter, r *http.Reques
 		"status":       status,
 		"stop_reason":  stopReason,
 		"qr_image_b64": qrImageB64,
+		"expires_in":   expiresIn,
 	})
 }
 

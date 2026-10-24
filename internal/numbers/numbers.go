@@ -71,10 +71,26 @@ func SupportedCountryOptions() []CountryOption {
 // - "bukan_seluler": nomor telepon rumah (fixed line) atau tipe non-seluler lainnya
 // - "ambigu": nomor numerik XLSX tanpa awalan 0 dan tanpa kode negara bawaan
 // - "tidak_valid": format tidak dapat dipahami atau tidak valid secara aturan ITU
+func stripPhoneFormatting(raw string) string {
+	var sb strings.Builder
+	sb.Grow(len(raw))
+	for _, r := range raw {
+		switch r {
+		case ' ', '\t', '\n', '\r', '-', '.', '(', ')',
+			'\u00a0', '\u00ad', '\u200b', '\u200c', '\u200d', '\u200e', '\u200f',
+			'\u202a', '\u202b', '\u202c', '\u202d', '\u202e', '\u202f',
+			'\u2060', '\u2066', '\u2067', '\u2068', '\u2069', '\ufeff':
+			continue
+		default:
+			sb.WriteRune(r)
+		}
+	}
+	return sb.String()
+}
+
 func Normalize(raw string, defaultRegion string, isNumericXLSX ...bool) (string, string, string) {
-	// a. Buang spasi, tanda hubung, titik, dan kurung
-	clean := strings.NewReplacer(" ", "", "-", "", ".", "", "(", "", ")", "").Replace(raw)
-	clean = strings.TrimSpace(clean)
+	// a. Buang spasi, tanda hubung, titik, kurung, dan karakter mark tak terlihat (mis. hasil salin dari WhatsApp)
+	clean := stripPhoneFormatting(raw)
 	if clean == "" {
 		return "", "tidak_valid", ""
 	}

@@ -96,14 +96,44 @@ func TestH14_WorkerPairing_PhoneValidation(t *testing.T) {
 			expectPair: "6281234567890",
 		},
 		{
+			name:       "Valid Indonesia mobile without +",
+			phoneInput: "6281234567890",
+			expectPair: "6281234567890",
+		},
+		{
 			name:       "Valid UK mobile with +",
 			phoneInput: "+447911123456",
+			expectPair: "447911123456",
+		},
+		{
+			name:       "Valid UK mobile without +",
+			phoneInput: "447911123456",
 			expectPair: "447911123456",
 		},
 		{
 			name:       "Valid Malaysia mobile with +",
 			phoneInput: "+60123456789",
 			expectPair: "60123456789",
+		},
+		{
+			name:       "Valid Malaysia mobile without +",
+			phoneInput: "60123456789",
+			expectPair: "60123456789",
+		},
+		{
+			name:       "Valid Cambodia mobile without + (country code starts with 8)",
+			phoneInput: "85512345678",
+			expectPair: "85512345678",
+		},
+		{
+			name:       "Valid Vietnam mobile without + (country code starts with 8)",
+			phoneInput: "84912345678",
+			expectPair: "84912345678",
+		},
+		{
+			name:       "Valid number with WhatsApp invisible directional marks",
+			phoneInput: "\u202a+62 812-3456-7890\u202c",
+			expectPair: "6281234567890",
 		},
 	}
 
