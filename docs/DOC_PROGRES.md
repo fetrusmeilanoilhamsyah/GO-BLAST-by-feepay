@@ -10,7 +10,7 @@ Nomor tahap mengacu ke tabel "Daftar Tahap" di bawah.
 ## Posisi sekarang
 
 - **Fase**: 1 (MVP) & Fase 2 (Tahap 18 selesai dimajukan)
-- **Terakhir dikerjakan**: Redesain kartu risiko beranda publik (`pub-risk-grid` & `pub-risk-card`) menggantikan alert box kaku, penambahan ikon SVG per kategori risiko (pemblokiran akun, siklus sesi, privasi data) dengan judul terstruktur di 3 bahasa (`id`, `en`, `zh`), integrasi logo resmi WhatsApp (`whatsapp-logo.webp`) dan Telegram (`telegram-logo.webp`) pada tombol kontak CS beranda dan modal bantuan pekerja. Biner dan aset dideploy ke VPS `/opt/goblast/releases/v1.0.1/` dan service `goblast` diverifikasi aktif (HTTP 200).
+- **Terakhir dikerjakan**: Perbaikan penautan WhatsApp konkurensi tinggi, hitung mundur penautan 2 menit (`ScanTimeout = 2m`) dengan pembersihan otomatis sesi & baris sementara `wa_accounts` yang kedaluwarsa (`handleScanTimeout` dan `CleanupStalePendingAccounts`), *broadcast* kesiapan QR (`qrReady`) tanpa saling rebutan channel, penyaringan event `whatsmeow` sebelum `eventQueues` agar tidak dibanjiri `AppState`/`Contact`, serta perbaikan `PairPhone` dan normalisasi seluruh nomor internasional (dengan atau tanpa `+` serta karakter arah Unicode). Dideploy ke VPS sebagai rilis `v1.0.2` via `goblastctl deploy` dan service `goblast` diverifikasi aktif (`HTTP 200` pada `/readyz`).
 - **Sedang dikerjakan**: Verifikasi operasional antarmuka publik dan kesiapan pengujian alur blast.
 - **Blocker**: Tidak ada (menunggu pengukuran memori per sesi riil dan pengujian `go test -race` oleh pemilik di lingkungan dengan gcc/WSL).
 
@@ -20,7 +20,7 @@ Nomor tahap mengacu ke tabel "Daftar Tahap" di bawah.
 
 - **Uji Konkurensi -race dan Pengukuran Memori Sesi (Tahap 15)**: Status Tahap 15 berstatus Sebagian. Pengujian `go test -race` belum dapat dijalankan di mesin pengembangan Windows ini karena ketiadaan kompiler C `gcc`, dan konsumsi memori per sesi whatsmeow belum pernah diukur dengan akun WhatsApp nyata. Menunggu pemilik menjalankan `go test -race` di lingkungan dengan gcc/WSL/Linux dan melakukan prosedur pengukuran memori per sesi di VPS.
 - **Status Antre WhatsApp Tidak Dipromosikan Otomatis**: Sesuai Keputusan D / Tahap H4, akun berstatus 'antre' (karena kuota sesi aktif penuh saat pendaftaran) tidak dipromosikan otomatis ke 'menunggu_scan' sampai pemilik proyek memutuskan mekanisme antrean (misalnya antrean manual oleh pekerja atau FIFO otomatis saat ada slot yang kosong).
-- **Pembersihan Akun WA Batal**: Keputusan tetap pemilik: jika pekerja membuka modal tambah akun baru lalu membatalkan (klik Batal, tombol silang X, klik backdrop modal, atau tekan ESC) sebelum sesi berhasil terhubung, baris antrean sementara di database langsung dibersihkan otomatis via endpoint delete agar tidak membebani server dan tidak menggantung di tabel dengan status `menunggu_scan` atau `terputus`.
+- **Pembersihan Akun WA Batal & Kedaluwarsa (2 Menit)**: Keputusan tetap pemilik: jika pekerja membuka modal tambah akun baru lalu membatalkan (klik Batal, tombol silang X, klik backdrop modal, tekan ESC, tutup tab, atau tidak memindai sampai batas waktu 2 menit habis) sebelum sesi berhasil terhubung, sesi di memori dan baris antrean sementara di database (`wa_jid_hash IS NULL AND connected_at IS NULL`) langsung dibersihkan otomatis agar tidak membebani server dan tidak menggantung di tabel dengan status `menunggu_scan` atau `antre`.
 - **Uji manual pengiriman nyata (Tahap 10)**: Uji manual pengiriman nyata (dua akun cadangan, satu database kecil) menunggu pemilik, dan jangan menandai Tahap 10 Selesai berdasarkan tes dengan FakeSender saja.
 - Terkait keputusan terbuka #1: Definisi "terkirim" DeliveryLevel saat ini bernilai "server_ack" (centang satu). Menunggu konfirmasi apakah perlu centang dua.
 - Terkait keputusan terbuka #6: Menunggu pengukuran memori per sesi dengan akun WhatsApp cadangan oleh pemilik. Sementara memakai nilai awal konservatif `MAX_ACTIVE_SESSIONS = 20`, `DB_MAX_CONNS = 25-30`, dan `MemoryMax` sebesar 75% RAM VPS.
@@ -138,6 +138,7 @@ Salinan dari DOC_KONSEP bagian 15. Agen tidak boleh memutuskan sendiri.
 Terbaru di atas. Satu baris ringkas per keputusan.
 
 | Tanggal | Kode / Keputusan | Ringkasan Keputusan | Oleh |
+| 2026-10-24 | Konkurensi QR, Timeout 2m & Pairing Internasional | Batas waktu scan QR/pairing 2 menit (`ScanTimeout = 2m`) dengan auto-delete baris sementara `wa_accounts` yang belum pernah tertaut (`wa_jid_hash IS NULL AND connected_at IS NULL`); broadcast kesiapan QR (`qrReady`); filter event whatsmeow sebelum `eventQueues` agar tidak penuh oleh `AppState`/`Contact`; perbaikan `PairPhone` menunggu QR event pertama sesuai spesifikasi whatsmeow; dukungan penuh nomor internasional dengan/tanpa `+` dan pembersihan karakter arah Unicode | pemilik dan agen |
 | 2026-10-18 | Keputusan UI & UX Auth | Desain UX modern ala Linear/Vercel (Number Flow live counter, Sonner stacked toast, transisi WA terhubung); footer panel pekerja & publik (atribusi Gopher CC BY 3.0, hak cipta 2026); instant theme switch SVG Sun/Moon tanpa reload; pembersihan badge AI-slop "Wajib diisi" diganti asterik; contoh username Goblast123 fleksibel; panduan kata sandi 10 karakter non-repetisi; tombol intip password SVG outline tanpa emoji; relaksasi rate limit akun WA di limits.go | pemilik dan agen |
 | 2026-10-18 | H14 / Nomor Internasional | Normalisasi E.164 independen dari Indonesia, default_country per campaign & settings, validasi seluler (tolak bukan_seluler), mitigasi ambiguitas numerik XLSX, pairing internasional (+62/60/44 dll.), peringatan multi-negara di preview | pemilik dan agen |
 | 2026-10-18 | H13 / Pemeriksaan Nomor | Perbaikan IsOnWhatsApp whatsmeow (prefix '+', pencocokan r.Query bukan LID, tiga keadaan: Terdaftar/TidakTerdaftar/TidakPasti), penanganan retry backoff TidakPasti (3x lalu gagal cek_nomor_gagal), metrik engine, health check wa_check_status, sanitasi purge | pemilik dan agen |
@@ -191,6 +192,28 @@ Perbedaan antara DOC_KONSEP dan kode aktual yang dicatat di Tahap S0:
 ---
 
 ## Catatan temuan
+
+- **2026-10-24 (Perbaikan Konkurensi QR, Hitung Mundur Penautan 2 Menit, & Pairing Nomor Internasional)**:
+  - *Akar Masalah di Log VPS (`journalctl -u goblast` & Nginx)*:
+    1. Saat akun WhatsApp pertama kali ditautkan, `whatsmeow` mengirimkan ratusan event sinkronisasi kontak dan aplikasi (`*events.Contact`, `*events.AppState`) ke `m.eventQueues` (kapasitas 64), menyebabkan 2.679 peringatan `wa: event queue full, event dibuang non-blocking` yang berisiko membuang event penting (`PairSuccess` / `Connected`).
+    2. Saat pengguna membuka modal QR namun tidak memindai sampai kode QR habis (~160 detik), `whatsmeow` memutus WebSocket otomatis, tetapi `sess` tetap tertinggal di `m.sessions` dengan status `menunggu_scan` dan memakan jatah kuota `max_accounts_per_worker` maupun `MAX_ACTIVE_SESSIONS`.
+    3. `HandleWorkerAccountInitPOST` mengabaikan galat dari `s.WaManager.Connect(...)` (`_, _, _ = ...`), sehingga saat kuota penuh atau sesi lama kadaluarsa, browser menerima `qr_image_b64: ""` dan berputar-putar melakukan polling `/status`.
+    4. Pemanggilan `client.PairPhone` gagal dengan `websocket not connected` karena dipanggil sebelum event QR pertama siap pada channel `GetQRChannel` (sesuai kontrak `whatsmeow/pair-code.go`), atau dipanggil pada sesi yang sudah kadaluarsa.
+    5. Pada `HandleWorkerAccountPairPOST`, nomor internasional yang diketik tanpa awalan `+` dan kode negaranya berawalan angka `8` (misalnya Kamboja `855...`, Vietnam `84...`, Jepang `81...`, Korea `82...`) salah ditafsirkan sebagai nomor lokal Indonesia (`628...`) karena `numbers.Normalize(rawPhone, "")` memakai default region `'ID'`.
+  - *Perbaikan & Implementasi*:
+    1. `internal/config/limits.go`: Menambahkan konstanta `ScanTimeout = 2 * time.Minute`.
+    2. `internal/wa/manager.go`:
+       - Menyaring event di `handleEvent` sebelum masuk `m.eventQueues` sehingga hanya 8 event siklus hidup koneksi (`Connected`, `Disconnected`, `LoggedOut`, `TemporaryBan`, `ConnectFailure`, `ClientOutdated`, `StreamReplaced`, `PairSuccess`) yang diantrekan.
+       - Menambahkan `scanTimer` (2 menit), `scanDeadline`, `qrReady` (broadcast channel), serta `handleScanTimeout` dan `CleanupStalePendingAccounts` yang memutus klien, menghapus `deviceStore`, menghapus sesi dari `m.sessions`, dan menghapus baris `wa_accounts` sementara yang belum pernah tertaut (`wa_jid_hash IS NULL AND connected_at IS NULL`).
+       - Memperbaiki `pairingFn` agar menunggu `<-sess.qrReady` sebelum memanggil `client.PairPhone`.
+       - Menambahkan `GetQRImageB64WithTimeout` agar endpoint `/init` (batas tunggu 800ms) dan `/status` (batas tunggu 150ms) tidak pernah memblokir HTTP worker selama 2,5 detik.
+    3. `internal/numbers/numbers.go` & `internal/web/wa_handlers.go`:
+       - Membersihkan karakter arah Unicode tak kasat mata (`\u202a`–`\u202e`, `\u200b`–`\u200f`, `\u00a0`, `\ufeff`) saat menyalin nomor dari WhatsApp.
+       - Tetap menolak awalan `0` tunggal tanpa kode negara (`"tulis dengan kode negara, misalnya +62..."`), dan otomatis menambahkan `+` pada nomor non-`0` sebelum `numbers.Normalize` sehingga seluruh nomor internasional (dengan atau tanpa `+`) tervalidasi akurat.
+       - Pada `HandleWorkerAccountInitPOST`, jika `Connect` gagal (misal kuota penuh), baris sementara yang baru dibuat langsung dihapus dan pesan galat dikembalikan ke modal.
+    4. `web/templates/worker_accounts.html`:
+       - Menambahkan indikator hitung mundur 2 menit (`02:00`) di modal penautan (tab QR maupun Kode Pairing), tampilan kedaluwarsa otomatis disertai tombol `Muat Ulang Sesi Baru`, guard `isPollingStatus` agar request polling tidak pernah bertumpuk, serta pembersihan `keepalive` saat halaman ditutup (`pagehide`).
+    5. Dideploy ke VPS sebagai rilis `v1.0.2` via `goblastctl deploy`.
 
 - **2026-10-18 (Peningkatan UX Panel Pekerja — Linear/Vercel Design System)**:
   - *Latar Belakang*: Transisi antarmuka panel pekerja sebelumnya terasa kaku karena mengandalkan reload halaman penuh (*full page reload*) dan teks status statis.
