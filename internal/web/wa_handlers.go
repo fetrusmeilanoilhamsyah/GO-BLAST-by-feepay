@@ -16,13 +16,18 @@ import (
 )
 
 type WAAccountView struct {
-	ID         int64
-	Label      string
-	Speed      string
-	Status     string
-	IsWorking  bool
-	StopReason string
-	CreatedAt  string
+	ID              int64
+	Label           string
+	Speed           string
+	Status          string
+	IsWorking       bool
+	StopReason      string
+	CreatedAt       string
+	TotalAttempted  int64
+	SuccessCount    int64
+	FailCount       int64
+	UncertainCount  int64
+	CompensationIDR string
 }
 
 func (s *Server) HandleWorkerAccounts(w http.ResponseWriter, r *http.Request) {
@@ -37,7 +42,18 @@ func (s *Server) HandleWorkerAccounts(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rows, err := s.DB.Pool.Query(r.Context(),
-		`SELECT id, label, speed, status, COALESCE(stop_reason, ''), created_at FROM wa_accounts WHERE worker_id = $1 ORDER BY id DESC`,
+		`SELECT wa.id, wa.label, wa.speed, wa.status, COALESCE(wa.stop_reason, ''), wa.created_at,
+		        COUNT(cn.id) FILTER (WHERE cn.status IN ('terkirim', 'gagal', 'tidak_terdaftar', 'dikirim')) AS total_attempted,
+		        COUNT(cn.id) FILTER (WHERE cn.status = 'terkirim') AS success_count,
+		        COUNT(cn.id) FILTER (WHERE (cn.status = 'gagal' AND COALESCE(cn.last_error, '') <> 'hasil_tidak_pasti') OR cn.status = 'tidak_terdaftar') AS fail_count,
+		        COUNT(cn.id) FILTER (WHERE cn.status = 'gagal' AND cn.last_error = 'hasil_tidak_pasti') AS uncertain_count,
+		        COALESCE(SUM(le.amount) FILTER (WHERE le.kind = 'upah'), 0) AS compensation_idr
+		 FROM wa_accounts wa
+		 LEFT JOIN campaign_numbers cn ON cn.claimed_account_id = wa.id
+		 LEFT JOIN ledger_entries le ON le.campaign_number_id = cn.id AND le.user_id = wa.worker_id AND le.kind = 'upah'
+		 WHERE wa.worker_id = $1
+		 GROUP BY wa.id
+		 ORDER BY wa.id DESC`,
 		user.ID,
 	)
 	if err != nil {
@@ -50,7 +66,9 @@ func (s *Server) HandleWorkerAccounts(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var a WAAccountView
 		var t interface{}
-		if err := rows.Scan(&a.ID, &a.Label, &a.Speed, &a.Status, &a.StopReason, &t); err == nil {
+		var compIDR int64
+		if err := rows.Scan(&a.ID, &a.Label, &a.Speed, &a.Status, &a.StopReason, &t, &a.TotalAttempted, &a.SuccessCount, &a.FailCount, &a.UncertainCount, &compIDR); err == nil {
+			a.CompensationIDR = formatIDR(compIDR)
 			if s.WorkCtrl != nil {
 				a.IsWorking = s.WorkCtrl.IsRunning(a.ID)
 			}
@@ -336,9 +354,6 @@ func (s *Server) HandleWorkerAccountSettingsPOST(w http.ResponseWriter, r *http.
 	label := strings.TrimSpace(r.FormValue("label"))
 	speed := strings.TrimSpace(r.FormValue("speed"))
 
-	if label == "" {
-		label = "WhatsApp"
-	}
 	switch speed {
 	case "fast", "medium", "slow", "over_slow":
 	default:
@@ -346,7 +361,7 @@ func (s *Server) HandleWorkerAccountSettingsPOST(w http.ResponseWriter, r *http.
 	}
 
 	res, err := s.DB.Pool.Exec(r.Context(),
-		`UPDATE wa_accounts SET label = $1, speed = $2 WHERE id = $3 AND worker_id = $4`,
+		`UPDATE wa_accounts SET label = COALESCE(NULLIF($1, ''), label), speed = $2 WHERE id = $3 AND worker_id = $4`,
 		label, speed, id, user.ID)
 
 	w.Header().Set("Content-Type", "application/json")

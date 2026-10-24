@@ -37,196 +37,241 @@
             </div>
             {{end}}
 
-            <!-- TAMPILAN DESKTOP (TABEL) -->
-            <div class="desktop-only responsive-table-container">
-                <table class="responsive-table">
-                    <thead>
-                        <tr>
-                            <th>ID</th>
-                            <th>{{ call .T "wa.label" }}</th>
-                            <th>{{ call .T "wa.speed" }}</th>
-                            <th>{{ call .T "wa.status" }}</th>
-                            <th>{{ call .T "wa.work_status" }}</th>
-                            <th>Aksi</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {{range .Accounts}}
-                        <tr>
-                            <td>#{{.ID}}</td>
-                            <td style="font-weight: bold;">{{.Label}}</td>
-                            <td>
-                                <span style="font-size: 13px; text-transform: uppercase; color: var(--color-muted);">{{.Speed}}</span>
-                            </td>
-                            <td>
-                                {{if eq .Status "terhubung"}}
-                                <span class="badge badge-success">{{ call $.T "wa.connected" }}</span>
-                                {{else if eq .Status "menunggu_scan"}}
-                                <span class="badge badge-warning">{{ call $.T "wa.waiting_scan" }}</span>
-                                {{else if eq .Status "antre"}}
-                                <span class="badge badge-muted">{{ call $.T "wa.queued" }}</span>
-                                {{else if eq .Status "terputus"}}
-                                <span class="badge badge-danger">{{ call $.T "wa.disconnected" }}</span>
-                                {{else}}
-                                <span class="badge badge-muted">{{ call $.T "wa.stopped" }}</span>
-                                {{end}}
-                            </td>
-                            <td>
-                                {{if eq .Status "terhubung"}}
-                                    {{if .IsWorking}}
-                                    <span class="badge badge-success">{{ call $.T "wa.working" }}</span>
-                                    {{else}}
-                                    <span class="badge badge-muted">{{ call $.T "wa.not_working" }}</span>
-                                    {{end}}
-                                {{else}}
-                                    <span class="badge badge-muted">-</span>
-                                {{end}}
-                                {{if .StopReason}}
-                                <div style="font-size: 11px; color: var(--color-muted); margin-top: 4px; max-width: 220px; line-height: 1.3;" title="{{.StopReason}}">
-                                    <span style="font-weight: 600;">{{ call $.T "wa.stop_reason_label" }}</span> {{.StopReason}}
-                                </div>
-                                {{end}}
-                            </td>
-                            <td>
-                                <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-                                    {{if eq .Status "menunggu_scan"}}
-                                    <button type="button" class="btn-open-account-modal" data-account-id="{{.ID}}" style="background-color: var(--color-primary); color: var(--color-on-primary); border: none; padding: 4px 10px; border-radius: 4px; font-size: 12px; font-weight: bold; cursor: pointer;">
-                                        Pindai / Tautkan
-                                    </button>
-                                    <form method="POST" action="/worker/accounts/{{.ID}}/delete" class="form-confirm-delete" style="display: inline;">
-                                        <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
-                                        <button type="submit" style="background: none; border: 1px solid var(--color-danger); color: var(--color-danger); padding: 3px 8px; border-radius: 4px; cursor: pointer; font-size: 12px;">Hapus</button>
-                                    </form>
-                                    {{else if eq .Status "terhubung"}}
-                                        {{if .IsWorking}}
-                                        <form method="POST" action="/worker/accounts/{{.ID}}/work/stop" style="display: inline;">
-                                            <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
-                                            <button type="submit" style="background: none; border: 1px solid var(--color-warning); color: var(--color-warning); padding: 3px 8px; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: bold;">{{ call $.T "wa.action_stop_work" }}</button>
-                                        </form>
-                                        {{else}}
-                                        <form method="POST" action="/worker/accounts/{{.ID}}/work/start" style="display: inline;">
-                                            <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
-                                            <button type="submit" style="background-color: var(--color-primary); color: var(--color-on-primary); border: none; padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: bold;">{{ call $.T "wa.action_start_work" }}</button>
-                                        </form>
-                                        {{end}}
-                                    <form method="POST" action="/worker/accounts/{{.ID}}/disconnect" style="display: inline;">
-                                        <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
-                                        <button type="submit" style="background: none; border: 1px solid var(--color-border); color: var(--color-muted); padding: 3px 8px; border-radius: 4px; cursor: pointer; font-size: 12px;">{{ call $.T "wa.action_disconnect" }}</button>
-                                    </form>
-                                    <form method="POST" action="/worker/accounts/{{.ID}}/stop" style="display: inline;">
-                                        <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
-                                        <button type="submit" style="background: none; border: 1px solid var(--color-danger); color: var(--color-danger); padding: 3px 8px; border-radius: 4px; cursor: pointer; font-size: 12px;">{{ call $.T "wa.action_stop" }}</button>
-                                    </form>
-                                    {{else}}
-                                    <button type="button" class="btn-open-account-modal" data-account-id="{{.ID}}" style="background: none; border: 1px solid var(--color-primary); color: var(--color-primary); padding: 3px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; cursor: pointer;">
-                                        {{ call $.T "wa.action_connect" }}
-                                    </button>
-                                    <form method="POST" action="/worker/accounts/{{.ID}}/delete" class="form-confirm-delete" style="display: inline;">
-                                        <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
-                                        <button type="submit" style="background: none; border: 1px solid var(--color-danger); color: var(--color-danger); padding: 3px 8px; border-radius: 4px; cursor: pointer; font-size: 12px;">Hapus</button>
-                                    </form>
-                                    {{end}}
-                                </div>
-                            </td>
-                        </tr>
-                        {{else}}
-                        <tr>
-                            <td colspan="6" style="padding: 30px; text-align: center; color: var(--color-muted);">
-                                {{ call .T "wa.empty_accounts" }}
-                            </td>
-                        </tr>
-                        {{end}}
-                    </tbody>
-                </table>
-            </div>
+            <style nonce="{{ .Nonce }}">
+                .wa-cards-grid {
+                    display: grid;
+                    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+                    gap: 16px;
+                }
+                @media (max-width: 600px) {
+                    .wa-cards-grid {
+                        grid-template-columns: 1fr;
+                    }
+                }
+                .wa-blast-card {
+                    background-color: var(--color-card);
+                    border: 1px solid var(--color-border);
+                    border-radius: 14px;
+                    padding: 20px 18px;
+                    box-shadow: 0 1px 3px var(--color-shadow);
+                    display: flex;
+                    flex-direction: column;
+                    gap: 18px;
+                }
+                .wa-blast-header {
+                    text-align: center;
+                }
+                .wa-blast-title {
+                    font-size: 17px;
+                    font-weight: 700;
+                    color: var(--color-text);
+                    margin-bottom: 4px;
+                }
+                .wa-blast-status {
+                    font-size: 11px;
+                    font-weight: 700;
+                    letter-spacing: 0.4px;
+                    text-transform: uppercase;
+                }
+                .wa-blast-status-online {
+                    color: var(--color-success);
+                }
+                .wa-blast-status-warn {
+                    color: var(--color-warning);
+                }
+                .wa-blast-status-off {
+                    color: var(--color-danger);
+                }
+                .wa-blast-stats {
+                    display: grid;
+                    grid-template-columns: repeat(4, 1fr) 1.35fr;
+                    gap: 6px;
+                    text-align: center;
+                    align-items: center;
+                    padding: 8px 4px;
+                    border-top: 1px solid var(--color-border);
+                    border-bottom: 1px solid var(--color-border);
+                }
+                .wa-stat-num {
+                    font-size: 16px;
+                    font-weight: 800;
+                    line-height: 1.2;
+                }
+                .wa-stat-lbl {
+                    font-size: 9px;
+                    font-weight: 700;
+                    color: var(--color-muted);
+                    letter-spacing: 0.3px;
+                    margin-top: 3px;
+                    text-transform: uppercase;
+                }
+                .wa-blast-controls {
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    gap: 10px;
+                    flex-wrap: wrap;
+                }
+                .wa-speed-pill {
+                    flex: 1;
+                    min-width: 140px;
+                    padding: 8px 12px;
+                    border-radius: 999px;
+                    border: 1px solid var(--color-border);
+                    background-color: var(--color-surface-muted);
+                    color: var(--color-text);
+                    font-size: 13px;
+                    font-weight: 500;
+                    cursor: pointer;
+                }
+                .wa-btn-pill-start {
+                    padding: 8px 20px;
+                    border-radius: 999px;
+                    border: 1px solid var(--color-primary);
+                    background-color: var(--color-primary);
+                    color: var(--color-on-primary);
+                    font-size: 13px;
+                    font-weight: 700;
+                    cursor: pointer;
+                    white-space: nowrap;
+                }
+                .wa-btn-pill-stop {
+                    padding: 8px 22px;
+                    border-radius: 999px;
+                    border: 1px solid var(--color-danger);
+                    background-color: var(--color-surface-muted);
+                    color: var(--color-danger);
+                    font-size: 13px;
+                    font-weight: 700;
+                    cursor: pointer;
+                    white-space: nowrap;
+                }
+                .wa-btn-pill-connect {
+                    padding: 8px 18px;
+                    border-radius: 999px;
+                    border: 1px solid var(--color-primary);
+                    background-color: var(--color-surface-muted);
+                    color: var(--color-primary);
+                    font-size: 13px;
+                    font-weight: 700;
+                    cursor: pointer;
+                    white-space: nowrap;
+                }
+                .wa-btn-icon-trash {
+                    width: 36px;
+                    height: 36px;
+                    border-radius: 999px;
+                    border: 1px solid var(--color-border);
+                    background-color: var(--color-surface-muted);
+                    color: var(--color-muted);
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
+                    cursor: pointer;
+                    padding: 0;
+                }
+                .wa-btn-icon-trash:hover {
+                    color: var(--color-danger);
+                    border-color: var(--color-danger);
+                }
+            </style>
 
-            <!-- TAMPILAN MOBILE (KARTU SIMETRIS & PAS DI LAYAR ANDROID) -->
-            <div class="mobile-only account-card-list">
+            {{if .Accounts}}
+            <div class="wa-cards-grid">
                 {{range .Accounts}}
-                <div class="account-card-item">
-                    <div class="account-card-header">
-                        <div>
-                            <div class="account-card-title">{{.Label}} <span style="font-size: 12px; font-weight: normal; color: var(--color-muted);">#{{.ID}}</span></div>
-                            <div class="account-card-meta">
-                                <span>{{ call $.T "wa.speed" }}: <strong style="text-transform: uppercase;">{{.Speed}}</strong></span>
-                                {{if eq .Status "terhubung"}}
-                                <span style="margin: 0 4px;">•</span>
-                                <span>{{ call $.T "wa.work_status" }}:
-                                    {{if .IsWorking}}
-                                    <strong style="color: var(--color-success);">{{ call $.T "wa.working" }}</strong>
-                                    {{else}}
-                                    <strong style="color: var(--color-muted);">{{ call $.T "wa.not_working" }}</strong>
-                                    {{end}}
-                                </span>
-                                {{end}}
-                            </div>
-                            {{if .StopReason}}
-                            <div style="font-size: 11px; color: var(--color-muted); margin-top: 4px; line-height: 1.3;">
-                                <span style="font-weight: 600;">{{ call $.T "wa.stop_reason_label" }}</span> {{.StopReason}}
-                            </div>
+                <div class="wa-blast-card">
+                    <div class="wa-blast-header">
+                        <div class="wa-blast-title">{{.Label}} <span style="font-size: 12px; font-weight: normal; color: var(--color-muted);">#{{.ID}}</span></div>
+                        {{if eq .Status "terhubung"}}
+                            {{if .IsWorking}}
+                            <div class="wa-blast-status wa-blast-status-online">&bull; ONLINE &bull; MENGIRIM PESAN...</div>
+                            {{else}}
+                            <div class="wa-blast-status wa-blast-status-online">&bull; TERHUBUNG &bull; SIAP BLAST</div>
                             {{end}}
+                        {{else if eq .Status "menunggu_scan"}}
+                            <div class="wa-blast-status wa-blast-status-warn">&bull; {{ call $.T "wa.waiting_scan" }}</div>
+                        {{else if eq .Status "antre"}}
+                            <div class="wa-blast-status wa-blast-status-warn">&bull; {{ call $.T "wa.queued" }}</div>
+                        {{else if eq .Status "terputus"}}
+                            <div class="wa-blast-status wa-blast-status-off">&bull; {{ call $.T "wa.disconnected" }}{{if .StopReason}} ({{.StopReason}}){{end}}</div>
+                        {{else}}
+                            <div class="wa-blast-status wa-blast-status-off">&bull; {{ call $.T "wa.stopped" }}{{if .StopReason}} ({{.StopReason}}){{end}}</div>
+                        {{end}}
+                    </div>
+
+                    <div class="wa-blast-stats">
+                        <div>
+                            <div class="wa-stat-num" style="color: var(--color-primary);">{{.TotalAttempted}}</div>
+                            <div class="wa-stat-lbl">DIKIRIM</div>
                         </div>
                         <div>
-                            {{if eq .Status "terhubung"}}
-                            <span class="badge badge-success">{{ call $.T "wa.connected" }}</span>
-                            {{else if eq .Status "menunggu_scan"}}
-                            <span class="badge badge-warning">{{ call $.T "wa.waiting_scan" }}</span>
-                            {{else if eq .Status "antre"}}
-                            <span class="badge badge-muted">{{ call $.T "wa.queued" }}</span>
-                            {{else if eq .Status "terputus"}}
-                            <span class="badge badge-danger">{{ call $.T "wa.disconnected" }}</span>
-                            {{else}}
-                            <span class="badge badge-muted">{{ call $.T "wa.stopped" }}</span>
-                            {{end}}
+                            <div class="wa-stat-num" style="color: var(--color-success);">{{.SuccessCount}}</div>
+                            <div class="wa-stat-lbl">SUKSES</div>
+                        </div>
+                        <div>
+                            <div class="wa-stat-num" style="color: var(--color-danger);">{{.FailCount}}</div>
+                            <div class="wa-stat-lbl">GAGAL</div>
+                        </div>
+                        <div>
+                            <div class="wa-stat-num" style="color: var(--color-warning);">{{.UncertainCount}}</div>
+                            <div class="wa-stat-lbl">BELUM PASTI</div>
+                        </div>
+                        <div>
+                            <div class="wa-stat-num" style="color: var(--color-warning);">Rp{{.CompensationIDR}}</div>
+                            <div class="wa-stat-lbl">KOMPENSASI</div>
                         </div>
                     </div>
 
-                    <div class="account-card-actions">
-                        {{if eq .Status "menunggu_scan"}}
-                        <button type="button" class="btn btn-primary btn-open-account-modal" data-account-id="{{.ID}}" style="flex: 1; padding: 8px 12px; font-size: 13px; font-weight: bold; cursor: pointer;">
-                            Pindai / Tautkan
-                        </button>
-                        <form method="POST" action="/worker/accounts/{{.ID}}/delete" class="form-confirm-delete" style="display: inline;">
-                            <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
-                            <button type="submit" style="background: none; border: 1px solid var(--color-danger); color: var(--color-danger); padding: 7px 12px; border-radius: 4px; cursor: pointer; font-size: 13px;">Hapus</button>
-                        </form>
-                        {{else if eq .Status "terhubung"}}
+                    <div class="wa-blast-controls">
+                        <select class="wa-speed-pill card-speed-select" data-account-id="{{.ID}}" aria-label="{{ call $.T "wa.speed" }}">
+                            <option value="fast"{{if eq .Speed "fast"}} selected{{end}}>Fast (1-3 detik)</option>
+                            <option value="medium"{{if eq .Speed "medium"}} selected{{end}}>Medium (5 detik)</option>
+                            <option value="slow"{{if eq .Speed "slow"}} selected{{end}}>Slow (15 detik)</option>
+                            <option value="over_slow"{{if eq .Speed "over_slow"}} selected{{end}}>Over Slow (30 detik)</option>
+                        </select>
+
+                        {{if eq .Status "terhubung"}}
                             {{if .IsWorking}}
-                            <form method="POST" action="/worker/accounts/{{.ID}}/work/stop" style="flex: 1;">
+                            <form method="POST" action="/worker/accounts/{{.ID}}/work/stop" style="margin: 0;">
                                 <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
-                                <button type="submit" style="width: 100%; background: none; border: 1px solid var(--color-warning); color: var(--color-warning); padding: 7px 12px; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: bold;">{{ call $.T "wa.action_stop_work" }}</button>
+                                <button type="submit" class="wa-btn-pill-stop">Stop</button>
                             </form>
                             {{else}}
-                            <form method="POST" action="/worker/accounts/{{.ID}}/work/start" style="flex: 1;">
+                            <form method="POST" action="/worker/accounts/{{.ID}}/work/start" style="margin: 0;">
                                 <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
-                                <button type="submit" style="width: 100%; background-color: var(--color-primary); color: var(--color-on-primary); border: none; padding: 7px 12px; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: bold;">{{ call $.T "wa.action_start_work" }}</button>
+                                <button type="submit" class="wa-btn-pill-start">Mulai Blast</button>
                             </form>
                             {{end}}
-                        <form method="POST" action="/worker/accounts/{{.ID}}/disconnect" style="flex: 1;">
-                            <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
-                            <button type="submit" style="width: 100%; background: none; border: 1px solid var(--color-border); color: var(--color-muted); padding: 7px 12px; border-radius: 4px; cursor: pointer; font-size: 13px;">{{ call $.T "wa.action_disconnect" }}</button>
-                        </form>
-                        <form method="POST" action="/worker/accounts/{{.ID}}/stop" style="flex: 1;">
-                            <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
-                            <button type="submit" style="width: 100%; background: none; border: 1px solid var(--color-danger); color: var(--color-danger); padding: 7px 12px; border-radius: 4px; cursor: pointer; font-size: 13px;">{{ call $.T "wa.action_stop" }}</button>
-                        </form>
                         {{else}}
-                        <button type="button" class="btn-open-account-modal" data-account-id="{{.ID}}" style="flex: 1; background: none; border: 1px solid var(--color-primary); color: var(--color-primary); padding: 7px 12px; border-radius: 4px; font-size: 13px; font-weight: bold; cursor: pointer;">
-                            {{ call $.T "wa.action_connect" }}
-                        </button>
-                        <form method="POST" action="/worker/accounts/{{.ID}}/delete" class="form-confirm-delete" style="display: inline;">
-                            <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
-                            <button type="submit" style="background: none; border: 1px solid var(--color-danger); color: var(--color-danger); padding: 7px 12px; border-radius: 4px; cursor: pointer; font-size: 13px;">Hapus</button>
-                        </form>
+                            <button type="button" class="wa-btn-pill-connect btn-open-account-modal" data-account-id="{{.ID}}">
+                                {{ call $.T "wa.action_connect" }}
+                            </button>
                         {{end}}
+
+                        <form method="POST" action="/worker/accounts/{{.ID}}/delete" class="form-confirm-delete" style="margin: 0;">
+                            <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                            <button type="submit" class="wa-btn-icon-trash" title="Putuskan &amp; Hapus WhatsApp" aria-label="Putuskan &amp; Hapus WhatsApp">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <polyline points="3 6 5 6 21 6"></polyline>
+                                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                                    <line x1="10" y1="11" x2="10" y2="17"></line>
+                                    <line x1="14" y1="11" x2="14" y2="17"></line>
+                                </svg>
+                            </button>
+                        </form>
                     </div>
-                </div>
-                {{else}}
-                <div style="background-color: var(--color-card); border: 1px solid var(--color-border); border-radius: 8px; padding: 24px; text-align: center; color: var(--color-muted);">
-                    {{ call .T "wa.empty_accounts" }}
+
+                    <div id="card-fast-warn-{{.ID}}" style="{{if ne .Speed "fast"}}display: none; {{end}}background-color: var(--color-surface-muted); border-left: 3px solid var(--color-warning); color: var(--color-warning); padding: 8px 10px; font-size: 11px; border-radius: 4px; line-height: 1.4;">
+                        {{ call $.T "worker.speed_fast_warning" }}
+                    </div>
                 </div>
                 {{end}}
             </div>
+            {{else}}
+            <div style="background-color: var(--color-card); border: 1px solid var(--color-border); border-radius: 10px; padding: 30px; text-align: center; color: var(--color-muted);">
+                {{ call .T "wa.empty_accounts" }}
+            </div>
+            {{end}}
 
         {{ template "worker_footer" . }}
     </main>
@@ -775,9 +820,8 @@
         }
 
         setTimeout(function() {
-            if (stepConn) stepConn.style.display = 'none';
-            document.getElementById('modal-step-settings').style.display = 'block';
-        }, 700);
+            window.location.href = '/worker/accounts';
+        }, 800);
     }
 
     async function submitPairPhone(e) {
@@ -943,8 +987,39 @@
 
         document.querySelectorAll('.form-confirm-delete').forEach(function(form) {
             form.addEventListener('submit', function(e) {
-                if (!confirm('Hapus antrean akun ini?')) {
+                if (!confirm('Putuskan dan hapus akun WhatsApp ini?')) {
                     e.preventDefault();
+                }
+            });
+        });
+
+        document.querySelectorAll('.card-speed-select').forEach(function(sel) {
+            sel.addEventListener('change', async function() {
+                var accId = this.getAttribute('data-account-id');
+                var newSpeed = this.value;
+                var warnEl = document.getElementById('card-fast-warn-' + accId);
+                if (warnEl) {
+                    warnEl.style.display = (newSpeed === 'fast') ? 'block' : 'none';
+                }
+                if (!accId) return;
+                try {
+                    var formData = new FormData();
+                    formData.append('csrf_token', csrfToken);
+                    formData.append('speed', newSpeed);
+                    formData.append('format', 'json');
+                    var res = await fetch('/worker/accounts/' + accId + '/settings', {
+                        method: 'POST',
+                        body: formData,
+                        headers: { 'Accept': 'application/json' }
+                    });
+                    var data = await res.json();
+                    if (data && data.ok) {
+                        if (window.toast) window.toast.success('Kecepatan pengiriman diperbarui');
+                    } else if (window.toast) {
+                        window.toast.error((data && data.error) ? data.error : 'Gagal memperbarui kecepatan');
+                    }
+                } catch (err) {
+                    if (window.toast) window.toast.error('Gagal memperbarui kecepatan');
                 }
             });
         });

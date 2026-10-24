@@ -1949,8 +1949,9 @@ func (s *Server) RunHealthChecks(ctx context.Context) []HealthCheckItem {
 	}
 
 	// 4. Sesi WhatsApp (terhubung dibanding terdaftar)
-	var totalWA, connectedWA int64
+	var totalWA, connectedWA, runningCamps int64
 	_ = s.DB.Pool.QueryRow(ctx, "SELECT COUNT(*), COUNT(CASE WHEN status = 'terhubung' THEN 1 END) FROM wa_accounts").Scan(&totalWA, &connectedWA)
+	_ = s.DB.Pool.QueryRow(ctx, "SELECT COUNT(*) FROM campaigns WHERE status = 'berjalan' AND archived_at IS NULL").Scan(&runningCamps)
 	if totalWA == 0 {
 		results = append(results, HealthCheckItem{
 			Key:     "wa_sessions",
@@ -1958,12 +1959,12 @@ func (s *Server) RunHealthChecks(ctx context.Context) []HealthCheckItem {
 			Status:  "ok",
 			Message: "Belum ada akun WhatsApp terdaftar",
 		})
-	} else if connectedWA == 0 {
+	} else if connectedWA == 0 && runningCamps > 0 {
 		results = append(results, HealthCheckItem{
 			Key:     "wa_sessions",
 			Name:    "Sesi Akun WhatsApp",
 			Status:  "peringatan",
-			Message: fmt.Sprintf("0 dari %d akun WhatsApp terhubung aktif", totalWA),
+			Message: fmt.Sprintf("0 dari %d akun WhatsApp terhubung aktif saat ada kampanye berjalan", totalWA),
 		})
 	} else {
 		results = append(results, HealthCheckItem{

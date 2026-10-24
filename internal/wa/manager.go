@@ -1051,11 +1051,15 @@ func (m *Manager) Delete(ctx context.Context, accountID, callerWorkerID int64) e
 	m.mu.Unlock()
 
 	if ok && sess != nil {
+		prevStatus := sess.GetStatus()
 		sess.SetStatus("berhenti")
 		sess.cancelScanTimer()
 		sess.cancelDisconnectTimer()
 		sess.cancel()
 		if sess.Client != nil {
+			if prevStatus == "terhubung" {
+				_ = sess.Client.Logout(ctx)
+			}
 			sess.Client.Disconnect()
 		}
 		if sess.deviceStore != nil {
@@ -1085,7 +1089,7 @@ func (m *Manager) Delete(ctx context.Context, accountID, callerWorkerID int64) e
 
 // CleanupStalePendingAccounts menghapus baris wa_accounts milik workerID yang masih berstatus
 // menunggu_scan atau antre namun belum pernah tertaut (wa_jid_hash IS NULL AND connected_at IS NULL)
-// dan tidak memiliki sesi scan aktif di memori.
+// serta akun yang sudah logged_out / terputus karena restart server agar tidak mengotori daftar akun.
 func (m *Manager) CleanupStalePendingAccounts(ctx context.Context, workerID int64) {
 	if m.db == nil || m.db.Pool == nil || workerID <= 0 {
 		return
@@ -1094,11 +1098,13 @@ func (m *Manager) CleanupStalePendingAccounts(ctx context.Context, workerID int6
 		`SELECT id FROM wa_accounts
 		 WHERE worker_id = $1
 		   AND (
-		     status IN ('menunggu_scan', 'antre')
+		     (
+		       (status IN ('menunggu_scan', 'antre') OR (status = 'terputus' AND stop_reason = 'server restart'))
+		       AND wa_jid_hash IS NULL AND connected_at IS NULL
+		     )
+		     OR (status = 'berhenti' AND stop_reason = 'logged_out')
 		     OR (status = 'terputus' AND stop_reason = 'server restart')
-		   )
-		   AND wa_jid_hash IS NULL
-		   AND connected_at IS NULL`,
+		   )`,
 		workerID,
 	)
 	if err != nil {
@@ -1115,21 +1121,10 @@ func (m *Manager) CleanupStalePendingAccounts(ctx context.Context, workerID int6
 
 	for _, id := range candidateIDs {
 		sess := m.GetSession(id)
-		if sess != nil && sess.IsScanActive() {
+		if sess != nil && (sess.IsScanActive() || sess.GetStatus() == "terhubung") {
 			continue
 		}
-		if sess != nil {
-			m.handleScanTimeout(id, workerID)
-			continue
-		}
-		_, _ = m.db.Pool.Exec(ctx,
-			`DELETE FROM wa_accounts
-			 WHERE id = $1 AND worker_id = $2
-			   AND status IN ('menunggu_scan', 'antre')
-			   AND wa_jid_hash IS NULL AND connected_at IS NULL
-			   AND NOT EXISTS (SELECT 1 FROM campaign_numbers WHERE claimed_account_id = $1)`,
-			id, workerID,
-		)
+		_ = m.Delete(ctx, id, workerID)
 	}
 }
 
