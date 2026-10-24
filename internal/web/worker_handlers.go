@@ -127,83 +127,51 @@ func (s *Server) HandleWorkerHome(w http.ResponseWriter, r *http.Request) {
 		lang = "id"
 	}
 
-	// 1. Saldo saat ini (IDR dan USDT terpisah)
-	var balanceIDR int64
-	_ = s.DB.Pool.QueryRow(ctx, "SELECT user_balance($1, 'IDR')", user.ID).Scan(&balanceIDR)
-
-	var balanceUSDT int64
-	_ = s.DB.Pool.QueryRow(ctx, "SELECT user_balance($1, 'USDT')", user.ID).Scan(&balanceUSDT)
-
-	var mainBalance int64 = balanceIDR
-
 	startOfTodayWIB := timeutil.GetJakartaStartOfDay()
 
-	// 2. Pendapatan hari ini (upah + referral hari ini, Asia/Jakarta)
-	var earnedTodayIDR int64
+	// 1–7. Gabungkan seluruh agregasi buku besar pekerja dalam 1 query indeks tunggal
+	var (
+		balanceIDR        int64
+		balanceUSDT       int64
+		earnedTodayIDR    int64
+		earnedTodayUSDT   int64
+		totalWageIDR      int64
+		totalWageUSDT     int64
+		totalReferralIDR  int64
+		totalReferralUSDT int64
+		totalWithdrawnIDR int64
+		totalSent         int64
+	)
 	_ = s.DB.Pool.QueryRow(ctx, `
-		SELECT COALESCE(SUM(amount), 0)
+		SELECT
+			COALESCE(SUM(amount) FILTER (WHERE currency = 'IDR'), 0),
+			COALESCE(SUM(amount) FILTER (WHERE currency = 'USDT'), 0),
+			COALESCE(SUM(amount) FILTER (WHERE kind IN ('upah', 'referral') AND currency = 'IDR' AND created_at >= $2), 0),
+			COALESCE(SUM(amount) FILTER (WHERE kind IN ('upah', 'referral') AND currency = 'USDT' AND created_at >= $2), 0),
+			COALESCE(SUM(amount) FILTER (WHERE kind = 'upah' AND currency = 'IDR'), 0),
+			COALESCE(SUM(amount) FILTER (WHERE kind = 'upah' AND currency = 'USDT'), 0),
+			COALESCE(SUM(amount) FILTER (WHERE kind = 'referral' AND currency = 'IDR'), 0),
+			COALESCE(SUM(amount) FILTER (WHERE kind = 'referral' AND currency = 'USDT'), 0),
+			COALESCE(SUM(ABS(amount)) FILTER (WHERE kind = 'penarikan' AND currency = 'IDR'), 0),
+			COUNT(*) FILTER (WHERE kind = 'upah')
 		FROM ledger_entries
-		WHERE user_id = $1 AND kind IN ('upah', 'referral') AND currency = 'IDR' AND created_at >= $2
-	`, user.ID, startOfTodayWIB).Scan(&earnedTodayIDR)
+		WHERE user_id = $1
+	`, user.ID, startOfTodayWIB).Scan(
+		&balanceIDR,
+		&balanceUSDT,
+		&earnedTodayIDR,
+		&earnedTodayUSDT,
+		&totalWageIDR,
+		&totalWageUSDT,
+		&totalReferralIDR,
+		&totalReferralUSDT,
+		&totalWithdrawnIDR,
+		&totalSent,
+	)
 
-	var earnedTodayUSDT int64
-	_ = s.DB.Pool.QueryRow(ctx, `
-		SELECT COALESCE(SUM(amount), 0)
-		FROM ledger_entries
-		WHERE user_id = $1 AND kind IN ('upah', 'referral') AND currency = 'USDT' AND created_at >= $2
-	`, user.ID, startOfTodayWIB).Scan(&earnedTodayUSDT)
-
-	// 3. Total upah terkumpul all-time
-	var totalWageIDR int64
-	_ = s.DB.Pool.QueryRow(ctx, `
-		SELECT COALESCE(SUM(amount), 0)
-		FROM ledger_entries
-		WHERE user_id = $1 AND kind = 'upah' AND currency = 'IDR'
-	`, user.ID).Scan(&totalWageIDR)
-
-	var totalWageUSDT int64
-	_ = s.DB.Pool.QueryRow(ctx, `
-		SELECT COALESCE(SUM(amount), 0)
-		FROM ledger_entries
-		WHERE user_id = $1 AND kind = 'upah' AND currency = 'USDT'
-	`, user.ID).Scan(&totalWageUSDT)
-
-	// 4. Total bonus referral all-time
-	var totalReferralIDR int64
-	_ = s.DB.Pool.QueryRow(ctx, `
-		SELECT COALESCE(SUM(amount), 0)
-		FROM ledger_entries
-		WHERE user_id = $1 AND kind = 'referral' AND currency = 'IDR'
-	`, user.ID).Scan(&totalReferralIDR)
-
-	var totalReferralUSDT int64
-	_ = s.DB.Pool.QueryRow(ctx, `
-		SELECT COALESCE(SUM(amount), 0)
-		FROM ledger_entries
-		WHERE user_id = $1 AND kind = 'referral' AND currency = 'USDT'
-	`, user.ID).Scan(&totalReferralUSDT)
-
+	var mainBalance int64 = balanceIDR
 	totalEarnedIDR := totalWageIDR + totalReferralIDR
 	totalEarnedUSDT := totalWageUSDT + totalReferralUSDT
-
-	// 5. Total telah ditarik
-	var totalWithdrawnIDR int64
-	_ = s.DB.Pool.QueryRow(ctx, `
-		SELECT COALESCE(SUM(ABS(amount)), 0)
-		FROM ledger_entries
-		WHERE user_id = $1 AND kind = 'penarikan' AND currency = 'IDR'
-	`, user.ID).Scan(&totalWithdrawnIDR)
-
-	// 6. Statistik Akun WhatsApp
-	var totalAccounts int64
-	_ = s.DB.Pool.QueryRow(ctx, "SELECT COUNT(*) FROM wa_accounts WHERE worker_id = $1", user.ID).Scan(&totalAccounts)
-
-	var connectedAccounts int64
-	_ = s.DB.Pool.QueryRow(ctx, "SELECT COUNT(*) FROM wa_accounts WHERE worker_id = $1 AND status = 'terhubung'", user.ID).Scan(&connectedAccounts)
-
-	// 7. Total pesan terkirim
-	var totalSent int64
-	_ = s.DB.Pool.QueryRow(ctx, "SELECT COUNT(*) FROM ledger_entries WHERE user_id = $1 AND kind = 'upah'", user.ID).Scan(&totalSent)
 
 	// 8. Aktivitas saldo terkini (10 teratas) dengan format aman
 	rows, err := s.DB.Pool.Query(ctx, `
@@ -259,31 +227,41 @@ func (s *Server) HandleWorkerHome(w http.ResponseWriter, r *http.Request) {
 		runningAccountsGlobal = s.WorkCtrl.RunningCount()
 	}
 
-	// 9b. Rate upah dari settings DB
+	// 9b. Rate upah & kurs dari settings DB dalam 1 query
 	var rateWageIDR int64 = 25
-	var rwJSON string
-	if err := s.DB.Pool.QueryRow(ctx, "SELECT value::text FROM settings WHERE key = 'rate_wage'").Scan(&rwJSON); err == nil {
-		var intVal int64
-		if err := json.Unmarshal([]byte(rwJSON), &intVal); err == nil && intVal > 0 {
-			rateWageIDR = intVal
-		} else {
-			var rw map[string]int64
-			if err := json.Unmarshal([]byte(rwJSON), &rw); err == nil {
-				if idr, ok := rw["IDR"]; ok {
-					rateWageIDR = idr
+	var rateIDRtoUSDT int64
+	var kursUpdatedAt string
+	setRows, setErr := s.DB.Pool.Query(ctx, `
+		SELECT key, value::text
+		FROM settings
+		WHERE key IN ('rate_wage', 'rate_idr_to_usdt', 'rate_idr_to_usdt_updated_at')
+	`)
+	if setErr == nil {
+		defer setRows.Close()
+		for setRows.Next() {
+			var k, v string
+			if err := setRows.Scan(&k, &v); err == nil {
+				switch k {
+				case "rate_wage":
+					var intVal int64
+					if err := json.Unmarshal([]byte(v), &intVal); err == nil && intVal > 0 {
+						rateWageIDR = intVal
+					} else {
+						var rw map[string]int64
+						if err := json.Unmarshal([]byte(v), &rw); err == nil {
+							if idr, ok := rw["IDR"]; ok {
+								rateWageIDR = idr
+							}
+						}
+					}
+				case "rate_idr_to_usdt":
+					_ = json.Unmarshal([]byte(v), &rateIDRtoUSDT)
+				case "rate_idr_to_usdt_updated_at":
+					kursUpdatedAt = strings.Trim(v, `"`)
 				}
 			}
 		}
 	}
-
-	var rateIDRtoUSDT int64
-	var kursJSON string
-	_ = s.DB.Pool.QueryRow(ctx, "SELECT value::text FROM settings WHERE key = 'rate_idr_to_usdt'").Scan(&kursJSON)
-	_ = json.Unmarshal([]byte(kursJSON), &rateIDRtoUSDT)
-
-	var kursUpdatedAt string
-	_ = s.DB.Pool.QueryRow(ctx, "SELECT value::text FROM settings WHERE key = 'rate_idr_to_usdt_updated_at'").Scan(&kursUpdatedAt)
-	kursUpdatedAt = strings.Trim(kursUpdatedAt, `"`)
 
 	var rateWageUSDTApprox string
 	if rateIDRtoUSDT > 0 && kursUpdatedAt != "" {
@@ -297,8 +275,9 @@ func (s *Server) HandleWorkerHome(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// 10. Daftar akun WhatsApp milik pekerja
+	// 10. Daftar akun WhatsApp milik pekerja & hitung total/terhubung sekaligus
 	var accounts []WorkerAccountSummaryView
+	var totalAccounts, connectedAccounts int64
 	accRows, err := s.DB.Pool.Query(ctx, `
 		SELECT id, label, speed, status, COALESCE(stop_reason, ''), created_at
 		FROM wa_accounts
@@ -311,6 +290,10 @@ func (s *Server) HandleWorkerHome(w http.ResponseWriter, r *http.Request) {
 			var acc WorkerAccountSummaryView
 			var t time.Time
 			if err := accRows.Scan(&acc.ID, &acc.Label, &acc.Speed, &acc.Status, &acc.StopReason, &t); err == nil {
+				totalAccounts++
+				if acc.Status == "terhubung" {
+					connectedAccounts++
+				}
 				acc.CreatedAt = t.Format("02 Jan 2006")
 				if s.WorkCtrl != nil {
 					acc.IsWorking = s.WorkCtrl.IsRunning(acc.ID)
@@ -320,24 +303,21 @@ func (s *Server) HandleWorkerHome(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// 11. Ringkasan penghasilan per mata uang
+	// 11. Ringkasan penghasilan per mata uang dari hasil agregasi di atas
 	var incomes []CurrencyIncomeView
-	incRows, err := s.DB.Pool.Query(ctx, `
-		SELECT currency, COALESCE(SUM(amount), 0)
-		FROM ledger_entries
-		WHERE user_id = $1 AND kind = 'upah'
-		GROUP BY currency
-		ORDER BY currency ASC
-	`, user.ID)
-	if err == nil {
-		defer incRows.Close()
-		for incRows.Next() {
-			var inc CurrencyIncomeView
-			if err := incRows.Scan(&inc.Currency, &inc.TotalWage); err == nil {
-				_ = s.DB.Pool.QueryRow(ctx, "SELECT user_balance($1, $2)", user.ID, inc.Currency).Scan(&inc.Balance)
-				incomes = append(incomes, inc)
-			}
-		}
+	if totalWageIDR > 0 {
+		incomes = append(incomes, CurrencyIncomeView{
+			Currency:  "IDR",
+			TotalWage: totalWageIDR,
+			Balance:   balanceIDR,
+		})
+	}
+	if totalWageUSDT > 0 {
+		incomes = append(incomes, CurrencyIncomeView{
+			Currency:  "USDT",
+			TotalWage: totalWageUSDT,
+			Balance:   balanceUSDT,
+		})
 	}
 
 	// 12. Broadcast pengumuman aktif dari admin

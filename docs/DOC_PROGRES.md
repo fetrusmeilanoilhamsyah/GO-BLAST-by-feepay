@@ -193,6 +193,16 @@ Perbedaan antara DOC_KONSEP dan kode aktual yang dicatat di Tahap S0:
 
 ## Catatan temuan
 
+- **2026-10-24 (Optimasi Kecepatan Panel Pekerja, Cache Aset Statis, & Konsolidasi Query DB — Rilis v1.0.6)**:
+  - *Akar Masalah Panel Pekerja Terasa Berat Saat Pindah Halaman*:
+    1. Seluruh 9 gambar maskot Gopher di `web/static/img/gopher-*.png` berukuran asli hingga `1024x1024` piksel dengan total bobot **1,52 MB**, padahal hanya ditampilkan setinggi `34px`–`76px` di layar.
+    2. Handler `/static/` di `internal/web/web.go` belum menyertakan header `Cache-Control`, serta konfigurasi Nginx `goblast` belum mengaktifkan cache `/static/` dan memakai `proxy_buffering off` untuk seluruh rute.
+    3. `HandleWorkerHome` menjalankan **21 query database beruntun (sequential)** setiap kali halaman Beranda dibuka (10 query terpisah ke `ledger_entries`, 3 query ke `settings`, 3 query ke `wa_accounts`, dll.).
+  - *Perbaikan & Implementasi*:
+    1. `web/static/img/gopher-*.png` & `web/templates/worker_nav.html`: Mengecilkan resolusi PNG maskot ke ukuran Retina 2x (`160px` tinggi, memangkas ukuran total dari **1,52 MB menjadi 202 KB** / hemat 87%), memakai varian `.webp` (`4–5 KB`) di parade maskot footer, serta menambahkan `loading="lazy" decoding="async"`.
+    2. `internal/web/web.go` & Nginx VPS: Menambahkan header `Cache-Control: public, max-age=86400` pada `/static/`, menambahkan blok caching `/static/` dan kompresi `gzip` di Nginx VPS, serta mengaktifkan `proxy_buffering` untuk halaman HTML/aset statis.
+    3. `internal/web/worker_handlers.go`: Menggabungkan 16 query beruntun di `HandleWorkerHome` menjadi **3 query tunggal** (`SUM(...) FILTER (WHERE ...)` pada `ledger_entries`, pembacaan batch `settings`, dan penghitungan langsung dari baris `wa_accounts`).
+
 - **2026-10-24 (Audit Pra-Produksi & Perbaikan 5 Bug Kritis — Rilis v1.0.3–v1.0.5)**:
   - *Temuan Audit Log VPS (`journalctl -u goblast`), Katalog Database, & Kode*:
     1. **Bug #1 (`campaign.Render` & `GetOrCreateThumbnail` memanggil `os.Stat` pada Data URI base64 saat Preview Admin)**: Pada `HandleAdminCampaignPreview`, `tmpl.ImagePath` diisi string `data:image/jpeg;base64,...` (hingga ratusan KB) lalu dikirim ke `campaign.RenderForRecipient`. Di `campaign.go:406` dan `thumbnail.go:47`, `GetOrCreateThumbnail` memanggil `os.Stat(imagePath)` karena `imagePath != ""`, menghasilkan galat `file name too long` dan mencetak seluruh base64 ratusan KB ke `journalctl` (`level=ERROR msg="campaign: stat gambar thumbnail gagal"`).

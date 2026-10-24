@@ -830,9 +830,13 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 		mux.Handle(pattern, s.RecoverMiddleware(s.SecurityHeadersMiddleware(s.MaxBytesMiddleware(fn, isUpload))))
 	}
 
-	// Serve static files dengan neutered file system (mencegah directory listing)
-	staticHandler := http.FileServer(neuteredFileSystem{fs: http.Dir(filepath.Join("web", "static"))})
-	handle("/static/", s.RateLimitStaticMiddleware(http.StripPrefix("/static/", staticHandler)))
+	// Serve static files dengan neutered file system (mencegah directory listing) dan header cache browser
+	staticFileServer := http.StripPrefix("/static/", http.FileServer(neuteredFileSystem{fs: http.Dir(filepath.Join("web", "static"))}))
+	staticHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "public, max-age=86400")
+		staticFileServer.ServeHTTP(w, r)
+	})
+	handle("/static/", s.RateLimitStaticMiddleware(staticHandler))
 
 	handleFunc("/healthz", s.handleHealthz)
 	handleFunc("GET /healthz", s.handleHealthz)
