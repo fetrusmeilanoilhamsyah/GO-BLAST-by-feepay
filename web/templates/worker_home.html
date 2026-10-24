@@ -406,6 +406,7 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 setInterval(function() {
+    if (document.hidden) return;
     fetch('/worker/api/stats')
         .then(function(res) {
             if (!res.ok) throw new Error('Network error');

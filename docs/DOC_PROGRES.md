@@ -194,13 +194,14 @@ Perbedaan antara DOC_KONSEP dan kode aktual yang dicatat di Tahap S0:
 
 ## Catatan temuan
 
-- **2026-10-24 (Penyederhanaan Alur Tautan & Kartu Akun WhatsApp Pekerja, Pembersihan Sesi Logout, & Optimasi PageSpeed — Rilis v1.0.7–v1.0.8)**:
+- **2026-10-24 (Penyederhanaan Alur Tautan & Kartu Akun WhatsApp Pekerja, Pembersihan Sesi Logout, & Optimasi PageSpeed — Rilis v1.0.7–v1.0.9)**:
   - *Penyederhanaan Alur Tautan & Kartu Akun WhatsApp (`/worker/accounts`)*:
     1. Saat QR atau kode pairing berhasil tersambung (`terhubung`), modal tidak lagi membuka langkah kedua untuk mengisi label/kecepatan dan tombol "Simpan & Mulai Bekerja", melainkan langsung mengarahkan ke daftar kartu akun `/worker/accounts`.
     2. Tampilan kartu akun disatukan menjadi `.wa-blast-card` yang memuat header status (`ONLINE • MENGIRIM PESAN...` / `TERHUBUNG • SIAP BLAST`), 5 kotak metrik per akun (`DIKIRIM`, `SUKSES`, `GAGAL`, `BELUM PASTI`, `KOMPENSASI`), dropdown kecepatan pengiriman langsung di kartu (otomatis menyimpan saat diubah tanpa menimpa label akun via `COALESCE(NULLIF($1, ''), label)`), tombol `Mulai Blast` / `Stop`, dan tombol ikon tempat sampah (`Putuskan & Hapus WhatsApp`).
     3. `Manager.Delete` kini memanggil `Client.Logout(ctx)` terlebih dahulu bila sesi sedang `terhubung` sebelum `Client.Disconnect()`, menghapus `deviceStore`, melepaskan `claimed_account_id`, dan menghapus baris `wa_accounts`.
     4. `CleanupStalePendingAccounts` otomatis membersihkan baris akun milik pekerja yang berstatus `berhenti` (`stop_reason = 'logged_out'`) atau `terputus` (`stop_reason = 'server restart'`) dan tidak lagi aktif di memori.
     5. Pemeriksaan kesehatan `wa_sessions` di `RunHealthChecks` (`/admin/maintenance`) diperbarui agar hanya mengeluarkan status `peringatan` apabila terdapat campaign aktif (`berjalan`) namun `0` akun WhatsApp yang terhubung.
+    6. Pembaruan live 5 detik pada kartu akun (`/worker/api/stats?accounts=1`) dirancang hemat query: melewati polling saat tab browser tidak aktif (`document.hidden`) dan hanya menjalankan query agregasi `campaign_numbers` ketika terdapat akun WhatsApp pekerja yang sedang aktif bekerja (`IsWorking = true` atau baru saja transisi berhenti).
   - *Optimasi PageSpeed (Rilis v1.0.7)*:
     1. Mengecilkan dimensi `gopher-flash.webp` ke `66x56` (`2,5 KB`), mengompresi seluruh PNG maskot Gopher ke 8-bit indexed palette (`87 KB` total), serta meningkatkan header `/static/` menjadi `Cache-Control: public, max-age=31536000, immutable`.
 

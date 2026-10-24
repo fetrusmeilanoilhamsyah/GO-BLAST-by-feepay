@@ -179,7 +179,7 @@
             {{if .Accounts}}
             <div class="wa-cards-grid">
                 {{range .Accounts}}
-                <div class="wa-blast-card">
+                <div class="wa-blast-card" id="wa-card-{{.ID}}" data-account-id="{{.ID}}" data-status="{{.Status}}" data-is-working="{{if .IsWorking}}true{{else}}false{{end}}">
                     <div class="wa-blast-header">
                         <div class="wa-blast-title">{{.Label}} <span style="font-size: 12px; font-weight: normal; color: var(--color-muted);">#{{.ID}}</span></div>
                         {{if eq .Status "terhubung"}}
@@ -201,23 +201,23 @@
 
                     <div class="wa-blast-stats">
                         <div>
-                            <div class="wa-stat-num" style="color: var(--color-primary);">{{.TotalAttempted}}</div>
+                            <div class="wa-stat-num" id="card-stat-sent-{{.ID}}" style="color: var(--color-primary);">{{.TotalAttempted}}</div>
                             <div class="wa-stat-lbl">DIKIRIM</div>
                         </div>
                         <div>
-                            <div class="wa-stat-num" style="color: var(--color-success);">{{.SuccessCount}}</div>
+                            <div class="wa-stat-num" id="card-stat-success-{{.ID}}" style="color: var(--color-success);">{{.SuccessCount}}</div>
                             <div class="wa-stat-lbl">SUKSES</div>
                         </div>
                         <div>
-                            <div class="wa-stat-num" style="color: var(--color-danger);">{{.FailCount}}</div>
+                            <div class="wa-stat-num" id="card-stat-fail-{{.ID}}" style="color: var(--color-danger);">{{.FailCount}}</div>
                             <div class="wa-stat-lbl">GAGAL</div>
                         </div>
                         <div>
-                            <div class="wa-stat-num" style="color: var(--color-warning);">{{.UncertainCount}}</div>
+                            <div class="wa-stat-num" id="card-stat-uncertain-{{.ID}}" style="color: var(--color-warning);">{{.UncertainCount}}</div>
                             <div class="wa-stat-lbl">BELUM PASTI</div>
                         </div>
                         <div>
-                            <div class="wa-stat-num" style="color: var(--color-warning);">Rp{{.CompensationIDR}}</div>
+                            <div class="wa-stat-num" id="card-stat-comp-{{.ID}}" style="color: var(--color-warning);">Rp{{.CompensationIDR}}</div>
                             <div class="wa-stat-lbl">KOMPENSASI</div>
                         </div>
                     </div>
@@ -1067,7 +1067,18 @@
         }
 
         setInterval(function() {
-            fetch('/worker/api/stats')
+            if (document.hidden) return;
+            var cards = document.querySelectorAll('.wa-blast-card');
+            var url = '/worker/api/stats';
+            if (cards.length > 0) {
+                var anyWorking = false;
+                cards.forEach(function(c) {
+                    if (c.getAttribute('data-is-working') === 'true') anyWorking = true;
+                });
+                url = anyWorking ? '/worker/api/stats?accounts=1&working=1' : '/worker/api/stats?accounts=1';
+            }
+
+            fetch(url)
                 .then(function(res) {
                     if (!res.ok) throw new Error('Network error');
                     return res.json();
@@ -1084,6 +1095,36 @@
                     }
                     var elGlobal = document.getElementById('stat-running-global');
                     if (elGlobal) elGlobal.textContent = data.akun_bekerja_global;
+
+                    if (Array.isArray(data.accounts)) {
+                        var modalOpen = modal && modal.style.display === 'flex';
+                        var needReload = false;
+                        data.accounts.forEach(function(acc) {
+                            if (acc.stats_included) {
+                                var elSent = document.getElementById('card-stat-sent-' + acc.id);
+                                if (elSent) elSent.textContent = acc.total_attempted;
+                                var elSucc = document.getElementById('card-stat-success-' + acc.id);
+                                if (elSucc) elSucc.textContent = acc.success_count;
+                                var elFail = document.getElementById('card-stat-fail-' + acc.id);
+                                if (elFail) elFail.textContent = acc.fail_count;
+                                var elUnc = document.getElementById('card-stat-uncertain-' + acc.id);
+                                if (elUnc) elUnc.textContent = acc.uncertain_count;
+                                var elComp = document.getElementById('card-stat-comp-' + acc.id);
+                                if (elComp) elComp.textContent = 'Rp' + acc.compensation_idr;
+                            }
+                            var cardEl = document.getElementById('wa-card-' + acc.id);
+                            if (cardEl) {
+                                var domWorking = cardEl.getAttribute('data-is-working') === 'true';
+                                var domStatus = cardEl.getAttribute('data-status');
+                                if (Boolean(acc.is_working) !== domWorking || acc.status !== domStatus) {
+                                    needReload = true;
+                                }
+                            }
+                        });
+                        if (needReload && !modalOpen) {
+                            window.location.reload();
+                        }
+                    }
                 })
                 .catch(function(err) {});
         }, 5000);

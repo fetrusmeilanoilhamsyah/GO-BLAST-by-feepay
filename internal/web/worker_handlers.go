@@ -276,6 +276,9 @@ func (s *Server) HandleWorkerHome(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 10. Daftar akun WhatsApp milik pekerja & hitung total/terhubung sekaligus
+	if s.WaManager != nil {
+		s.WaManager.CleanupStalePendingAccounts(ctx, user.ID)
+	}
 	var accounts []WorkerAccountSummaryView
 	var totalAccounts, connectedAccounts int64
 	accRows, err := s.DB.Pool.Query(ctx, `
@@ -1670,16 +1673,30 @@ func (s *Server) HandleWorkerNotificationReadOnePOST(w http.ResponseWriter, r *h
 	w.Write([]byte(`{"ok":true}`))
 }
 
+type WorkerAccountLiveStat struct {
+	ID              int64  `json:"id"`
+	Status          string `json:"status"`
+	StopReason      string `json:"stop_reason"`
+	IsWorking       bool   `json:"is_working"`
+	StatsIncluded   bool   `json:"stats_included"`
+	TotalAttempted  int64  `json:"total_attempted"`
+	SuccessCount    int64  `json:"success_count"`
+	FailCount       int64  `json:"fail_count"`
+	UncertainCount  int64  `json:"uncertain_count"`
+	CompensationIDR string `json:"compensation_idr"`
+}
+
 type WorkerAPIStatsResponse struct {
-	DatabaseTersedia           int    `json:"database_tersedia"`
-	DatabaseTersediaFormatted  string `json:"database_tersedia_formatted"`
-	AkunBekerjaGlobal          int    `json:"akun_bekerja_global"`
-	PendapatanHariIni          int64  `json:"pendapatan_hari_ini"`
-	PendapatanHariIniFormatted string `json:"pendapatan_hari_ini_formatted"`
+	DatabaseTersedia           int                     `json:"database_tersedia"`
+	DatabaseTersediaFormatted  string                  `json:"database_tersedia_formatted"`
+	AkunBekerjaGlobal          int                     `json:"akun_bekerja_global"`
+	PendapatanHariIni          int64                   `json:"pendapatan_hari_ini"`
+	PendapatanHariIniFormatted string                  `json:"pendapatan_hari_ini_formatted"`
 	// Aliases untuk integrasi fleksibel:
-	AvailableNumbers           int    `json:"available_numbers"`
-	RunningAccountsGlobal      int    `json:"running_accounts_global"`
-	EarnedTodayIDR             int64  `json:"earned_today_idr"`
+	AvailableNumbers           int                     `json:"available_numbers"`
+	RunningAccountsGlobal      int                     `json:"running_accounts_global"`
+	EarnedTodayIDR             int64                   `json:"earned_today_idr"`
+	Accounts                   []WorkerAccountLiveStat `json:"accounts,omitempty"`
 }
 
 func (s *Server) HandleWorkerAPIStats(w http.ResponseWriter, r *http.Request) {
@@ -1705,6 +1722,78 @@ func (s *Server) HandleWorkerAPIStats(w http.ResponseWriter, r *http.Request) {
 		WHERE user_id = $1 AND kind IN ('upah', 'referral') AND currency = 'IDR' AND created_at >= $2
 	`, user.ID, startOfTodayWIB).Scan(&earnedTodayIDR)
 
+	var accStats []WorkerAccountLiveStat
+	if r.URL.Query().Get("accounts") == "1" {
+		rows, qErr := s.DB.Pool.Query(ctx, `
+			SELECT id, status, COALESCE(stop_reason, '')
+			FROM wa_accounts
+			WHERE worker_id = $1
+			ORDER BY id DESC
+		`, user.ID)
+		if qErr == nil {
+			var accIDs []int64
+			needCounts := r.URL.Query().Get("working") == "1"
+			for rows.Next() {
+				var st WorkerAccountLiveStat
+				if err := rows.Scan(&st.ID, &st.Status, &st.StopReason); err == nil {
+					if s.WorkCtrl != nil {
+						st.IsWorking = s.WorkCtrl.IsRunning(st.ID)
+					}
+					if st.IsWorking {
+						needCounts = true
+					}
+					accIDs = append(accIDs, st.ID)
+					accStats = append(accStats, st)
+				}
+			}
+			rows.Close()
+
+			// Hanya jalankan query agregasi campaign_numbers jika ada akun yang sedang bekerja (atau baru saja berhenti)
+			if needCounts && len(accIDs) > 0 {
+				statMap := make(map[int64]WorkerAccountLiveStat, len(accIDs))
+				cRows, cErr := s.DB.Pool.Query(ctx, `
+					SELECT cn.claimed_account_id,
+					       COUNT(cn.id) FILTER (WHERE cn.status IN ('terkirim', 'gagal', 'tidak_terdaftar')) AS total_attempted,
+					       COUNT(cn.id) FILTER (WHERE cn.status = 'terkirim') AS success_count,
+					       COUNT(cn.id) FILTER (WHERE (cn.status = 'gagal' AND COALESCE(cn.last_error, '') <> 'hasil_tidak_pasti') OR cn.status = 'tidak_terdaftar') AS fail_count,
+					       COUNT(cn.id) FILTER (WHERE cn.status = 'gagal' AND cn.last_error = 'hasil_tidak_pasti') AS uncertain_count,
+					       COALESCE(SUM(le.amount) FILTER (WHERE le.kind = 'upah'), 0) AS compensation_idr
+					FROM campaign_numbers cn
+					LEFT JOIN ledger_entries le ON le.campaign_number_id = cn.id AND le.user_id = $1 AND le.kind = 'upah'
+					WHERE cn.claimed_account_id = ANY($2)
+					GROUP BY cn.claimed_account_id
+				`, user.ID, accIDs)
+				if cErr == nil {
+					for cRows.Next() {
+						var accID, tot, succ, fail, unc, comp int64
+						if err := cRows.Scan(&accID, &tot, &succ, &fail, &unc, &comp); err == nil {
+							statMap[accID] = WorkerAccountLiveStat{
+								TotalAttempted:  tot,
+								SuccessCount:    succ,
+								FailCount:       fail,
+								UncertainCount:  unc,
+								CompensationIDR: formatIDR(comp),
+							}
+						}
+					}
+					cRows.Close()
+				}
+				for i := range accStats {
+					accStats[i].StatsIncluded = true
+					if m, ok := statMap[accStats[i].ID]; ok {
+						accStats[i].TotalAttempted = m.TotalAttempted
+						accStats[i].SuccessCount = m.SuccessCount
+						accStats[i].FailCount = m.FailCount
+						accStats[i].UncertainCount = m.UncertainCount
+						accStats[i].CompensationIDR = m.CompensationIDR
+					} else {
+						accStats[i].CompensationIDR = "0"
+					}
+				}
+			}
+		}
+	}
+
 	resp := WorkerAPIStatsResponse{
 		DatabaseTersedia:           claimable,
 		DatabaseTersediaFormatted:  formatIDR(int64(claimable)),
@@ -1714,8 +1803,10 @@ func (s *Server) HandleWorkerAPIStats(w http.ResponseWriter, r *http.Request) {
 		AvailableNumbers:           claimable,
 		RunningAccountsGlobal:      running,
 		EarnedTodayIDR:             earnedTodayIDR,
+		Accounts:                   accStats,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(resp)
 }
+

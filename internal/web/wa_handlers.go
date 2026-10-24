@@ -43,7 +43,7 @@ func (s *Server) HandleWorkerAccounts(w http.ResponseWriter, r *http.Request) {
 
 	rows, err := s.DB.Pool.Query(r.Context(),
 		`SELECT wa.id, wa.label, wa.speed, wa.status, COALESCE(wa.stop_reason, ''), wa.created_at,
-		        COUNT(cn.id) FILTER (WHERE cn.status IN ('terkirim', 'gagal', 'tidak_terdaftar', 'dikirim')) AS total_attempted,
+		        COUNT(cn.id) FILTER (WHERE cn.status IN ('terkirim', 'gagal', 'tidak_terdaftar')) AS total_attempted,
 		        COUNT(cn.id) FILTER (WHERE cn.status = 'terkirim') AS success_count,
 		        COUNT(cn.id) FILTER (WHERE (cn.status = 'gagal' AND COALESCE(cn.last_error, '') <> 'hasil_tidak_pasti') OR cn.status = 'tidak_terdaftar') AS fail_count,
 		        COUNT(cn.id) FILTER (WHERE cn.status = 'gagal' AND cn.last_error = 'hasil_tidak_pasti') AS uncertain_count,
