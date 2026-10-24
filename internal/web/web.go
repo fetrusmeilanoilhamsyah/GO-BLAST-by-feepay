@@ -833,7 +833,7 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	// Serve static files dengan neutered file system (mencegah directory listing) dan header cache browser
 	staticFileServer := http.StripPrefix("/static/", http.FileServer(neuteredFileSystem{fs: http.Dir(filepath.Join("web", "static"))}))
 	staticHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Cache-Control", "public, max-age=86400")
+		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 		staticFileServer.ServeHTTP(w, r)
 	})
 	handle("/static/", s.RateLimitStaticMiddleware(staticHandler))
